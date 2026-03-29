@@ -25,10 +25,17 @@ class UserManager {
   String? activeChurchId;
   String? activeChurchName;
 
-  // Singleton pattern agar Manager ini bisa dipanggil di mana saja
+  // Singleton pattern
   static final UserManager _instance = UserManager._internal();
   factory UserManager() => _instance;
   UserManager._internal();
+
+  // --- TAMBAHAN KHUSUS UNTUK FIX ERROR LOGIN ---
+  // Fungsi ini menerima String agar sinkron dengan panggilan di login_page.dart
+  Future<void> saveToPrefsWithId(String uId) async {
+    userId = uId;
+    await saveToPrefs();
+  }
 
   // Fungsi untuk menyimpan data User (Login)
   Future<void> setUser({
@@ -52,7 +59,7 @@ class UserManager {
     await saveToPrefs();
   }
 
-  // Simpan ke SharedPreferences (Android/iOS)
+  // Simpan ke SharedPreferences
   Future<void> saveToPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyRole, userRole ?? "");
@@ -85,7 +92,6 @@ class UserManager {
     return true;
   }
 
-  // Cek Role
   bool isAdmin() => userRole == "admin" || userRole == "superadmin";
   bool isSuperAdmin() => userRole == "superadmin";
 
@@ -108,7 +114,6 @@ class UserManager {
     }
   }
 
-  // Update Data Profil
   Future<void> updateProfil(String namaBaru, String? fotoBaru) async {
     userNama = namaBaru;
     userFotoUrl = fotoBaru;
@@ -120,7 +125,6 @@ class UserManager {
     await saveToPrefs();
   }
 
-  // Logout / Reset
   Future<void> reset() async {
     userRole = null;
     userId = null;

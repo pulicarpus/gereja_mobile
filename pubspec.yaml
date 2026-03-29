@@ -29,7 +29,12 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-  shared_preferences: ^2.2.2
+  firebase_core: ^2.24.2
+  firebase_auth: ^4.15.3
+  cloud_firestore: ^4.13.6
+  google_sign_in: ^6.1.6
+  onesignal_flutter: ^5.0.1
+  shared_preferences: ^2.2.2 # Untuk UserManager yang kita buat tadi
 
 flutter:
   uses-material-design: true

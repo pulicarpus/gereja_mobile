@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // Wajib ada
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'user_manager.dart';
+import 'login_page.dart'; // Import halaman login Bos
 
-void main() {
+void main() async {
+  // 1. Inisialisasi wajib untuk Flutter & Firebase
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  
   runApp(const MyApp());
 }
 
@@ -18,10 +24,13 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'GKII SILOAM',
       theme: ThemeData(
-        primarySwatch: Colors.indigo,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
       ),
-      home: const MainActivity(),
+      // Alur: Cek apakah user sudah login atau belum
+      home: FirebaseAuth.instance.currentUser == null 
+          ? const LoginPage() 
+          : const MainActivity(),
     );
   }
 }
@@ -39,7 +48,6 @@ class _MainActivityState extends State<MainActivity> {
   String? _fotoGembalaUrl;
   String _namaGembala = "Gembala Sidang";
   
-  // Data Ayat Emas (Sesuai logic AyatData.getAyatAcak() Bos)
   final String _isiAyat = "TUHAN adalah gembalaku, takkan kekurangan aku.";
   final String _refAyat = "Mazmur 23:1";
 
@@ -52,8 +60,9 @@ class _MainActivityState extends State<MainActivity> {
   }
 
   void _initSession() async {
-    await UserManager().loadFromPrefs();
-    setState(() {}); // Refresh UI setelah load session
+    final userManager = UserManager();
+    await userManager.loadFromPrefs();
+    if (mounted) setState(() {}); 
   }
 
   void _setupOneSignal() {
@@ -64,11 +73,11 @@ class _MainActivityState extends State<MainActivity> {
   }
 
   void _loadInfoGembala() {
-    String? churchId = UserManager().getChurchIdForCurrentView();
+    String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
 
     _db.collection("churches").doc(churchId).snapshots().listen((snapshot) {
-      if (snapshot.exists) {
+      if (snapshot.exists && mounted) {
         setState(() {
           _namaGembala = snapshot.data()?['namaGembala'] ?? "Gembala Sidang";
           _fotoGembalaUrl = snapshot.data()?['fotoGembalaUrl'];
@@ -77,11 +86,7 @@ class _MainActivityState extends State<MainActivity> {
     });
   }
 
-  // Fungsi Navigasi (Pengganti bukaHalaman di Kotlin)
   void _bukaHalaman(String routeName) {
-    // Navigator.pushNamed(context, routeName); 
-    // Sementara pakai print untuk simulasi navigasi
-    print("Membuka halaman: $routeName");
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text("Menuju $routeName..."), duration: const Duration(seconds: 1)),
     );
@@ -91,9 +96,11 @@ class _MainActivityState extends State<MainActivity> {
   Widget build(BuildContext context) {
     final user = UserManager();
 
-    return WillPopScope(
-      onWillPop: () async {
-        return await showDialog(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final bool shouldPop = await showDialog(
           context: context,
           builder: (context) => AlertDialog(
             title: const Text("Keluar"),
@@ -104,6 +111,9 @@ class _MainActivityState extends State<MainActivity> {
             ],
           ),
         );
+        if (shouldPop && context.mounted) {
+          Navigator.of(context).pop();
+        }
       },
       child: Scaffold(
         appBar: AppBar(
@@ -111,9 +121,13 @@ class _MainActivityState extends State<MainActivity> {
           actions: [
             IconButton(
               icon: CircleAvatar(
+                backgroundColor: Colors.indigo.shade100,
                 backgroundImage: (user.userFotoUrl != null && user.userFotoUrl!.isNotEmpty)
                     ? NetworkImage(user.userFotoUrl!)
-                    : const AssetImage('assets/default_profile.png') as ImageProvider,
+                    : null,
+                child: (user.userFotoUrl == null || user.userFotoUrl!.isEmpty)
+                    ? const Icon(Icons.person, color: Colors.indigo)
+                    : null,
               ),
               onPressed: () => _bukaHalaman("ProfilActivity"),
             ),
@@ -122,7 +136,6 @@ class _MainActivityState extends State<MainActivity> {
         body: SingleChildScrollView(
           child: Column(
             children: [
-              // 1. CARD STATUS SUPERADMIN
               if (user.isSuperAdmin() && user.activeChurchId != user.originalChurchId)
                 Container(
                   width: double.infinity,
@@ -132,20 +145,18 @@ class _MainActivityState extends State<MainActivity> {
                     children: [
                       const Icon(Icons.visibility, color: Colors.orange),
                       const SizedBox(width: 10),
-                      Text("Memantau: ${user.activeChurchName}"),
-                      const Spacer(),
+                      Expanded(child: Text("Memantau: ${user.activeChurchName}")),
                       TextButton(
                         onPressed: () async {
                           await user.exitChurchContext();
                           setState(() {});
                         },
-                        child: const Text("Keluar Mode"),
+                        child: const Text("Keluar"),
                       )
                     ],
                   ),
                 ),
 
-              // 2. CARD AYAT EMAS (Mazmur 23:1)
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Card(
@@ -171,7 +182,6 @@ class _MainActivityState extends State<MainActivity> {
                 ),
               ),
 
-              // 3. MENU GRID UTAMA (Semua Tombol)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: GridView.count(
@@ -199,42 +209,41 @@ class _MainActivityState extends State<MainActivity> {
 
               const Divider(height: 40),
 
-              // 4. CARD PROFIL GEMBALA
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: InkWell(
-                  onTap: () => print("Show Detail Gembala Dialog"),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 30,
-                        backgroundImage: _fotoGembalaUrl != null 
-                          ? CachedNetworkImageProvider(_fotoGembalaUrl!) 
-                          : const AssetImage('assets/ic_jemaat.png') as ImageProvider,
-                      ),
-                      const SizedBox(width: 15),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_namaGembala, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          const Text("Gembala Sidang", style: TextStyle(color: Colors.grey)),
-                        ],
-                      )
-                    ],
-                  ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 30,
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: _fotoGembalaUrl != null 
+                        ? CachedNetworkImageProvider(_fotoGembalaUrl!) 
+                        : null,
+                      child: _fotoGembalaUrl == null 
+                        ? const Icon(Icons.person, size: 35, color: Colors.grey) 
+                        : null,
+                    ),
+                    const SizedBox(width: 15),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_namaGembala, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        const Text("Gembala Sidang", style: TextStyle(color: Colors.grey)),
+                      ],
+                    )
+                  ],
                 ),
               ),
 
               const SizedBox(height: 20),
 
-              // 5. TOMBOL KELOLA (Admin/Superadmin Only)
               if (user.isAdmin() || user.isSuperAdmin())
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     children: [
                       _buildAdminButton(
-                        user.isSuperAdmin() ? "Kelola Pengguna" : "Kelola Anggota ${user.userKomisi}",
+                        user.isSuperAdmin() ? "Kelola Pengguna" : "Kelola Anggota",
                         Icons.manage_accounts,
                         "KelolaPengguna",
                       ),
@@ -255,7 +264,6 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // Widget Helper untuk Item Grid
   Widget _buildMenuItem(IconData icon, String label, String route) {
     return InkWell(
       onTap: () => _bukaHalaman(route),
@@ -271,13 +279,12 @@ class _MainActivityState extends State<MainActivity> {
             child: Icon(icon, color: Colors.indigo, size: 28),
           ),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center),
+          Text(label, style: const TextStyle(fontSize: 12), textAlign: TextAlign.center, maxLines: 1),
         ],
       ),
     );
   }
 
-  // Widget Helper untuk Tombol Admin
   Widget _buildAdminButton(String label, IconData icon, String route) {
     return SizedBox(
       width: double.infinity,
@@ -288,7 +295,7 @@ class _MainActivityState extends State<MainActivity> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.indigo,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       ),
     );

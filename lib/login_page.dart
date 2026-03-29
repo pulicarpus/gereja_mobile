@@ -42,7 +42,7 @@ class _LoginPageState extends State<LoginPage> {
           await _registerNewUser(user);
         }
 
-        await UserManager().saveToPrefs(user.uid);
+        await UserManager().saveToPrefsWithId(user.uid);
         if (mounted) {
           Navigator.pushReplacementNamed(context, '/home');
         }

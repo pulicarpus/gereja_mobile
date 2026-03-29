@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "485089290495",
+    "project_id": "gerejaappv2",
+    "storage_bucket": "gerejaappv2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:485089290495:android:1b13179f1e6b4dc80b04ca",
+        "android_client_info": {
+          "package_name": "com.gereja.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "485089290495-ll227efafc3a3qv72vgfbncgecde04m8.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gereja.app",
+            "certificate_hash": "1ceb3af7abadcbaba0b905114886ba865c1f704e"
+          }
+        },
+        {
+          "client_id": "485089290495-qibjdn8usf6mohm4fq1ibs1bni0vdhgr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.gereja.app",
+            "certificate_hash": "88584d3301d79c84d84586893ecaf757d2d21b49"
+          }
+        },
+        {
+          "client_id": "485089290495-3v94qk9j1tclha9njbt50rhtthbhb2dh.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB7FOTFV2_51ozV41gH0QvJhHx9a9VhSww"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "485089290495-3v94qk9j1tclha9njbt50rhtthbhb2dh.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

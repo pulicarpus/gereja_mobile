@@ -31,6 +31,10 @@ class MyApp extends StatelessWidget {
       home: FirebaseAuth.instance.currentUser == null 
           ? const LoginPage() 
           : const MainActivity(),
+      // PENAMBAHAN RUTE DI SINI
+      routes: {
+        '/home': (context) => const MainActivity(),
+      },
     );
   }
 }

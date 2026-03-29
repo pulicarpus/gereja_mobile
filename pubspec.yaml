@@ -13,33 +13,24 @@ dependencies:
   # Ikon & Tampilan Modern
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
-  
-  # Inti Firebase (Sesuai kode MainActivity.kt Bos)
+  cached_network_image: ^3.3.1
+
+  # Inti Firebase (Versi Sinkron & Terbaru)
   firebase_core: ^3.0.0
   firebase_auth: ^5.1.0
   cloud_firestore: ^5.0.0
-  
-  # Notifikasi OneSignal (Sesuai setupOneSignalV5() Bos)
+
+  # Login & Notifikasi
+  google_sign_in: ^6.2.1
   onesignal_flutter: ^5.2.0
-  
-  # Pengganti Glide untuk Load Foto Gembala
-  cached_network_image: ^3.3.1
+
+  # Penyimpanan Data Sesi
+  shared_preferences: ^2.2.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-  firebase_core: ^2.24.2
-  firebase_auth: ^4.15.3
-  cloud_firestore: ^4.13.6
-  google_sign_in: ^6.1.6
-  onesignal_flutter: ^5.0.1
-  shared_preferences: ^2.2.2 # Untuk UserManager yang kita buat tadi
 
 flutter:
   uses-material-design: true
-
-  # Jika nanti Bos mau tambah logo gereja, masukkan di sini:
-  # assets:
-  #   - assets/images/logo_gereja.png
-  

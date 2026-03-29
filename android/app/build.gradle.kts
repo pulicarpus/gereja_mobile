@@ -8,17 +8,26 @@ plugins {
 }
 
 android {
-    // Sesuaikan dengan package name proyek Bos
     namespace = "com.gereja.app" 
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    // KONFIGURASI KUNCI PERMANEN (KEYSTORE)
+    signingConfigs {
+        create("release") {
+            // File ini akan dibuat otomatis oleh GitHub Actions di folder yang sama
+            storeFile = file("gereja-app.jks")
+            storePassword = "lovela150811"
+            keyAlias = "gereja-key"
+            keyPassword = "lovela150811"
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // Perbaikan jvmTarget agar tidak deprecated
     kotlinOptions {
         @Suppress("DEPRECATION")
         jvmTarget = "17"
@@ -30,11 +39,21 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Memastikan build debug juga pakai kunci yang sama agar SHA-1 konsisten
+        signingConfig = signingConfigs.getByName("release")
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            // Menggunakan kunci permanen untuk rilis
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+        debug {
+            // Sangat penting: Debug juga harus pakai kunci yang sama supaya Google Login jalan saat testing
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
@@ -48,13 +67,9 @@ tasks.withType<com.android.build.gradle.tasks.ProcessAndroidResources> {
     doFirst {
         val manualAapt2 = File("/usr/bin/aapt2")
         if (manualAapt2.exists()) {
-            // Beritahu Gradle lokasi fisik AAPT2 yang sehat
             System.setProperty("android.aapt2FromMaven", "false")
             System.setProperty("android.aapt2.executable", manualAapt2.absolutePath)
-            
-            // Bypass optimasi resource yang sering memicu error daemon x86
             project.extensions.extraProperties.set("android.enableResourceOptimizations", false)
-            
             println("--- INFO: MEMAKSA AAPT2 DARI ${manualAapt2.absolutePath} ---")
         }
     }

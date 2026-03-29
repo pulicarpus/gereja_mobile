@@ -1,5 +1,9 @@
 name: Flutter Build APK
-on: [push]
+
+on:
+  push:
+    branches:
+      - master # Atau ganti ke 'main' jika itu nama branch utama Bos
 
 jobs:
   build:
@@ -18,12 +22,17 @@ jobs:
         with:
           channel: 'stable'
 
+      # Langkah untuk mengubah teks Base64 dari Secret menjadi file fisik .jks
+      - name: Decode Keystore
+        run: echo "${{ secrets.APP_KEYSTORE_BASE64 }}" | base64 --decode > android/app/gereja-app.jks
+
       - name: Get Dependencies
-        # Jika folder pubspec.yaml ada di dalam folder tertentu, ganti '.' jadi nama foldernya
         run: flutter pub get
         working-directory: . 
 
       - name: Build APK
+        # Kita gunakan --debug karena Bos sebelumnya menggunakan debug
+        # Namun sekarang sudah ditandatangani dengan kunci permanen
         run: flutter build apk --debug
         working-directory: .
 

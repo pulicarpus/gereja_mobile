@@ -1,0 +1,38 @@
+name: gereja_mobile
+description: "Aplikasi Gereja GKII Siloam V2 - Flutter Version"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Ikon & Tampilan Modern
+  cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
+  
+  # Inti Firebase (Sesuai kode MainActivity.kt Bos)
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.1.0
+  cloud_firestore: ^5.0.0
+  
+  # Notifikasi OneSignal (Sesuai setupOneSignalV5() Bos)
+  onesignal_flutter: ^5.2.0
+  
+  # Pengganti Glide untuk Load Foto Gembala
+  cached_network_image: ^3.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  # Jika nanti Bos mau tambah logo gereja, masukkan di sini:
+  # assets:
+  #   - assets/images/logo_gereja.png

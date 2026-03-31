@@ -19,16 +19,12 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  // KONFIGURASI GOOGLE SIGN IN
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  // 1. FUNGSI LOGIN GOOGLE
   Future<void> _signInWithGoogle() async {
     setState(() => _isLoading = true);
     try {
-      // Sign out dulu agar bisa pilih akun lain jika mau
       await _googleSignIn.signOut();
-      
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         setState(() => _isLoading = false);
@@ -45,7 +41,6 @@ class _LoginPageState extends State<LoginPage> {
       final User? user = userCredential.user;
 
       if (user != null) {
-        // SINKRONISASI 1: OneSignal Login
         OneSignal.login(user.uid);
         _checkUserRegistration(user);
       }
@@ -55,11 +50,9 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // 2. FUNGSI LOGIN MANUAL (EMAIL/PASS)
   Future<void> _loginManual() async {
     final email = _emailController.text.trim();
     final pass = _passwordController.text.trim();
-
     if (email.isEmpty || pass.isEmpty) {
       _showToast("Email dan Password harus diisi");
       return;
@@ -71,12 +64,9 @@ class _LoginPageState extends State<LoginPage> {
         email: email, 
         password: pass
       );
-      final User? user = userCredential.user;
-
-      if (user != null) {
-        // SINKRONISASI 1: OneSignal Login
-        OneSignal.login(user.uid);
-        _checkUserRegistration(user);
+      if (userCredential.user != null) {
+        OneSignal.login(userCredential.user!.uid);
+        _checkUserRegistration(userCredential.user!);
       }
     } catch (e) {
       _showToast("Login Manual Gagal: $e");
@@ -84,54 +74,52 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // 3. CEK REGISTRASI USER DI FIRESTORE
   void _checkUserRegistration(User user) async {
     try {
       DocumentSnapshot doc = await _db.collection("users").doc(user.uid).get();
 
       if (doc.exists) {
-        String? churchId = doc.get("churchId");
-        
-        if (churchId != null && churchId.isNotEmpty) {
-          // USER SUDAH TERVALIDASI
-          String role = doc.get("role") ?? "user";
-          String cName = doc.get("churchName") ?? "";
-          String nama = doc.get("namaLengkap") ?? user.displayName ?? "";
+        final data = doc.data() as Map<String, dynamic>;
+        String role = data['role'] ?? "user";
+        String? churchId = data['churchId'] ?? "";
+        String churchName = data['churchName'] ?? "";
+        String nama = data['namaLengkap'] ?? user.displayName ?? "Jemaat";
+        String? foto = data['photoUrl'] ?? user.photoURL;
 
-          // SINKRONISASI 2: OneSignal Tag
+        // MENGGUNAKAN LOGIKA BOS: setUser
+        await UserManager().setUser(
+          role: role,
+          churchId: churchId,
+          churchName: churchName,
+          uId: user.uid,
+          uNama: nama,
+          uFoto: foto,
+          uKomisi: data['kelompok'] ?? "Umum",
+        );
+
+        // Jika Superadmin, beri Tag khusus di OneSignal
+        if (role == "superadmin") {
+          OneSignal.User.addTagWithKey("active_church", "SUPERADMIN");
+        } else if (churchId != null && churchId.isNotEmpty) {
           OneSignal.User.addTagWithKey("active_church", churchId);
-
-          // Simpan ke Session Lokal
-          await UserManager().saveSession(
-            uid: user.uid,
-            role: role,
-            churchId: churchId,
-            churchName: cName,
-            userName: nama,
-            photoUrl: user.photoUrl?.toString() ?? ""
-          );
-
-          _goToMainActivity();
-        } else {
-          // CHURCH ID KOSONG -> VALIDASI MANUAL
-          _goToValidasiManual(user);
         }
+
+        _goToMainActivity();
       } else {
-        // USER BARU -> SIMPAN DAN VALIDASI
         _saveNewUserAndValidate(user);
       }
     } catch (e) {
+      debugPrint("Error checkUser: $e");
       _goToValidasiManual(user);
     }
   }
 
-  // 4. SIMPAN USER BARU
   void _saveNewUserAndValidate(User user) async {
     final newUser = {
       "uid": user.uid,
       "email": user.email,
       "namaLengkap": user.displayName,
-      "photoUrl": user.photoUrl?.toString(),
+      "photoUrl": user.photoURL, // Menggunakan properti photoURL yang benar
       "role": "user",
       "isBlocked": false,
       "churchId": "",
@@ -148,9 +136,8 @@ class _LoginPageState extends State<LoginPage> {
 
   void _goToValidasiManual(User user) {
     setState(() => _isLoading = false);
-    // Navigasi ke halaman Validasi Gereja (buat file-nya nanti)
-    _showToast("Menuju Validasi Gereja...");
-    // Navigator.pushReplacementNamed(context, '/validasi');
+    _showToast("Akun perlu divalidasi admin gereja.");
+    // Navigator.pushReplacementNamed(context, '/validasi'); 
   }
 
   void _goToMainActivity() {
@@ -165,7 +152,6 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : SingleChildScrollView(
@@ -173,12 +159,8 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               children: [
                 const SizedBox(height: 80),
-                const Icon(Icons.church, size: 100, color: Colors.indigo),
-                const SizedBox(height: 20),
-                const Text("GKII SILOAM", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                const Icon(Icons.church, size: 80, color: Colors.indigo),
                 const SizedBox(height: 40),
-                
-                // Form Login Manual
                 TextField(
                   controller: _emailController,
                   decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
@@ -193,23 +175,15 @@ class _LoginPageState extends State<LoginPage> {
                 SizedBox(
                   width: double.infinity,
                   height: 50,
-                  child: ElevatedButton(
-                    onPressed: _loginManual,
-                    child: const Text("LOGIN"),
-                  ),
+                  child: ElevatedButton(onPressed: _loginManual, child: const Text("LOGIN")),
                 ),
-                
-                const SizedBox(height: 20),
-                const Text("Atau"),
-                const SizedBox(height: 20),
-
-                // Button Google Sign In
+                const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text("Atau")),
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: OutlinedButton.icon(
                     onPressed: _signInWithGoogle,
-                    icon: Image.network('https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_Logo.png', height: 20),
+                    icon: const Icon(Icons.g_mobiledata, size: 30),
                     label: const Text("Masuk dengan Google"),
                   ),
                 ),

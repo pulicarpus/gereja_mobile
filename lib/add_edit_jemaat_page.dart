@@ -22,7 +22,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   final _storage = FirebaseStorage.instance;
   bool _isSaving = false;
 
-  // Controllers
+  // Controllers sesuai aplikasi Kotlin lama Bos
   final _namaController = TextEditingController();
   final _tglLahirController = TextEditingController();
   final _alamatController = TextEditingController();
@@ -63,7 +63,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       _statusKeluarga = d['statusKeluarga'] ?? "Kepala Keluarga";
     }
     
-    // Logika Status Keluarga dari Kotlin
+    // Logika Status Keluarga jika menambah anggota dari list keluarga
     if (widget.idKepalaKeluargaBaru != null) {
       _statusKeluarga = "Anak"; 
     }
@@ -88,7 +88,6 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     }
   }
 
-  // LOGIKA SIMPAN SINKRON DENGAN KOTLIN
   Future<void> _validateAndSave() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -105,7 +104,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         photoUrl = await ref.getDownloadURL();
       }
 
-      // 2. Siapkan Map Data
+      // 2. Siapkan Map Data (Sesuai Firestore Bos)
       final jemaatMap = {
         "namaLengkap": _namaController.text.trim(),
         "fotoProfil": photoUrl,
@@ -126,27 +125,30 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       final colRef = _db.collection("churches").doc(churchId).collection("jemaat");
 
       if (widget.jemaatData != null) {
-        // UPDATE
-        await colRef.document(widget.jemaatData!['id']).update(jemaatMap);
+        // UPDATE (Dulu pakai .document, sekarang pakai .doc agar lolos GitHub)
+        await colRef.doc(widget.jemaatData!['id']).update(jemaatMap);
       } else {
-        // ADD NEW
-        // Logika ID Kepala Keluarga
+        // TAMBAH BARU
         if (_statusKeluarga != "Kepala Keluarga") {
           jemaatMap["idKepalaKeluarga"] = widget.idKepalaKeluargaBaru;
         }
 
-        DocumentReference doc = await colRef.add(jemaatMap);
-        String newId = doc.id;
-        await doc.update({"id": newId});
+        DocumentReference docRef = await colRef.add(jemaatMap);
+        String newId = docRef.id;
+        
+        // Update ID dokumen ke dalam field 'id' (Sinkron dengan Kotlin lama)
+        await docRef.update({"id": newId});
         
         if (_statusKeluarga == "Kepala Keluarga") {
-          await doc.update({"idKepalaKeluarga": newId});
+          await docRef.update({"idKepalaKeluarga": newId});
         }
       }
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e")));
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -163,12 +165,12 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // FOTO PROFIL
                 Center(
                   child: GestureDetector(
                     onTap: _pickImage,
                     child: CircleAvatar(
                       radius: 60,
+                      backgroundColor: Colors.grey.shade200,
                       backgroundImage: _imageFile != null 
                         ? FileImage(_imageFile!) 
                         : (_existingPhotoUrl != null ? NetworkImage(_existingPhotoUrl!) : null) as ImageProvider?,
@@ -178,30 +180,42 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
                 ),
                 const SizedBox(height: 20),
                 
-                TextFormField(controller: _namaController, decoration: const InputDecoration(labelText: "Nama Lengkap *"), validator: (v) => v!.isEmpty ? "Wajib diisi" : null),
+                TextFormField(
+                  controller: _namaController, 
+                  decoration: const InputDecoration(labelText: "Nama Lengkap *", border: OutlineInputBorder()),
+                  validator: (v) => v!.isEmpty ? "Wajib diisi" : null
+                ),
                 const SizedBox(height: 15),
 
-                // DROPDOWNS
                 _buildDropdown("Jenis Kelamin", ["Pria", "Wanita"], _jenisKelamin, (v) => setState(() => _jenisKelamin = v!)),
                 _buildDropdown("Kelompok", ["Sekolah Minggu", "Pemuda Remaja", "Perkawan", "Perkaria", "Lainnya"], _kelompok, (v) => setState(() => _kelompok = v!)),
                 _buildDropdown("Status Keluarga", ["Kepala Keluarga", "Istri", "Anak"], _statusKeluarga, (v) => setState(() => _statusKeluarga = v!)),
                 
                 const SizedBox(height: 15),
-                TextFormField(controller: _tglLahirController, readOnly: true, onTap: _selectDate, decoration: const InputDecoration(labelText: "Tanggal Lahir", suffixIcon: Icon(Icons.calendar_today))),
-                TextFormField(controller: _alamatController, decoration: const InputDecoration(labelText: "Alamat")),
-                TextFormField(controller: _noTelpController, decoration: const InputDecoration(labelText: "Nomor Telepon"), keyboardType: TextInputType.phone),
+                TextFormField(
+                  controller: _tglLahirController, 
+                  readOnly: true, 
+                  onTap: _selectDate, 
+                  decoration: const InputDecoration(labelText: "Tanggal Lahir", border: OutlineInputBorder(), suffixIcon: Icon(Icons.calendar_today))
+                ),
+                const SizedBox(height: 15),
+                TextFormField(controller: _alamatController, decoration: const InputDecoration(labelText: "Alamat", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextFormField(controller: _noTelpController, decoration: const InputDecoration(labelText: "Nomor Telepon", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
                 
                 _buildDropdown("Status Pernikahan", ["Belum Menikah", "Menikah", "Janda/Duda"], _statusNikah, (v) => setState(() => _statusNikah = v!)),
                 _buildDropdown("Status Baptis", ["Sudah", "Belum"], _statusBaptis, (v) => setState(() => _statusBaptis = v!)),
 
-                TextFormField(controller: _karuniaController, decoration: const InputDecoration(labelText: "Karunia Pelayanan")),
-                TextFormField(controller: _catatanController, maxLines: 3, decoration: const InputDecoration(labelText: "Catatan Tambahan")),
+                const SizedBox(height: 15),
+                TextFormField(controller: _karuniaController, decoration: const InputDecoration(labelText: "Karunia Pelayanan", border: OutlineInputBorder())),
+                const SizedBox(height: 15),
+                TextFormField(controller: _catatanController, maxLines: 3, decoration: const InputDecoration(labelText: "Catatan Tambahan", border: OutlineInputBorder())),
                 
                 const SizedBox(height: 30),
                 ElevatedButton(
                   onPressed: _validateAndSave,
-                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
-                  child: const Text("SIMPAN DATA JEMAAT"),
+                  style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 55), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                  child: const Text("SIMPAN DATA JEMAAT", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 50),
               ],
@@ -215,7 +229,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: DropdownButtonFormField<String>(
         value: current,
-        decoration: InputDecoration(labelText: label),
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,
       ),

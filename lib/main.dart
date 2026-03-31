@@ -4,8 +4,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+
+// Import file-file pendukung Bos
 import 'user_manager.dart';
 import 'login_page.dart';
+import 'data_jemaat_page.dart'; // Pastikan file ini sudah dibuat
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +33,7 @@ class MyApp extends StatelessWidget {
           : const MainActivity(),
       routes: {
         '/home': (context) => const MainActivity(),
+        '/login': (context) => const LoginPage(),
       },
     );
   }
@@ -47,7 +51,7 @@ class _MainActivityState extends State<MainActivity> {
   final _db = FirebaseFirestore.instance;
   String? _fotoGembalaUrl;
   String _namaGembala = "Gembala Sidang";
-  String _alamatGereja = "Alamat Gereja belum diatur";
+  String _alamatGereja = "Memuat alamat...";
   String? _fotoGerejaUrl;
   
   final String _isiAyat = "TUHAN adalah gembalaku, takkan kekurangan aku.";
@@ -88,13 +92,6 @@ class _MainActivityState extends State<MainActivity> {
     });
   }
 
-  void _bukaHalaman(String routeName) {
-    Navigator.pop(context); // Tutup drawer dulu
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Menuju $routeName..."), duration: const Duration(seconds: 1)),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
@@ -103,19 +100,22 @@ class _MainActivityState extends State<MainActivity> {
       appBar: AppBar(
         title: Text(user.activeChurchName ?? "GKII SILOAM"),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none),
-            onPressed: () {},
-          ),
-        ],
+        elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.indigo,
       ),
-      // 1. DRAWER (MENU KIRI KE KANAN)
+      // --- MENU DRAWER (LACI KIRI) ---
       drawer: Drawer(
         child: Column(
           children: [
             DrawerHeader(
-              decoration: const BoxDecoration(color: Colors.indigo),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.indigo, Colors.blue],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -124,33 +124,34 @@ class _MainActivityState extends State<MainActivity> {
                     const SizedBox(height: 10),
                     Text(
                       user.activeChurchName ?? "MENU UTAMA",
-                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ),
             ),
-            // 2. GRID MENU DUA BARIS BISA SKROL
+            // GRID MENU 2 BARIS
             Expanded(
               child: GridView.count(
                 padding: const EdgeInsets.all(15),
-                crossAxisCount: 2, // Dua baris/kolom
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 1.2,
+                crossAxisCount: 2,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 1.1,
                 children: [
                   _buildDrawerItem(Icons.people, "Jemaat", () {
-  Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
-}),
-                  _buildDrawerItem(Icons.calendar_month, "Jadwal", "Jadwal"),
-                  _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", "Keuangan"),
-                  _buildDrawerItem(Icons.chat, "Chat", "Chatroom"),
-                  _buildDrawerItem(Icons.book, "Renungan", "Renungan"),
-                  _buildDrawerItem(Icons.music_note, "Lagu", "BukuLagu"),
-                  _buildDrawerItem(Icons.photo_library, "Gallery", "Gallery"),
-                  _buildDrawerItem(Icons.front_hand, "Doa", "Doa"),
-                  _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", "Alkitab"),
-                  _buildDrawerItem(Icons.supervisor_account, "Pengurus", "Pengurus"),
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
+                  }),
+                  _buildDrawerItem(Icons.calendar_month, "Jadwal", () {}),
+                  _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {}),
+                  _buildDrawerItem(Icons.chat, "Chat", () {}),
+                  _buildDrawerItem(Icons.book, "Renungan", () {}),
+                  _buildDrawerItem(Icons.music_note, "Lagu", () {}),
+                  _buildDrawerItem(Icons.photo_library, "Gallery", () {}),
+                  _buildDrawerItem(Icons.front_hand, "Doa", () {}),
+                  _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {}),
+                  _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {}),
                 ],
               ),
             ),
@@ -163,24 +164,26 @@ class _MainActivityState extends State<MainActivity> {
                 if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
               },
             ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
+      // --- TAMPILAN HALAMAN UTAMA ---
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // TAMPILAN UTAMA: INFO GEREJA
+            // Gambar Gereja
             Container(
               width: double.infinity,
-              height: 200,
+              height: 220,
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
+                color: Colors.indigo.shade50,
                 image: _fotoGerejaUrl != null 
                   ? DecorationImage(image: NetworkImage(_fotoGerejaUrl!), fit: BoxFit.cover)
                   : null,
               ),
               child: _fotoGerejaUrl == null 
-                ? const Icon(Icons.church, size: 80, color: Colors.white)
+                ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3))
                 : null,
             ),
             
@@ -191,62 +194,80 @@ class _MainActivityState extends State<MainActivity> {
                 children: [
                   Text(
                     user.activeChurchName ?? "GKII SILOAM",
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.location_on, size: 16, color: Colors.indigo),
-                      const SizedBox(width: 5),
-                      Expanded(child: Text(_alamatGereja, style: const TextStyle(color: Colors.grey))),
+                      const Icon(Icons.location_on, size: 18, color: Colors.redAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_alamatGereja, style: const TextStyle(color: Colors.black54, fontSize: 14)),
+                      ),
                     ],
                   ),
-                  const Divider(height: 40),
+                  const SizedBox(height: 25),
                   
-                  // AYAT HARI INI
+                  // Card Ayat
                   Container(
-                    padding: const EdgeInsets.all(15),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.indigo.shade100),
                     ),
                     child: Column(
                       children: [
-                        const Icon(Icons.format_quote, color: Colors.indigo),
+                        const Icon(Icons.format_quote, color: Colors.indigo, size: 30),
                         Text(
                           "\"$_isiAyat\"",
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16),
+                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16, height: 1.5),
                         ),
-                        Text("- $_refAyat", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 10),
+                        Text("- $_refAyat", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
                       ],
                     ),
                   ),
                   
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 35),
                   const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
                   
-                  // INFO GEMBALA
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundImage: _fotoGembalaUrl != null 
-                            ? CachedNetworkImageProvider(_fotoGembalaUrl!) 
-                            : null,
-                        child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 40) : null,
-                      ),
-                      const SizedBox(width: 20),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                          const Text("Melayani sejak 2015", style: TextStyle(color: Colors.grey)),
-                        ],
-                      ),
-                    ],
+                  // Info Gembala
+                  Container(
+                    padding: const EdgeInsets.all(15),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(15),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 35,
+                          backgroundColor: Colors.indigo.shade100,
+                          backgroundImage: _fotoGembalaUrl != null 
+                              ? CachedNetworkImageProvider(_fotoGembalaUrl!) 
+                              : null,
+                          child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              const Text("Pelayan Tuhan", style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(height: 50),
                 ],
               ),
             ),
@@ -256,20 +277,26 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  Widget _buildDrawerItem(IconData icon, String label, String route) {
+  // Fungsi build item laci yang sudah diperbaiki
+  Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
-      onTap: () => _bukaHalaman(route),
+      onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.grey.shade100,
           borderRadius: BorderRadius.circular(15),
+          border: Border.all(color: Colors.grey.shade200),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.indigo, size: 30),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+            Icon(icon, color: Colors.indigo, size: 28),
+            const SizedBox(height: 10),
+            Text(
+              label, 
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+            ),
           ],
         ),
       ),

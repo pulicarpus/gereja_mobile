@@ -11,25 +11,27 @@ dependencies:
     sdk: flutter
     
   intl: ^0.19.0
-  image_picker: ^1.0.7
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.1
   
   # Ikon & Tampilan Modern
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
-  cached_network_image: ^3.3.1
+  cached_network_image: ^3.4.1
 
-  # Inti Firebase (Versi Sinkron & Terbaru)
-  firebase_core: ^3.0.0
-  firebase_auth: ^5.1.0
-  cloud_firestore: ^5.0.0
-  firebase_storage: ^11.6.0
+  # Inti Firebase (VERSI TERBARU & SINKRON)
+  # Diperbarui agar mendukung Firebase Core v3
+  firebase_core: ^3.10.1
+  firebase_auth: ^5.4.1
+  cloud_firestore: ^5.6.1
+  firebase_storage: ^12.4.10
 
   # Login & Notifikasi
   google_sign_in: ^6.2.1
-  onesignal_flutter: ^5.2.0
+  onesignal_flutter: ^5.2.6
 
   # Penyimpanan Data Sesi
-  shared_preferences: ^2.2.3
+  shared_preferences: ^2.3.5
 
 dev_dependencies:
   flutter_test:

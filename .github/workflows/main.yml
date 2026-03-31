@@ -1,9 +1,8 @@
 name: Flutter Build APK
 
-on:
-  push:
-    branches:
-      - master # Atau ganti ke 'main' jika itu nama branch utama Bos
+# Perubahan di sini agar tidak otomatis setiap push
+on: 
+  workflow_dispatch: # Ini akan memunculkan tombol "Run Workflow" di GitHub
 
 jobs:
   build:
@@ -22,7 +21,6 @@ jobs:
         with:
           channel: 'stable'
 
-      # Langkah untuk mengubah teks Base64 dari Secret menjadi file fisik .jks
       - name: Decode Keystore
         run: echo "${{ secrets.APP_KEYSTORE_BASE64 }}" | base64 --decode > android/app/gereja-app.jks
 
@@ -31,13 +29,12 @@ jobs:
         working-directory: . 
 
       - name: Build APK
-        # Kita gunakan --debug karena Bos sebelumnya menggunakan debug
-        # Namun sekarang sudah ditandatangani dengan kunci permanen
-        run: flutter build apk --debug
+        # Menggunakan build release agar APK lebih ringan dan resmi
+        run: flutter build apk --release
         working-directory: .
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: app-release
+          path: build/app/outputs/flutter-apk/app-release.apk

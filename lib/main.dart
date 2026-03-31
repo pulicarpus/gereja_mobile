@@ -139,7 +139,9 @@ class _MainActivityState extends State<MainActivity> {
                 crossAxisSpacing: 10,
                 childAspectRatio: 1.2,
                 children: [
-                  _buildDrawerItem(Icons.people, "Jemaat", "DataJemaat"),
+                  _buildDrawerItem(Icons.people, "Jemaat", () {
+  Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
+}),
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", "Jadwal"),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", "Keuangan"),
                   _buildDrawerItem(Icons.chat, "Chat", "Chatroom"),

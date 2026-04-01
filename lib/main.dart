@@ -24,7 +24,7 @@ void main() async {
 void _initOneSignal() {
   // Ganti ID di bawah ini dengan App ID dari dashboard OneSignal Bos
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-  OneSignal.initialize("MASUKKAN-APP-ID-ONESIGNAL-DISINI");
+  OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
 
   // Minta izin notifikasi untuk Android 13+
   OneSignal.Notifications.requestPermission(true);

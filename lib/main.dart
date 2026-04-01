@@ -9,12 +9,25 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
-import 'jadwal_page.dart'; // <--- SUDAH DITAMBAHKAN
+import 'jadwal_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // Inisialisasi OneSignal sebelum aplikasi jalan
+  _initOneSignal();
+  
   runApp(const MyApp());
+}
+
+void _initOneSignal() {
+  // Ganti ID di bawah ini dengan App ID dari dashboard OneSignal Bos
+  OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
+  OneSignal.initialize("MASUKKAN-APP-ID-ONESIGNAL-DISINI");
+
+  // Minta izin notifikasi untuk Android 13+
+  OneSignal.Notifications.requestPermission(true);
 }
 
 class MyApp extends StatelessWidget {
@@ -74,7 +87,10 @@ class _MainActivityState extends State<MainActivity> {
 
   void _setupOneSignal() {
     final user = _auth.currentUser;
-    if (user != null) OneSignal.login(user.uid);
+    // Login ke OneSignal menggunakan UID Firebase agar target user spesifik
+    if (user != null) {
+      OneSignal.login(user.uid);
+    }
   }
 
   void _loadDataGereja() {
@@ -105,7 +121,6 @@ class _MainActivityState extends State<MainActivity> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.indigo,
       ),
-      // --- MENU DRAWER (LACI KIRI) ---
       drawer: Drawer(
         child: Column(
           children: [
@@ -132,7 +147,6 @@ class _MainActivityState extends State<MainActivity> {
                 ),
               ),
             ),
-            // GRID MENU 2 BARIS
             Expanded(
               child: GridView.count(
                 padding: const EdgeInsets.all(15),
@@ -144,7 +158,6 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.people, "Jemaat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
                   }),
-                  // --- TOMBOL JADWAL SEKARANG SUDAH CONNECT ---
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
@@ -165,6 +178,7 @@ class _MainActivityState extends State<MainActivity> {
               title: const Text("Keluar Akun", style: TextStyle(color: Colors.red)),
               onTap: () async {
                 await _auth.signOut();
+                OneSignal.logout(); // Logout dari OneSignal saat user logout aplikasi
                 if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
               },
             ),
@@ -172,11 +186,9 @@ class _MainActivityState extends State<MainActivity> {
           ],
         ),
       ),
-      // --- TAMPILAN HALAMAN UTAMA ---
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Gambar Gereja
             Container(
               width: double.infinity,
               height: 220,
@@ -190,7 +202,6 @@ class _MainActivityState extends State<MainActivity> {
                 ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3))
                 : null,
             ),
-            
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
@@ -211,8 +222,6 @@ class _MainActivityState extends State<MainActivity> {
                     ],
                   ),
                   const SizedBox(height: 25),
-                  
-                  // Card Ayat
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -233,12 +242,9 @@ class _MainActivityState extends State<MainActivity> {
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 35),
                   const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
-                  
-                  // Info Gembala
                   Container(
                     padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(

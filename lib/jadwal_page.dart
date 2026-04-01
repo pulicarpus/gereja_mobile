@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
-import 'add_edit_jadwal_page.dart'; // Pastikan file ini sudah dibuat
+import 'add_edit_jadwal_page.dart'; 
+import 'susunan_acara_page.dart'; // Import halaman liturgi baru
 import 'package:intl/intl.dart';
 
 class JadwalPage extends StatefulWidget {
-  final String? filterKategorial; // null = Umum, Isi = Kategorial (Sekolah Minggu, dll)
+  final String? filterKategorial; // null = Umum, Isi = Kategorial
   const JadwalPage({super.key, this.filterKategorial});
 
   @override
@@ -25,7 +26,7 @@ class _JadwalPageState extends State<JadwalPage> {
     _loadPengumuman();
   }
 
-  // --- LOGIKA PENGUMUMAN (PERSIS KOTLIN BOS) ---
+  // --- 1. LOGIKA PENGUMUMAN (Persis logic .kt Bos) ---
   Future<void> _loadPengumuman() async {
     String? churchId = _userManager.getChurchIdForCurrentView();
     if (churchId == null) return;
@@ -75,9 +76,9 @@ class _JadwalPageState extends State<JadwalPage> {
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          TextButton(
+          ElevatedButton(
             onPressed: () => _savePengumuman(controller.text.trim()),
-            child: const Text("Simpan & Kirim Notif", style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text("Simpan & Kirim Notif"),
           ),
         ],
       ),
@@ -95,7 +96,7 @@ class _JadwalPageState extends State<JadwalPage> {
       "kategori": widget.filterKategorial
     });
 
-    // Pemicu Notifikasi Global (Logika Pending Notifications Bos)
+    // Pemicu Notifikasi (Pending Notifications)
     String prefix = widget.filterKategorial != null ? "[${widget.filterKategorial}] " : "";
     await _db.collection("pending_notifications").add({
       "title": "PENGUMUMAN GEREJA",
@@ -105,11 +106,11 @@ class _JadwalPageState extends State<JadwalPage> {
       "timestamp": DateTime.now().millisecondsSinceEpoch
     });
 
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
     _loadPengumuman();
   }
 
-  // --- LOGIKA HAPUS JADWAL ---
+  // --- 2. LOGIKA HAPUS JADWAL ---
   void _confirmDelete(String id, String nama) {
     showDialog(
       context: context,
@@ -122,7 +123,7 @@ class _JadwalPageState extends State<JadwalPage> {
             onPressed: () async {
               String? churchId = _userManager.getChurchIdForCurrentView();
               await _db.collection("churches").doc(churchId).collection("jadwal").doc(id).delete();
-              Navigator.pop(context);
+              if (mounted) Navigator.pop(context);
             }, 
             child: const Text("Hapus", style: TextStyle(color: Colors.red))
           ),
@@ -143,7 +144,7 @@ class _JadwalPageState extends State<JadwalPage> {
       ),
       body: Column(
         children: [
-          // --- CARD PENGUMUMAN ---
+          // --- HEADER PENGUMUMAN ---
           GestureDetector(
             onLongPress: _showEditPengumumanDialog,
             child: Container(
@@ -154,25 +155,24 @@ class _JadwalPageState extends State<JadwalPage> {
                 color: Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(color: Colors.amber.shade200, width: 1.5),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.campaign_rounded, color: Colors.orange, size: 28),
+                      const Icon(Icons.campaign_rounded, color: Colors.orange),
                       const SizedBox(width: 10),
-                      Text("PENGUMUMAN ${widget.filterKategorial?.toUpperCase() ?? 'UMUM'}", 
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.orange, fontSize: 13)),
+                      Text("PENGUMUMAN", 
+                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(_pengumumanTeks, style: const TextStyle(fontSize: 15, height: 1.4)),
+                  const SizedBox(height: 8),
+                  Text(_pengumumanTeks, style: const TextStyle(fontSize: 15)),
                   if (_userManager.isAdmin())
                     const Padding(
                       padding: EdgeInsets.only(top: 8.0),
-                      child: Text("*Tahan lama untuk edit pengumuman", 
+                      child: Text("*Tahan lama untuk edit", 
                         style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
                     ),
                 ],
@@ -180,7 +180,7 @@ class _JadwalPageState extends State<JadwalPage> {
             ),
           ),
 
-          // --- DAFTAR JADWAL (STREAM BUILDER) ---
+          // --- LIST JADWAL (STREAM BUILDER) ---
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _db.collection("churches").doc(churchId).collection("jadwal")
@@ -189,11 +189,8 @@ class _JadwalPageState extends State<JadwalPage> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("Belum ada jadwal kegiatan."));
-                }
-
-                // Filter Manual (Sesuai Logika Kotlin Bos)
+                
+                // Filter Manual (Sesuai Logika .kt Bos)
                 var filteredDocs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
                   String? kat = data['kategoriKegiatan'];
@@ -204,7 +201,9 @@ class _JadwalPageState extends State<JadwalPage> {
                   }
                 }).toList();
 
-                if (filteredDocs.isEmpty) return const Center(child: Text("Tidak ada jadwal untuk kategori ini."));
+                if (filteredDocs.isEmpty) {
+                  return const Center(child: Text("Belum ada jadwal kegiatan."));
+                }
 
                 return ListView.builder(
                   padding: const EdgeInsets.only(bottom: 80),
@@ -215,31 +214,21 @@ class _JadwalPageState extends State<JadwalPage> {
                     
                     return Card(
                       margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      elevation: 3,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 2,
                       child: ListTile(
-                        contentPadding: const EdgeInsets.all(15),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
                         leading: Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                          child: const Icon(Icons.event_available, color: Colors.indigo),
+                          decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(10)),
+                          child: const Icon(Icons.event_note, color: Colors.indigo),
                         ),
                         title: Text(data['namaKegiatan'] ?? "-", 
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 5),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("📅 ${data['waktu'] ?? '-'}"),
-                              if (data['tempat'] != null && data['tempat'] != "")
-                                Text("📍 ${data['tempat']}"),
-                            ],
-                          ),
-                        ),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text("📅 ${data['waktu'] ?? '-'}"),
                         trailing: _userManager.isAdmin() 
                           ? IconButton(
-                              icon: const Icon(Icons.edit_note, color: Colors.grey),
+                              icon: const Icon(Icons.edit, color: Colors.blueGrey),
                               onPressed: () {
                                 Navigator.push(context, MaterialPageRoute(
                                   builder: (c) => AddEditJadwalPage(
@@ -249,9 +238,15 @@ class _JadwalPageState extends State<JadwalPage> {
                                 ));
                               },
                             )
-                          : const Icon(Icons.chevron_right),
+                          : const Icon(Icons.arrow_forward_ios, size: 14),
                         onTap: () {
-                          // TODO: Navigasi ke Susunan Acara / Liturgi
+                          // Buka Susunan Acara (Liturgi)
+                          Navigator.push(context, MaterialPageRoute(
+                            builder: (c) => SusunanAcaraPage(
+                              jadwalId: doc.id,
+                              namaKegiatan: data['namaKegiatan'] ?? "Kegiatan",
+                            )
+                          ));
                         },
                         onLongPress: () {
                           if (_userManager.isAdmin()) _confirmDelete(doc.id, data['namaKegiatan'] ?? "");
@@ -272,7 +267,7 @@ class _JadwalPageState extends State<JadwalPage> {
                   builder: (c) => AddEditJadwalPage(filterKategorial: widget.filterKategorial)
                 ));
               },
-              label: const Text("Jadwal Baru"),
+              label: const Text("Tambah"),
               icon: const Icon(Icons.add),
               backgroundColor: Colors.indigo,
               foregroundColor: Colors.white,

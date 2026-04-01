@@ -1,4 +1,4 @@
-package com.gereja.app
+package com.puli.gkiimobile
 
 import io.flutter.embedding.android.FlutterActivity
 

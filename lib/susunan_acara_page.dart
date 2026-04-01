@@ -15,12 +15,14 @@ class SusunanAcaraPage extends StatefulWidget {
 class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final UserManager _userManager = UserManager();
+  
+  // Simpan data di sini agar bisa diakses oleh FAB
+  List<String> _currentUrutan = ["Belum diatur."];
+  List<String> _currentLagu = ["Belum diatur."];
 
-  // --- LOGIKA EDIT (Sesuai EditSusunanAcaraActivity) ---
   void _showEditDialog(String field, List<String> currentData) {
     if (!_userManager.isAdmin()) return;
 
-    // Gabungkan list jadi satu teks dengan baris baru agar mudah diedit
     final controller = TextEditingController(text: currentData.join("\n"));
 
     showDialog(
@@ -40,7 +42,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
           ElevatedButton(
             onPressed: () async {
               String? churchId = _userManager.getChurchIdForCurrentView();
-              // Pecah kembali teks menjadi List berdasarkan baris baru
               List<String> newData = controller.text.split("\n").where((s) => s.trim().isNotEmpty).toList();
 
               await _db.collection("churches").doc(churchId)
@@ -62,7 +63,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
     String? churchId = _userManager.getChurchIdForCurrentView();
 
     return DefaultTabController(
-      length: 2, // 2 Tab: Urutan Acara & Daftar Lagu
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.namaKegiatan),
@@ -82,27 +83,27 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
             
             var data = snapshot.data!.data() as Map<String, dynamic>?;
             
-            // Ambil data List (Persis logika Kotlin Bos)
-            List<String> urutan = List<String>.from(data?['urutanAcara'] ?? ["Belum diatur."]);
-            List<String> lagu = List<String>.from(data?['daftarLagu'] ?? ["Belum diatur."]);
+            // Update variabel state agar FAB bisa baca data terbaru
+            _currentUrutan = List<String>.from(data?['urutanAcara'] ?? ["Belum diatur."]);
+            _currentLagu = List<String>.from(data?['daftarLagu'] ?? ["Belum diatur."]);
 
             return TabBarView(
               children: [
-                _buildListView(urutan, "urutanAcara"),
-                _buildListView(lagu, "daftarLagu"),
+                _buildListView(_currentUrutan),
+                _buildListView(_currentLagu),
               ],
             );
           },
         ),
         floatingActionButton: _userManager.isAdmin() 
-          ? Builder( // Builder agar bisa akses TabController
+          ? Builder(
               builder: (context) => FloatingActionButton.extended(
                 onPressed: () {
                   final index = DefaultTabController.of(context).index;
                   if (index == 0) {
-                    _showEditDialog("urutanAcara", urutan); // Error di sini butuh variabel lokal
+                    _showEditDialog("urutanAcara", _currentUrutan);
                   } else {
-                    _showEditDialog("daftarLagu", lagu);
+                    _showEditDialog("daftarLagu", _currentLagu);
                   }
                 },
                 label: const Text("Edit Acara"),
@@ -114,8 +115,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
     );
   }
 
-  // --- WIDGET LIST VIEW (PENGGANTI FRAGMENT) ---
-  Widget _buildListView(List<String> items, String fieldType) {
+  Widget _buildListView(List<String> items) {
     return ListView.separated(
       padding: const EdgeInsets.all(20),
       itemCount: items.length,
@@ -126,7 +126,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Nomor Urut (Bulatan Indigo)
               Container(
                 width: 28,
                 height: 28,
@@ -137,7 +136,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                 ),
               ),
               const SizedBox(width: 15),
-              // Teks Acara
               Expanded(
                 child: Text(items[index], 
                   style: const TextStyle(fontSize: 16, height: 1.4)),

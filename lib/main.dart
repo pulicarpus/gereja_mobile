@@ -8,7 +8,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 // Import file-file pendukung Bos
 import 'user_manager.dart';
 import 'login_page.dart';
-import 'data_jemaat_page.dart'; // Pastikan file ini sudah dibuat
+import 'data_jemaat_page.dart';
+import 'jadwal_page.dart'; // <--- SUDAH DITAMBAHKAN
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -143,7 +144,10 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.people, "Jemaat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
                   }),
-                  _buildDrawerItem(Icons.calendar_month, "Jadwal", () {}),
+                  // --- TOMBOL JADWAL SEKARANG SUDAH CONNECT ---
+                  _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
+                  }),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {}),
                   _buildDrawerItem(Icons.chat, "Chat", () {}),
                   _buildDrawerItem(Icons.book, "Renungan", () {}),
@@ -277,7 +281,6 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // Fungsi build item laci yang sudah diperbaiki
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,

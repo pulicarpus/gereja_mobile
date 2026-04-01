@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
 import 'add_edit_jadwal_page.dart'; 
-import 'susunan_acara_page.dart'; // Import halaman liturgi baru
+import 'susunan_acara_page.dart';
 import 'package:intl/intl.dart';
 
 class JadwalPage extends StatefulWidget {
@@ -26,7 +26,7 @@ class _JadwalPageState extends State<JadwalPage> {
     _loadPengumuman();
   }
 
-  // --- 1. LOGIKA PENGUMUMAN (Persis logic .kt Bos) ---
+  // --- 1. LOGIKA PENGUMUMAN ---
   Future<void> _loadPengumuman() async {
     String? churchId = _userManager.getChurchIdForCurrentView();
     if (churchId == null) return;
@@ -96,37 +96,21 @@ class _JadwalPageState extends State<JadwalPage> {
       "kategori": widget.filterKategorial
     });
 
-    // Pemicu Notifikasi (Pending Notifications)
-    String prefix = widget.filterKategorial != null ? "[${widget.filterKategorial}] " : "";
-    await _db.collection("pending_notifications").add({
-      "title": "PENGUMUMAN GEREJA",
-      "body": prefix + teks,
-      "type": "broadcast",
-      "churchId": churchId,
-      "timestamp": DateTime.now().millisecondsSinceEpoch
-    });
-
     if (mounted) Navigator.pop(context);
     _loadPengumuman();
   }
 
-  // --- 2. LOGIKA HAPUS JADWAL ---
-  void _confirmDelete(String id, String nama) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Hapus Jadwal"),
-        content: Text("Hapus kegiatan '$nama'?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          TextButton(
-            onPressed: () async {
-              String? churchId = _userManager.getChurchIdForCurrentView();
-              await _db.collection("churches").doc(churchId).collection("jadwal").doc(id).delete();
-              if (mounted) Navigator.pop(context);
-            }, 
-            child: const Text("Hapus", style: TextStyle(color: Colors.red))
-          ),
+  // --- 2. HELPER UI UNTUK PETUGAS (Sudah diganti ke WL) ---
+  Widget _buildPetugasRow(IconData icon, String label, String? nama) {
+    if (nama == null || nama.isEmpty || nama == "-") return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.indigo),
+          const SizedBox(width: 10),
+          Text("$label: ", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          Expanded(child: Text(nama, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -169,18 +153,12 @@ class _JadwalPageState extends State<JadwalPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(_pengumumanTeks, style: const TextStyle(fontSize: 15)),
-                  if (_userManager.isAdmin())
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8.0),
-                      child: Text("*Tahan lama untuk edit", 
-                        style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey)),
-                    ),
                 ],
               ),
             ),
           ),
 
-          // --- LIST JADWAL (STREAM BUILDER) ---
+          // --- LIST JADWAL ---
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _db.collection("churches").doc(churchId).collection("jadwal")
@@ -190,7 +168,10 @@ class _JadwalPageState extends State<JadwalPage> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 
-                // Filter Manual (Sesuai Logika .kt Bos)
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(child: Text("Belum ada jadwal kegiatan."));
+                }
+
                 var filteredDocs = snapshot.data!.docs.where((doc) {
                   var data = doc.data() as Map<String, dynamic>;
                   String? kat = data['kategoriKegiatan'];
@@ -200,10 +181,6 @@ class _JadwalPageState extends State<JadwalPage> {
                     return kat == widget.filterKategorial;
                   }
                 }).toList();
-
-                if (filteredDocs.isEmpty) {
-                  return const Center(child: Text("Belum ada jadwal kegiatan."));
-                }
 
                 return ListView.builder(
                   padding: const EdgeInsets.only(bottom: 80),
@@ -216,8 +193,7 @@ class _JadwalPageState extends State<JadwalPage> {
                       margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 2,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                      child: ExpansionTile(
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(10)),
@@ -226,31 +202,54 @@ class _JadwalPageState extends State<JadwalPage> {
                         title: Text(data['namaKegiatan'] ?? "-", 
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                         subtitle: Text("📅 ${data['waktu'] ?? '-'}"),
-                        trailing: _userManager.isAdmin() 
-                          ? IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blueGrey),
-                              onPressed: () {
-                                Navigator.push(context, MaterialPageRoute(
-                                  builder: (c) => AddEditJadwalPage(
-                                    jadwalId: doc.id,
-                                    filterKategorial: widget.filterKategorial,
-                                  )
-                                ));
-                              },
-                            )
-                          : const Icon(Icons.arrow_forward_ios, size: 14),
-                        onTap: () {
-                          // Buka Susunan Acara (Liturgi)
-                          Navigator.push(context, MaterialPageRoute(
-                            builder: (c) => SusunanAcaraPage(
-                              jadwalId: doc.id,
-                              namaKegiatan: data['namaKegiatan'] ?? "Kegiatan",
-                            )
-                          ));
-                        },
-                        onLongPress: () {
-                          if (_userManager.isAdmin()) _confirmDelete(doc.id, data['namaKegiatan'] ?? "");
-                        },
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(15.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text("PETUGAS PELAYANAN:", 
+                                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                                const SizedBox(height: 5),
+                                // --- DI SINI SUDAH JADI WL BOS ---
+                                _buildPetugasRow(Icons.person, "WL", data['w1']), 
+                                _buildPetugasRow(Icons.mic, "Singer", data['singer']),
+                                _buildPetugasRow(Icons.music_note, "Musik", data['musik']),
+                                _buildPetugasRow(Icons.auto_awesome, "Tamborin", data['tamborin']),
+                                const Divider(),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed: () {
+                                        Navigator.push(context, MaterialPageRoute(
+                                          builder: (c) => SusunanAcaraPage(
+                                            jadwalId: doc.id,
+                                            namaKegiatan: data['namaKegiatan'] ?? "Kegiatan",
+                                          )
+                                        ));
+                                      },
+                                      icon: const Icon(Icons.menu_book),
+                                      label: const Text("Liturgi"),
+                                    ),
+                                    if (_userManager.isAdmin())
+                                      IconButton(
+                                        icon: const Icon(Icons.edit, color: Colors.orange),
+                                        onPressed: () {
+                                          Navigator.push(context, MaterialPageRoute(
+                                            builder: (c) => AddEditJadwalPage(
+                                              jadwalId: doc.id,
+                                              filterKategorial: widget.filterKategorial,
+                                            )
+                                          ));
+                                        },
+                                      ),
+                                  ],
+                                )
+                              ],
+                            ),
+                          )
+                        ],
                       ),
                     );
                   },
@@ -269,8 +268,6 @@ class _JadwalPageState extends State<JadwalPage> {
               },
               label: const Text("Tambah"),
               icon: const Icon(Icons.add),
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
             ) 
           : null,
     );

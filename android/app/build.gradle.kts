@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.gereja.app" 
+    namespace = "com.puli.gkiimobile" 
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -34,7 +34,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.gereja.app"
+        applicationId = "com.puli.gkiimobile"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode

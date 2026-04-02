@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'user_manager.dart';
+// Import file pendukung sesuai struktur folder di Acode
+import 'user_manager.dart'; 
+import 'add_edit_jadwal_page.dart';
+import 'susunan_acara_page.dart';
 
 class JadwalPage extends StatefulWidget {
   final String? filterKategorial;
@@ -18,37 +21,48 @@ class _JadwalPageState extends State<JadwalPage> {
   @override
   void initState() {
     super.initState();
-    // Meniru UserManager di aplikasi lama
+    // Ambil data dari UserManager (seperti di Kotlin)
     churchId = UserManager().activeChurchId;
     isAdmin = UserManager().isAdmin();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (churchId == null) return const Scaffold(body: Center(child: Text("ID Gereja Kosong")));
+    if (churchId == null) {
+      return const Scaffold(body: Center(child: Text("ID Gereja tidak ditemukan")));
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(widget.filterKategorial ?? "Jadwal Ibadah"),
+        title: Text(widget.filterKategorial ?? "Jadwal Ibadah & Kegiatan"),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black87,
         elevation: 0.5,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _db.collection('churches').doc(churchId).collection('jadwal')
-            .orderBy('tanggal', descending: false).snapshots(),
+        // Path sub-koleksi: churches -> {id} -> jadwal
+        stream: _db.collection('churches')
+            .doc(churchId)
+            .collection('jadwal')
+            .orderBy('tanggal', descending: false)
+            .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final allDocs = snapshot.data!.docs;
           
-          final docs = snapshot.data?.docs ?? [];
-          final filteredDocs = docs.where((doc) {
+          // Filter manual untuk memisahkan Umum vs Kategorial
+          final filteredDocs = allDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
-            final kat = data['kategoriKegiatan'];
+            final kategori = data['kategoriKegiatan'];
             if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
-              return kat == null || kat == "" || kat == "Umum";
+              return kategori == null || kategori == "" || kategori == "Umum";
             }
-            return kat == widget.filterKategorial;
+            return kategori == widget.filterKategorial;
           }).toList();
 
           return ListView.builder(
@@ -57,12 +71,12 @@ class _JadwalPageState extends State<JadwalPage> {
             itemBuilder: (context, index) {
               if (index == 0) return _buildPengumumanCard();
               final doc = filteredDocs[index - 1];
-              return _buildJadwalItem(doc);
+              return _buildJadwalCard(doc);
             },
           );
         },
       ),
-      // FAB Tambah Jadwal (Hanya muncul jika Admin)
+      // Tombol Tambah Jadwal hanya muncul jika Admin
       floatingActionButton: isAdmin ? FloatingActionButton(
         onPressed: () => _navigasiTambahEdit(null),
         backgroundColor: Colors.indigo,
@@ -71,7 +85,7 @@ class _JadwalPageState extends State<JadwalPage> {
     );
   }
 
-  // --- BAGIAN PENGUMUMAN (Bisa Klik Lama untuk Edit) ---
+  // --- WIDGET PENGUMUMAN (KLIK LAMA UNTUK EDIT) ---
   Widget _buildPengumumanCard() {
     final docId = (widget.filterKategorial == null) ? "utama" : "pengumuman_${widget.filterKategorial}";
     
@@ -86,7 +100,7 @@ class _JadwalPageState extends State<JadwalPage> {
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF9C4),
+              color: const Color(0xFFFFF9C4), // Kuning lembut
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.orange.shade200),
             ),
@@ -110,11 +124,12 @@ class _JadwalPageState extends State<JadwalPage> {
     );
   }
 
-  // --- BAGIAN JADWAL (Ada Tombol Susunan & Klik Lama) ---
-  Widget _buildJadwalItem(QueryDocumentSnapshot doc) {
+  // --- WIDGET JADWAL (WARNA ZEBRA & TOMBOL SUSUNAN) ---
+  Widget _buildJadwalCard(QueryDocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     final pelayan = data['pelayan'] as Map<String, dynamic>? ?? {};
     
+    // Daftar pelayan sesuai Triple di Kotlin
     final List<Map<String, dynamic>> rows = [
       {'label': 'W.L', 'val': pelayan['Worship Leader']},
       {'label': 'Singer', 'val': pelayan['Singer']},
@@ -126,7 +141,8 @@ class _JadwalPageState extends State<JadwalPage> {
       {'label': 'Penerima Tamu', 'val': pelayan['Penerima Tamu']},
     ];
 
-    final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().isNotEmpty).toList();
+    // Hanya tampilkan yang ada datanya (setupPelayanRow)
+    final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().trim().isNotEmpty).toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -142,14 +158,21 @@ class _JadwalPageState extends State<JadwalPage> {
             title: Text(data['namaKegiatan'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
             subtitle: Text("${data['waktu'] ?? '-'} | ${data['tempat'] ?? '-'}", style: const TextStyle(fontSize: 12)),
             children: [
+              // Looping baris pelayan dengan warna zebra
               ...List.generate(visibleRows.length, (index) {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                   color: index % 2 == 0 ? Colors.white : Colors.blue.shade50.withOpacity(0.3),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       SizedBox(width: 110, child: Text(visibleRows[index]['label'], style: const TextStyle(color: Colors.grey, fontSize: 12))),
-                      Expanded(child: Text(visibleRows[index]['val'].toString().replaceAll(", ", "\n"), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                      Expanded(
+                        child: Text(
+                          visibleRows[index]['val'].toString().replaceAll(", ", "\n"),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                      ),
                     ],
                   ),
                 );
@@ -158,17 +181,21 @@ class _JadwalPageState extends State<JadwalPage> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    Text("Firman: ${data['deskripsi'] ?? '-'}", style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13)),
+                    Text("Firman: ${data['deskripsi'] ?? '-'}", style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 13, color: Colors.grey)),
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
+                        // Tombol Susunan Acara
                         ElevatedButton.icon(
                           onPressed: () => _navigasiSusunan(doc.id),
                           icon: const Icon(Icons.list_alt, size: 18),
                           label: const Text("Susunan Acara"),
                         ),
-                        if (isAdmin) IconButton(onPressed: () => _navigasiTambahEdit(doc.id), icon: const Icon(Icons.edit, color: Colors.orange)),
+                        if (isAdmin) IconButton(
+                          onPressed: () => _navigasiTambahEdit(doc.id), 
+                          icon: const Icon(Icons.edit, color: Colors.orange)
+                        ),
                       ],
                     )
                   ],
@@ -181,7 +208,7 @@ class _JadwalPageState extends State<JadwalPage> {
     );
   }
 
-  // --- FUNGSI LOGIKA (Meniru Kotlin) ---
+  // --- FUNGSI AKSI & NAVIGASI ---
 
   void _showEditPengumumanDialog(String docId, String currentText) {
     final controller = TextEditingController(text: currentText.contains("Belum ada") ? "" : currentText);
@@ -214,23 +241,35 @@ class _JadwalPageState extends State<JadwalPage> {
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(leading: const Icon(Icons.edit), title: Text("Edit $nama"), onTap: () { Navigator.pop(context); _navigasiTambahEdit(id); }),
-          ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus Jadwal"), onTap: () {
-            Navigator.pop(context);
-            _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
-          }),
+          ListTile(
+            leading: const Icon(Icons.edit), 
+            title: Text("Edit $nama"), 
+            onTap: () { Navigator.pop(context); _navigasiTambahEdit(id); }
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red), 
+            title: const Text("Hapus Jadwal"), 
+            onTap: () {
+              Navigator.pop(context);
+              _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
+            }
+          ),
         ],
       ),
     );
   }
 
   void _navigasiSusunan(String jadwalId) {
-    // Navigasi ke halaman SusunanAcaraActivity (Bos perlu buat file-nya)
-    print("Membuka susunan acara untuk: $jadwalId");
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => SusunanAcaraPage(jadwalId: jadwalId)),
+    );
   }
 
   void _navigasiTambahEdit(String? jadwalId) {
-    // Navigasi ke halaman AddEditJadwal (Bos perlu buat file-nya)
-    print("Edit/Tambah Jadwal: $jadwalId");
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => AddEditJadwalPage(jadwalId: jadwalId, filterKategorial: widget.filterKategorial)),
+    );
   }
 }

@@ -68,12 +68,10 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   Future<void> _loadBooksGrid() async {
     if (_db == null) return;
     try {
-      // Ambil nama tabel kitab (biasanya 'books')
       final List<Map<String, dynamic>> books = await _db!.query('books');
       List<Map<String, dynamic>> ot = [];
       List<Map<String, dynamic>> nt = [];
 
-      // Deteksi struktur ID (TB pakai ribuan, KJV pakai satuan)
       bool isLargeId = books.any((x) {
         int id = x['book_number'] ?? x['book_id'] ?? x['b'] ?? 0;
         return id > 66;
@@ -82,9 +80,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       for (var b in books) {
         int rawId = b['book_number'] ?? b['book_id'] ?? b['b'] ?? 0;
         int normId = isLargeId ? (rawId / 10).round() : rawId;
-
         if (normId <= 39) { ot.add(b); } else { nt.add(b); }
-
         if (normId == _bookId) {
           _bookName = (b['short_name'] ?? b['long_name'] ?? b['n']).toString().toUpperCase();
         }
@@ -104,43 +100,43 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     try {
       setState(() => _isLoading = true);
       
-      // Deteksi nama kolom secara otomatis (PENTING untuk KJV Bos)
-      List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
+      // 1. SCAN NAMA TABEL (Cari apakah 'verses' atau 'bible')
+      var tableCheck = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
+      String activeTable = tableCheck.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
       
-      // Kolom Kitab: cek 'b', 'book_number', atau 'book_id'
+      // 2. SCAN NAMA KOLOM
+      List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info($activeTable)");
+      
       String bookCol = columnInfo.any((c) => c['name'] == 'b') ? 'b' : 
                        columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
       
-      // Kolom Pasal: cek 'c' atau 'chapter'
       String chapterCol = columnInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
-      
-      // Kolom Ayat: cek 'v' atau 'verse'
       String verseCol = columnInfo.any((c) => c['name'] == 'v') ? 'v' : 'verse';
       
-      // Kolom Teks: cek 't', 'text', atau 'content'
-      String textCol = columnInfo.any((c) => c['name'] == 't') ? 't' : 
+      // Scan kolom teks: cari 't', 'content', 'text'
+      String textCol = columnInfo.any((c) => c['name'] == 'content') ? 'content' :
+                       columnInfo.any((c) => c['name'] == 't') ? 't' : 
                        columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
       
-      // Hitung target ID (TB = ID*10, KJV = ID)
       int targetId = (bookCol == 'book_number') ? _bookId * 10 : _bookId;
 
       final List<Map<String, dynamic>> verses = await _db!.query(
-          'verses', 
+          activeTable, 
           where: '$bookCol = ? AND $chapterCol = ?', 
           whereArgs: [targetId, _chapter], 
           orderBy: '$verseCol ASC'
       );
       
+      // Load Perikop (Biasanya cuma ada di TB)
       Map<int, String> storyMap = {};
       try {
-        final List<Map<String, dynamic>> stories = await _db!.query(
-            'stories', 
-            where: '$bookCol = ? AND $chapterCol = ?', 
-            whereArgs: [targetId, _chapter]
-        );
-        for (var s in stories) {
-          int vNum = s['verse'] ?? s['v'] ?? 0;
-          storyMap[vNum] = s['title'] ?? s['t'] ?? "";
+        var storyTableCheck = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='stories'");
+        if (storyTableCheck.isNotEmpty) {
+          final List<Map<String, dynamic>> stories = await _db!.query('stories', where: '$bookCol = ? AND $chapterCol = ?', whereArgs: [targetId, _chapter]);
+          for (var s in stories) {
+            int vNum = s['verse'] ?? s['v'] ?? 0;
+            storyMap[vNum] = s['title'] ?? s['t'] ?? "";
+          }
         }
       } catch (_) {}
 
@@ -158,6 +154,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     }
   }
 
+  // ================= PICKER LOGIC =================
   void _showMainNavigation() {
     showModalBottomSheet(
       context: context,
@@ -216,7 +213,6 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
         final b = books[i];
         String sName = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? '').toString().toUpperCase();
         if (sName.length > 4) sName = sName.substring(0, 4);
-
         return InkWell(
           onTap: () {
             Navigator.pop(modalContext);
@@ -235,8 +231,11 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     int rawId = bookData['book_number'] ?? bookData['book_id'] ?? bookData['b'] ?? 0;
     int normBookId = (rawId >= 10) ? (rawId / 10).round() : rawId;
     
-    // Deteksi struktur DB saat ini
-    List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
+    // Deteksi tabel dan kolom pasal untuk hitung jumlah pasal
+    var tableCheck = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
+    String activeTable = tableCheck.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
+    List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info($activeTable)");
+    
     String bookCol = colInfo.any((c) => c['name'] == 'b') ? 'b' : 
                      colInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
     String chapterCol = colInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
@@ -246,7 +245,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     int maxChapter = 50;
     try {
       List<Map<String, dynamic>> result = await _db!.rawQuery(
-          "SELECT MAX($chapterCol) as max_chap FROM verses WHERE $bookCol = ?", [searchId]
+          "SELECT MAX($chapterCol) as max_chap FROM $activeTable WHERE $bookCol = ?", [searchId]
       );
       if (result.isNotEmpty && result.first['max_chap'] != null) {
         maxChapter = result.first['max_chap'] as int;

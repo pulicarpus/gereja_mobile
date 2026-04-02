@@ -15,14 +15,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
   Map<int, String> _pericopes = {};
-  List<Map<String, dynamic>> _allBooks = []; // Untuk daftar navigasi
+  List<Map<String, dynamic>> _allBooks = [];
   bool _isLoading = true;
+  String _errorMessage = "";
 
+  // Status Navigasi
   String _currentVersion = "TB";
-  int _bookId = 10; // Default: Kejadian
+  int _bookId = 1; // Kita gunakan standar 1-66
   int _chapter = 1;
   String _bookName = "Kejadian";
 
+  // Konfigurasi file (Pastikan sudah ada di assets & pubspec.yaml)
   final Map<String, String> _bibleFiles = {
     "TB": "TB.SQLite3",
     "TL": "TJL.SQLite3",
@@ -36,122 +39,157 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _initDatabase() async {
-    setState(() => _isLoading = true);
-    var dbPath = await getDatabasesPath();
-    String fileName = _bibleFiles[_currentVersion] ?? "TB.SQLite3";
-    var path = join(dbPath, fileName);
+    try {
+      setState(() => _isLoading = true);
+      var dbPath = await getDatabasesPath();
+      String fileName = _bibleFiles[_currentVersion] ?? "TB.SQLite3";
+      var path = join(dbPath, fileName);
 
-    if (!await databaseExists(path)) {
-      ByteData data = await rootBundle.load("assets/$fileName");
-      List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await File(path).writeAsBytes(bytes, flush: true);
+      // Copy file dari assets ke internal storage jika belum ada
+      if (!await databaseExists(path)) {
+        await Directory(dirname(path)).create(recursive: true);
+        ByteData data = await rootBundle.load("assets/$fileName");
+        List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+
+      _db = await openDatabase(path);
+      await _loadBooks();
+      await _loadData();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Gagal memuat database: $e";
+      });
     }
-
-    _db = await openDatabase(path);
-    await _loadBooks(); // Ambil daftar kitab dulu
-    await _loadData();
   }
 
-  // Ambil daftar semua kitab untuk menu navigasi
   Future<void> _loadBooks() async {
     if (_db == null) return;
+    // Ambil daftar kitab untuk menu navigasi
     final List<Map<String, dynamic>> books = await _db!.query('books');
     setState(() {
       _allBooks = books;
-      // Update nama kitab yang sedang dibuka
-      _bookName = books.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
+      // Cari nama kitab yang aktif
+      try {
+        var activeBook = books.firstWhere((b) {
+          int bNum = b['book_number'] ?? b['book_id'];
+          // Handle perbedaan ID (TB pakai kelipatan 10)
+          return bNum == _bookId || bNum == _bookId * 10;
+        });
+        _bookName = activeBook['long_name'] ?? activeBook['name'];
+      } catch (_) {}
     });
   }
 
   Future<void> _loadData() async {
     if (_db == null) return;
-    final List<Map<String, dynamic>> verses = await _db!.query(
-      'verses',
-      where: 'book_number = ? AND chapter = ?',
-      whereArgs: [_bookId, _chapter],
-      orderBy: 'verse ASC',
-    );
+    try {
+      setState(() => _isLoading = true);
 
-    final List<Map<String, dynamic>> stories = await _db!.query(
-      'stories',
-      where: 'book_number = ? AND chapter = ?',
-      whereArgs: [_bookId, _chapter],
-    );
+      // --- DETEKSI STRUKTUR KOLOM OTOMATIS ---
+      List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
+      
+      // Cek apakah pakai 'book_number' (TB) atau 'book_id' (TL/KJV)
+      String bookCol = columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
+      
+      // Cek apakah pakai 'text' (TB) atau 'content' (TL)
+      String textCol = columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
 
-    Map<int, String> storyMap = {};
-    for (var s in stories) {
-      storyMap[s['verse']] = s['title'];
+      // Sesuaikan ID Buku (TB: 10, 20... | Others: 1, 2...)
+      int targetId = (bookCol == 'book_number') ? _bookId * 10 : _bookId;
+
+      // --- AMBIL AYAT ---
+      final List<Map<String, dynamic>> verses = await _db!.query(
+        'verses',
+        where: '$bookCol = ? AND chapter = ?',
+        whereArgs: [targetId, _chapter],
+        orderBy: 'verse ASC',
+      );
+
+      // --- AMBIL PERIKOP (Hanya jika tabel 'stories' ada)
+      Map<int, String> storyMap = {};
+      try {
+        final List<Map<String, dynamic>> stories = await _db!.query(
+          'stories',
+          where: '$bookCol = ? AND chapter = ?',
+          whereArgs: [targetId, _chapter],
+        );
+        for (var s in stories) {
+          storyMap[s['verse']] = s['title'];
+        }
+      } catch (_) { /* Tabel stories mungkin tidak ada di KJV */ }
+
+      setState(() {
+        _verses = verses;
+        _pericopes = storyMap;
+        _isLoading = false;
+        _errorMessage = "";
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Gagal memuat ayat: $e";
+      });
     }
-
-    setState(() {
-      _verses = verses;
-      _pericopes = storyMap;
-      _isLoading = false;
-    });
   }
 
-  // FUNGSI NAVIGASI: Munculkan pilihan Kitab
-  void _showNavigation() {
+  // Fungsi navigasi pilih Kitab
+  void _showBookPicker() {
     showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(10),
-          child: ListView.builder(
-            itemCount: _allBooks.length,
-            itemBuilder: (context, index) {
-              final b = _allBooks[index];
-              return ListTile(
-                title: Text(b['long_name']),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showChapterPicker(b['book_number'], b['long_name']);
-                },
-              );
+      builder: (context) => ListView.builder(
+        itemCount: _allBooks.length,
+        itemBuilder: (context, i) {
+          final b = _allBooks[i];
+          return ListTile(
+            title: Text(b['long_name'] ?? b['name']),
+            onTap: () {
+              Navigator.pop(context);
+              int rawId = b['book_number'] ?? b['book_id'];
+              // Simpan sebagai ID dasar (1-66)
+              _bookId = (rawId >= 10) ? (rawId / 10).round() : rawId;
+              _showChapterPicker();
             },
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
-  // FUNGSI NAVIGASI: Munculkan pilihan Pasal
-  void _showChapterPicker(int bookId, String bookName) {
+  // Fungsi navigasi pilih Pasal
+  void _showChapterPicker() {
     showModalBottomSheet(
       context: context,
-      builder: (context) {
-        return GridView.builder(
-          padding: const EdgeInsets.all(15),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
-          itemCount: 50, // Idealnya ambil max chapter dari DB, ini contoh static 50
-          itemBuilder: (context, index) {
-            int chap = index + 1;
-            return InkWell(
-              onTap: () {
-                setState(() {
-                  _bookId = bookId;
-                  _chapter = chap;
-                  _bookName = bookName;
-                });
-                _loadData();
-                Navigator.pop(context);
-              },
-              child: Center(child: Text("$chap", style: const TextStyle(fontSize: 18))),
-            );
+      builder: (context) => GridView.builder(
+        padding: const EdgeInsets.all(15),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5),
+        itemCount: 50, // Bisa dibuat dinamis sesuai database
+        itemBuilder: (context, i) => InkWell(
+          onTap: () {
+            setState(() => _chapter = i + 1);
+            _loadData();
+            _loadBooks(); // Update nama kitab di header
+            Navigator.pop(context);
           },
-        );
-      },
+          child: Center(child: Text("${i + 1}", style: const TextStyle(fontSize: 18))),
+        ),
+      ),
     );
+  }
+
+  String _cleanText(String text) {
+    return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        // Judul bisa diklik untuk navigasi
-        title: GestureDetector(
-          onTap: _showNavigation,
+        title: InkWell(
+          onTap: _showBookPicker,
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text("$_bookName $_chapter"),
               const Icon(Icons.arrow_drop_down),
@@ -164,7 +202,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           DropdownButton<String>(
             value: _currentVersion,
             dropdownColor: Colors.indigo,
-            style: const TextStyle(color: Colors.white),
+            underline: Container(),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             onChanged: (v) {
               if (v != null) {
                 setState(() => _currentVersion = v);
@@ -173,31 +212,47 @@ class _AlkitabPageState extends State<AlkitabPage> {
             },
             items: ["TB", "TL", "KJV"].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           ),
+          const SizedBox(width: 10),
         ],
       ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator()) 
-        : ListView.builder(
-            itemCount: _verses.length,
-            itemBuilder: (context, index) {
-              final v = _verses[index];
-              final perikop = _pericopes[v['verse']];
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (perikop != null)
-                    Padding(
-                      padding: const EdgeInsets.all(10),
-                      child: Text(perikop, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.brown)),
-                    ),
-                  ListTile(
-                    leading: Text("${v['verse']}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                    title: Text(v['text'].replaceAll(RegExp(r'<[^>]*>'), '')),
-                  ),
-                ],
-              );
-            },
-          ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage.isNotEmpty
+              ? Center(child: Text(_errorMessage, style: const TextStyle(color: Colors.red)))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _verses.length,
+                  itemBuilder: (context, index) {
+                    final v = _verses[index];
+                    final int vNum = v['verse'];
+                    // Deteksi kolom teks secara fleksibel saat menampilkan
+                    final String rawText = v['text'] ?? v['content'] ?? "";
+                    final String? perikop = _pericopes[vNum];
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (perikop != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 20, bottom: 8),
+                            child: Text(perikop, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.brown)),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 17, color: Colors.black87),
+                              children: [
+                                TextSpan(text: "$vNum ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                TextSpan(text: _cleanText(rawText)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
     );
   }
 }

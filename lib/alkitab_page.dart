@@ -16,10 +16,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _verses = [];
   Map<int, String> _pericopes = {}; 
   bool _isLoading = true;
+  String _errorMessage = ""; // Untuk pantau error
 
-  // Default: Kejadian (Book 10) Pasal 1
-  // Catatan: Beberapa DB mulai ID Buku dari 10, 100, atau 1. 
-  int _bookId = 10; 
+  // Sesuaikan ID Buku: Kejadian biasanya 1 atau 10
+  int _bookId = 1; 
   int _chapter = 1;
 
   @override
@@ -29,56 +29,83 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _initDatabase() async {
-    var dbPath = await getDatabasesPath();
-    var path = join(dbPath, "TB.SQLite3");
+    try {
+      var dbPath = await getDatabasesPath();
+      var path = join(dbPath, "TB.SQLite3");
 
-    var exists = await databaseExists(path);
+      // Cek apakah file sudah ada di folder internal
+      bool exists = await databaseExists(path);
 
-    if (!exists) {
-      try {
+      if (!exists) {
+        debugPrint("Menyalin database dari assets...");
         await Directory(dirname(path)).create(recursive: true);
+        
+        // Ambil dari assets
         ByteData data = await rootBundle.load("assets/TB.SQLite3");
         List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        
+        // Tulis ke file internal
         await File(path).writeAsBytes(bytes, flush: true);
-      } catch (e) {
-        debugPrint("Error copy DB: $e");
       }
-    }
 
-    _db = await openDatabase(path);
-    _loadData();
+      _db = await openDatabase(path);
+      await _loadData();
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Gagal inisialisasi: $e";
+      });
+      debugPrint(_errorMessage);
+    }
   }
 
   Future<void> _loadData() async {
     if (_db == null) return;
-    setState(() => _isLoading = true);
+    
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = "";
+      });
 
-    // 1. Ambil Ayat dari tabel 'verses'
-    final List<Map<String, dynamic>> verses = await _db!.query(
-      'verses',
-      where: 'book_id = ? AND chapter = ?',
-      whereArgs: [_bookId, _chapter],
-      orderBy: 'verse ASC',
-    );
+      // 1. Ambil Ayat (Coba cek nama kolom di tabel 'verses')
+      // Biasanya kolomnya: book_id, chapter, verse, content/text
+      final List<Map<String, dynamic>> verses = await _db!.query(
+        'verses',
+        where: 'book_id = ? AND chapter = ?',
+        whereArgs: [_bookId, _chapter],
+        orderBy: 'verse ASC',
+      );
 
-    // 2. Ambil Perikop dari tabel 'stories'
-    final List<Map<String, dynamic>> stories = await _db!.query(
-      'stories',
-      where: 'book_id = ? AND chapter = ?',
-      whereArgs: [_bookId, _chapter],
-    );
+      // 2. Ambil Perikop dari tabel 'stories'
+      final List<Map<String, dynamic>> stories = await _db!.query(
+        'stories',
+        where: 'book_id = ? AND chapter = ?',
+        whereArgs: [_bookId, _chapter],
+      );
 
-    // Petakan perikop ke nomor ayat
-    Map<int, String> storyMap = {};
-    for (var s in stories) {
-      storyMap[s['verse']] = s['title'];
+      Map<int, String> storyMap = {};
+      for (var s in stories) {
+        storyMap[s['verse']] = s['title'];
+      }
+
+      setState(() {
+        _verses = verses;
+        _pericopes = storyMap;
+        _isLoading = false;
+      });
+
+      if (verses.isEmpty) {
+        setState(() => _errorMessage = "Data ayat tidak ditemukan (Kosong).");
+      }
+
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Error Query: $e";
+      });
+      debugPrint(_errorMessage);
     }
-
-    setState(() {
-      _verses = verses;
-      _pericopes = storyMap;
-      _isLoading = false;
-    });
   }
 
   @override
@@ -86,60 +113,54 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Alkitab Terjemahan Baru"),
-        backgroundColor: const Color(0xFF2196F3),
+        backgroundColor: Colors.indigo,
+        foregroundColor: Colors.white,
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
-        : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _verses.length,
-            itemBuilder: (context, index) {
-              final verse = _verses[index];
-              final int vNum = verse['verse'];
-              final String content = verse['content'];
-              final String? perikopTitle = _pericopes[vNum];
+        : _errorMessage.isNotEmpty
+            ? Center(child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+              ))
+            : ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: _verses.length,
+                itemBuilder: (context, index) {
+                  final verse = _verses[index];
+                  
+                  // CEK NAMA KOLOM: Ganti 'content' jadi 'text' jika error kolom tidak ditemukan
+                  final int vNum = verse['verse'] ?? 0;
+                  final String content = verse['content'] ?? verse['text'] ?? "";
+                  final String? perikopTitle = _pericopes[vNum];
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // TAMPILKAN JUDUL PERIKOP JIKA ADA
-                  if (perikopTitle != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 25, bottom: 10),
-                      child: Text(
-                        perikopTitle,
-                        style: const TextStyle(
-                          fontSize: 19,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF5D4037), // Cokelat khas Alkitab
-                          fontStyle: FontStyle.italic
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (perikopTitle != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 20, bottom: 8),
+                          child: Text(
+                            perikopTitle,
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.brown, fontStyle: FontStyle.italic),
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(fontSize: 17, color: Colors.black87),
+                            children: [
+                              TextSpan(text: "$vNum ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                              TextSpan(text: content),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  
-                  // TAMPILKAN AYAT
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: RichText(
-                      text: TextSpan(
-                        style: const TextStyle(fontSize: 18, color: Colors.black87, height: 1.6),
-                        children: [
-                          TextSpan(
-                            text: "$vNum. ",
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold, 
-                              color: Colors.blueAccent
-                            ),
-                          ),
-                          TextSpan(text: content),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+                    ],
+                  );
+                },
+              ),
     );
   }
 }

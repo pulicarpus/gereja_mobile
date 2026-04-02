@@ -48,4 +48,6 @@ flutter:
 
   # --- PENDAFTARAN ASSETS ---
   assets:
-    - assets/TB.SQLite3
+  - assets/TB.SQLite3
+  - assets/TJL.SQLite3
+  - assets/KJV.SQLite3

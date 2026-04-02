@@ -10,6 +10,7 @@ import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
 import 'jadwal_page.dart';
+import 'alkitab_page.dart'; // Import halaman Alkitab baru Bos
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,11 +23,8 @@ void main() async {
 }
 
 void _initOneSignal() {
-  // Ganti ID di bawah ini dengan App ID dari dashboard OneSignal Bos
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
-
-  // Minta izin notifikasi untuk Android 13+
   OneSignal.Notifications.requestPermission(true);
 }
 
@@ -87,7 +85,6 @@ class _MainActivityState extends State<MainActivity> {
 
   void _setupOneSignal() {
     final user = _auth.currentUser;
-    // Login ke OneSignal menggunakan UID Firebase agar target user spesifik
     if (user != null) {
       OneSignal.login(user.uid);
     }
@@ -167,7 +164,12 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.music_note, "Lagu", () {}),
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {}),
                   _buildDrawerItem(Icons.front_hand, "Doa", () {}),
-                  _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {}),
+                  
+                  // TOMBOL ALKITAB SUDAH AKTIF DISINI BOS
+                  _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
+                  }),
+                  
                   _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {}),
                 ],
               ),
@@ -178,7 +180,7 @@ class _MainActivityState extends State<MainActivity> {
               title: const Text("Keluar Akun", style: TextStyle(color: Colors.red)),
               onTap: () async {
                 await _auth.signOut();
-                OneSignal.logout(); // Logout dari OneSignal saat user logout aplikasi
+                OneSignal.logout();
                 if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
               },
             ),

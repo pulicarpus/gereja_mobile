@@ -21,7 +21,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   late TabController _tabController;
 
   String _currentVersion = "TB";
-  int _bookId = 1; // Standar 1-66
+  int _bookId = 1; 
   int _chapter = 1;
   String _bookName = "KEJADIAN";
 
@@ -67,29 +67,36 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
 
   Future<void> _loadBooksGrid() async {
     if (_db == null) return;
-    final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'book_number ASC');
-    List<Map<String, dynamic>> ot = [];
-    List<Map<String, dynamic>> nt = [];
+    try {
+      // Ambil nama tabel kitab (biasanya 'books')
+      final List<Map<String, dynamic>> books = await _db!.query('books');
+      List<Map<String, dynamic>> ot = [];
+      List<Map<String, dynamic>> nt = [];
 
-    // Cek apakah DB ini pakai ribuan/ratusan (TB) atau satuan (KJV)
-    bool isLargeId = (books.any((x) => (x['book_number'] ?? x['book_id'] ?? 0) > 66));
+      // Deteksi struktur ID (TB pakai ribuan, KJV pakai satuan)
+      bool isLargeId = books.any((x) {
+        int id = x['book_number'] ?? x['book_id'] ?? x['b'] ?? 0;
+        return id > 66;
+      });
 
-    for (var b in books) {
-      int rawId = b['book_number'] ?? b['book_id'];
-      int normId = isLargeId ? (rawId / 10).round() : rawId;
+      for (var b in books) {
+        int rawId = b['book_number'] ?? b['book_id'] ?? b['b'] ?? 0;
+        int normId = isLargeId ? (rawId / 10).round() : rawId;
 
-      if (normId <= 39) { ot.add(b); } else { nt.add(b); }
+        if (normId <= 39) { ot.add(b); } else { nt.add(b); }
 
-      if (normId == _bookId) {
-        _bookName = (b['short_name'] ?? b['long_name']).toString().toUpperCase();
+        if (normId == _bookId) {
+          _bookName = (b['short_name'] ?? b['long_name'] ?? b['n']).toString().toUpperCase();
+        }
       }
+      setState(() {
+        _booksOT = ot;
+        _booksNT = nt;
+        _tabController.index = (_bookId <= 39) ? 0 : 1;
+      });
+    } catch (e) {
+      debugPrint("Error Load Books: $e");
     }
-    setState(() {
-      _booksOT = ot;
-      _booksNT = nt;
-      // Atur tab aktif sesuai posisi kitab (PL atau PB)
-      _tabController.index = (_bookId <= 39) ? 0 : 1;
-    });
   }
 
   Future<void> _loadVerses() async {
@@ -97,34 +104,51 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     try {
       setState(() => _isLoading = true);
       
-      // Ambil struktur kolom
+      // Deteksi nama kolom secara otomatis (PENTING untuk KJV Bos)
       List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
-      String bookCol = columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
-      String textCol = columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
       
-      // LOGIKA KRUSIAL: Konversi _bookId ke format DB yang aktif
-      // Jika DB pakai book_number (TB), ID dikali 10. Jika book_id (KJV), ID tetap.
+      // Kolom Kitab: cek 'b', 'book_number', atau 'book_id'
+      String bookCol = columnInfo.any((c) => c['name'] == 'b') ? 'b' : 
+                       columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
+      
+      // Kolom Pasal: cek 'c' atau 'chapter'
+      String chapterCol = columnInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
+      
+      // Kolom Ayat: cek 'v' atau 'verse'
+      String verseCol = columnInfo.any((c) => c['name'] == 'v') ? 'v' : 'verse';
+      
+      // Kolom Teks: cek 't', 'text', atau 'content'
+      String textCol = columnInfo.any((c) => c['name'] == 't') ? 't' : 
+                       columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
+      
+      // Hitung target ID (TB = ID*10, KJV = ID)
       int targetId = (bookCol == 'book_number') ? _bookId * 10 : _bookId;
 
       final List<Map<String, dynamic>> verses = await _db!.query(
           'verses', 
-          where: '$bookCol = ? AND chapter = ?', 
+          where: '$bookCol = ? AND $chapterCol = ?', 
           whereArgs: [targetId, _chapter], 
-          orderBy: 'verse ASC'
+          orderBy: '$verseCol ASC'
       );
       
       Map<int, String> storyMap = {};
       try {
         final List<Map<String, dynamic>> stories = await _db!.query(
             'stories', 
-            where: '$bookCol = ? AND chapter = ?', 
+            where: '$bookCol = ? AND $chapterCol = ?', 
             whereArgs: [targetId, _chapter]
         );
-        for (var s in stories) { storyMap[s['verse']] = s['title']; }
+        for (var s in stories) {
+          int vNum = s['verse'] ?? s['v'] ?? 0;
+          storyMap[vNum] = s['title'] ?? s['t'] ?? "";
+        }
       } catch (_) {}
 
       setState(() {
-        _verses = verses.map((v) => {'verse': v['verse'], 'text': v[textCol]}).toList();
+        _verses = verses.map((v) => {
+          'verse': v[verseCol], 
+          'text': v[textCol]
+        }).toList();
         _pericopes = storyMap;
         _isLoading = false;
       });
@@ -190,7 +214,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       itemCount: books.length,
       itemBuilder: (context, i) {
         final b = books[i];
-        String sName = (b['short_name'] ?? b['long_name']).toString().toUpperCase();
+        String sName = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? '').toString().toUpperCase();
         if (sName.length > 4) sName = sName.substring(0, 4);
 
         return InkWell(
@@ -208,21 +232,21 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   }
 
   Future<void> _handleBookSelection(Map<String, dynamic> bookData) async {
-    int rawId = bookData['book_number'] ?? bookData['book_id'];
-    // Deteksi normalisasi berdasarkan besarnya ID
+    int rawId = bookData['book_number'] ?? bookData['book_id'] ?? bookData['b'] ?? 0;
     int normBookId = (rawId >= 10) ? (rawId / 10).round() : rawId;
     
-    // Cari max chapter di DB yang sedang aktif
-    int targetIdInDB = (rawId >= 10) ? normBookId * 10 : normBookId; // Sesuaikan jika pencarian di DB yang sama
-    // Tapi karena kita bisa pindah antar DB, kita cari targetId berdasarkan struktur DB sekarang
+    // Deteksi struktur DB saat ini
     List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
-    bool currentIsTB = colInfo.any((c) => c['name'] == 'book_number');
-    int searchId = currentIsTB ? normBookId * 10 : normBookId;
+    String bookCol = colInfo.any((c) => c['name'] == 'b') ? 'b' : 
+                     colInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
+    String chapterCol = colInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
+
+    int searchId = (bookCol == 'book_number') ? normBookId * 10 : normBookId;
 
     int maxChapter = 50;
     try {
       List<Map<String, dynamic>> result = await _db!.rawQuery(
-          "SELECT MAX(chapter) as max_chap FROM verses WHERE ${currentIsTB ? 'book_number' : 'book_id'} = ?", [searchId]
+          "SELECT MAX($chapterCol) as max_chap FROM verses WHERE $bookCol = ?", [searchId]
       );
       if (result.isNotEmpty && result.first['max_chap'] != null) {
         maxChapter = result.first['max_chap'] as int;
@@ -230,13 +254,13 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     } catch (_) {}
 
     _showGridNumberPicker(
-      title: "${bookData['long_name']} - PASAL",
+      title: "${bookData['long_name'] ?? bookData['n']} - PASAL",
       itemCount: maxChapter,
       onSelected: (selectedChapter) {
         setState(() {
           _bookId = normBookId;
           _chapter = selectedChapter;
-          _bookName = (bookData['short_name'] ?? bookData['long_name']).toString().toUpperCase();
+          _bookName = (bookData['short_name'] ?? bookData['long_name'] ?? bookData['n']).toString().toUpperCase();
         });
         _loadVerses();
       },

@@ -21,7 +21,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   late TabController _tabController;
 
   String _currentVersion = "TB";
-  int _bookId = 1; 
+  int _bookId = 1; // Standar 1-66
   int _chapter = 1;
   String _bookName = "KEJADIAN";
 
@@ -71,12 +71,15 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     List<Map<String, dynamic>> ot = [];
     List<Map<String, dynamic>> nt = [];
 
-    bool isTBStruktur = (books.any((x) => (x['book_number'] ?? 0) > 66));
+    // Cek apakah DB ini pakai ribuan/ratusan (TB) atau satuan (KJV)
+    bool isLargeId = (books.any((x) => (x['book_number'] ?? x['book_id'] ?? 0) > 66));
 
     for (var b in books) {
       int rawId = b['book_number'] ?? b['book_id'];
-      int normId = isTBStruktur ? (rawId / 10).round() : rawId;
+      int normId = isLargeId ? (rawId / 10).round() : rawId;
+
       if (normId <= 39) { ot.add(b); } else { nt.add(b); }
+
       if (normId == _bookId) {
         _bookName = (b['short_name'] ?? b['long_name']).toString().toUpperCase();
       }
@@ -84,6 +87,8 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     setState(() {
       _booksOT = ot;
       _booksNT = nt;
+      // Atur tab aktif sesuai posisi kitab (PL atau PB)
+      _tabController.index = (_bookId <= 39) ? 0 : 1;
     });
   }
 
@@ -91,18 +96,30 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     if (_db == null) return;
     try {
       setState(() => _isLoading = true);
+      
+      // Ambil struktur kolom
       List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
       String bookCol = columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
       String textCol = columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
+      
+      // LOGIKA KRUSIAL: Konversi _bookId ke format DB yang aktif
+      // Jika DB pakai book_number (TB), ID dikali 10. Jika book_id (KJV), ID tetap.
       int targetId = (bookCol == 'book_number') ? _bookId * 10 : _bookId;
 
       final List<Map<String, dynamic>> verses = await _db!.query(
-          'verses', where: '$bookCol = ? AND chapter = ?', whereArgs: [targetId, _chapter], orderBy: 'verse ASC'
+          'verses', 
+          where: '$bookCol = ? AND chapter = ?', 
+          whereArgs: [targetId, _chapter], 
+          orderBy: 'verse ASC'
       );
       
       Map<int, String> storyMap = {};
       try {
-        final List<Map<String, dynamic>> stories = await _db!.query('stories', where: '$bookCol = ? AND chapter = ?', whereArgs: [targetId, _chapter]);
+        final List<Map<String, dynamic>> stories = await _db!.query(
+            'stories', 
+            where: '$bookCol = ? AND chapter = ?', 
+            whereArgs: [targetId, _chapter]
+        );
         for (var s in stories) { storyMap[s['verse']] = s['title']; }
       } catch (_) {}
 
@@ -112,6 +129,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
         _isLoading = false;
       });
     } catch (e) {
+      setState(() { _isLoading = false; _verses = []; });
       debugPrint("Error Load Verses: $e");
     }
   }
@@ -155,7 +173,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
             ),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(modalContext), // PERBAIKAN: Gunakan onPressed
+            onPressed: () => Navigator.pop(modalContext),
             child: const Text("BATAL", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 10),
@@ -191,13 +209,20 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
 
   Future<void> _handleBookSelection(Map<String, dynamic> bookData) async {
     int rawId = bookData['book_number'] ?? bookData['book_id'];
+    // Deteksi normalisasi berdasarkan besarnya ID
     int normBookId = (rawId >= 10) ? (rawId / 10).round() : rawId;
-    int targetId = (rawId >= 10) ? normBookId * 10 : normBookId;
     
+    // Cari max chapter di DB yang sedang aktif
+    int targetIdInDB = (rawId >= 10) ? normBookId * 10 : normBookId; // Sesuaikan jika pencarian di DB yang sama
+    // Tapi karena kita bisa pindah antar DB, kita cari targetId berdasarkan struktur DB sekarang
+    List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
+    bool currentIsTB = colInfo.any((c) => c['name'] == 'book_number');
+    int searchId = currentIsTB ? normBookId * 10 : normBookId;
+
     int maxChapter = 50;
     try {
       List<Map<String, dynamic>> result = await _db!.rawQuery(
-          "SELECT MAX(chapter) as max_chap FROM verses WHERE ${rawId >= 10 ? 'book_number' : 'book_id'} = ?", [targetId]
+          "SELECT MAX(chapter) as max_chap FROM verses WHERE ${currentIsTB ? 'book_number' : 'book_id'} = ?", [searchId]
       );
       if (result.isNotEmpty && result.first['max_chap'] != null) {
         maxChapter = result.first['max_chap'] as int;
@@ -249,7 +274,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
               ),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(ctx), // PERBAIKAN: Gunakan onPressed
+              onPressed: () => Navigator.pop(ctx),
               child: const Text("BATAL", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
             ),
           ],

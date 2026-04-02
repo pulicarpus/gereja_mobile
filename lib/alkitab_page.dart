@@ -18,7 +18,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   List<Map<String, dynamic>> _booksOT = [];
   List<Map<String, dynamic>> _booksNT = [];
   bool _isLoading = true;
-  late TabController _tabController; // Gunakan late agar aman
+  late TabController _tabController;
 
   String _currentVersion = "TB";
   int _bookId = 1; 
@@ -76,9 +76,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     for (var b in books) {
       int rawId = b['book_number'] ?? b['book_id'];
       int normId = isTBStruktur ? (rawId / 10).round() : rawId;
-
       if (normId <= 39) { ot.add(b); } else { nt.add(b); }
-
       if (normId == _bookId) {
         _bookName = (b['short_name'] ?? b['long_name']).toString().toUpperCase();
       }
@@ -92,6 +90,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   Future<void> _loadVerses() async {
     if (_db == null) return;
     try {
+      setState(() => _isLoading = true);
       List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
       String bookCol = columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
       String textCol = columnInfo.any((c) => c['name'] == 'text') ? 'text' : 'content';
@@ -156,7 +155,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
             ),
           ),
           TextButton(
-            onTap: () => Navigator.pop(modalContext),
+            onPressed: () => Navigator.pop(modalContext), // PERBAIKAN: Gunakan onPressed
             child: const Text("BATAL", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(height: 10),
@@ -174,7 +173,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       itemBuilder: (context, i) {
         final b = books[i];
         String sName = (b['short_name'] ?? b['long_name']).toString().toUpperCase();
-        if (sName.length > 4) sName = sName.substring(0, 4); // Potong jika kepanjangan
+        if (sName.length > 4) sName = sName.substring(0, 4);
 
         return InkWell(
           onTap: () {
@@ -249,7 +248,10 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
                 ),
               ),
             ),
-            TextButton(onTap: () => Navigator.pop(ctx), child: const Text("BATAL", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx), // PERBAIKAN: Gunakan onPressed
+              child: const Text("BATAL", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
       ),
@@ -310,7 +312,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
                           style: const TextStyle(fontSize: 17, color: Colors.black87, height: 1.5),
                           children: [
                             TextSpan(text: "${v['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                            TextSpan(text: _cleanText(v['text'])),
+                            TextSpan(text: _cleanText(v['text'] ?? "")),
                           ],
                         ),
                       ),

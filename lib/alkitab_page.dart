@@ -20,7 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   late TabController _tabController;
 
   String _currentVersion = "TB";
-  int _bookIndex = 1; // 1 = Kejadian, dst.
+  int _selectedBookId = 1; 
   int _chapter = 1;
   String _bookName = "KEJADIAN";
 
@@ -35,12 +35,6 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _initDatabase();
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   Future<void> _initDatabase() async {
@@ -59,23 +53,31 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       await _loadBooks();
       await _loadVerses();
     } catch (e) {
-      debugPrint("Gagal buka DB: $e");
+      debugPrint("DB Init Error: $e");
     }
   }
 
   Future<void> _loadBooks() async {
     if (_db == null) return;
-    final List<Map<String, dynamic>> books = await _db!.query('books');
-    List<Map<String, dynamic>> ot = [];
-    List<Map<String, dynamic>> nt = [];
-    for (int i = 0; i < books.length; i++) {
-      if (i < 39) ot.add(books[i]); else nt.add(books[i]);
-      if ((i + 1) == _bookIndex) {
-        var b = books[i];
-        _bookName = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? b['name'] ?? "KITAB").toString().toUpperCase();
+    try {
+      // Ambil daftar kitab dari tabel 'books'
+      final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'id ASC');
+      List<Map<String, dynamic>> ot = [];
+      List<Map<String, dynamic>> nt = [];
+      
+      for (int i = 0; i < books.length; i++) {
+        if (i < 39) ot.add(books[i]); else nt.add(books[i]);
+        
+        // Cari nama kitab yang sedang aktif
+        int bId = books[i]['id'] ?? (i + 1);
+        if (bId == _selectedBookId) {
+          _bookName = (books[i]['name'] ?? "KITAB").toString().toUpperCase();
+        }
       }
+      setState(() { _booksOT = ot; _booksNT = nt; });
+    } catch (e) {
+      debugPrint("Load Books Error: $e");
     }
-    setState(() { _booksOT = ot; _booksNT = nt; });
   }
 
   Future<void> _loadVerses() async {
@@ -83,66 +85,50 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     try {
       setState(() => _isLoading = true);
       
-      // 1. CARI TABEL (Deteksi 'verse', 'verses', atau 'bible')
-      var tables = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
-      String table = tables.any((t) => t['name'] == 'verse') ? 'verse' : 
-                     tables.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
+      // Deteksi struktur (TB pakai book_number, KJV OpenLP pakai book_id)
+      List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info(verses)");
+      bool isTB = colInfo.any((c) => c['name'] == 'book_number');
       
-      // 2. CARI KOLOM
-      List<Map<String, dynamic>> cols = await _db!.rawQuery("PRAGMA table_info($table)");
+      String bCol = isTB ? 'book_number' : 'book_id';
+      String vCol = isTB ? 'verse' : 'number';
+      String tCol = isTB ? 'text' : 'text'; // Keduanya pakai 'text' sekarang
       
-      // Cek kolom Kitab
-      String bCol = cols.any((c) => c['name'] == 'book_id') ? 'book_id' :
-                   cols.any((c) => c['name'] == 'book') ? 'book' : 
-                   cols.any((c) => c['name'] == 'b') ? 'b' : 'book_number';
-      
-      // Cek kolom Pasal & Ayat
-      String cCol = cols.any((c) => c['name'] == 'chapter') ? 'chapter' : 'c';
-      String vNumCol = cols.any((c) => c['name'] == 'verse_number') ? 'verse_number' :
-                       cols.any((c) => c['name'] == 'verse') && table != 'verse' ? 'verse' : 'v';
-      
-      // Cek kolom Teks (Di KJV Bos namanya 'verse')
-      String tCol = (table == 'verse' && cols.any((c) => c['name'] == 'verse')) ? 'verse' :
-                    cols.any((c) => c['name'] == 'content') ? 'content' :
-                    cols.any((c) => c['name'] == 't') ? 't' : 'text';
-
-      // Logika ID (TB pakai ID*10, KJV pakai 1-66)
-      int targetId = (bCol == 'book_number') ? _bookIndex * 10 : _bookIndex;
+      // Jika TB, ID dikali 10. Jika KJV OpenLP, pakai ID asli.
+      int queryBookId = isTB ? _selectedBookId * 10 : _selectedBookId;
 
       final List<Map<String, dynamic>> result = await _db!.query(
-        table,
-        where: '$bCol = ? AND $cCol = ?',
-        whereArgs: [targetId, _chapter],
-        orderBy: '$vNumCol ASC'
+        'verses',
+        where: '$bCol = ? AND chapter = ?',
+        whereArgs: [queryBookId, _chapter],
+        orderBy: '$vCol ASC'
       );
 
       setState(() {
-        _verses = result.map((v) => {
-          'number': v[vNumCol],
-          'text': v[tCol].toString().replaceAll(RegExp(r'<[^>]*>'), '').trim()
-        }).toList();
+        _verses = result;
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint("Gagal load ayat: $e");
+      debugPrint("Load Verses Error: $e");
       setState(() { _verses = []; _isLoading = false; });
     }
   }
 
-  // --- UI PICKER SEDERHANA ---
   void _showPicker() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => Container(
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SizedBox(
         height: MediaQuery.of(context).size.height * 0.8,
         child: Column(
           children: [
-            TabBar(controller: _tabController, tabs: const [Tab(text: "PL"), Tab(text: "PB")]),
+            const Padding(padding: EdgeInsets.all(16), child: Text("PILIH KITAB", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+            TabBar(controller: _tabController, labelColor: Colors.blue, unselectedLabelColor: Colors.grey, tabs: const [Tab(text: "PL"), Tab(text: "PB")]),
             Expanded(
               child: TabBarView(
                 controller: _tabController,
-                children: [_grid(0, _booksOT), _grid(39, _booksNT)],
+                children: [_gridKitab(_booksOT), _gridKitab(_booksNT)],
               ),
             ),
           ],
@@ -151,19 +137,19 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     );
   }
 
-  Widget _grid(int offset, List<Map<String, dynamic>> list) {
+  Widget _gridKitab(List<Map<String, dynamic>> data) {
     return GridView.builder(
       padding: const EdgeInsets.all(10),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 2),
-      itemCount: list.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2.5, mainAxisSpacing: 5, crossAxisSpacing: 5),
+      itemCount: data.length,
       itemBuilder: (ctx, i) {
-        var b = list[i];
-        String name = (b['short_name'] ?? b['n'] ?? b['name'] ?? "KTB").toString();
+        String name = data[i]['name'] ?? "KITAB";
+        int id = data[i]['id'] ?? 1;
         return ActionChip(
-          label: Text(name, style: const TextStyle(fontSize: 10)),
+          label: Container(width: double.infinity, child: Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11))),
           onPressed: () {
             Navigator.pop(ctx);
-            _bookIndex = offset + i + 1;
+            _selectedBookId = id;
             _bookName = name.toUpperCase();
             _chapter = 1;
             _loadVerses();
@@ -173,33 +159,53 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     );
   }
 
+  String _cleanHtml(String html) {
+    // Membersihkan tag <br/> dan lainnya dari OpenLP
+    return html.replaceAll(RegExp(r'<[^>]*>'), '').replaceAll('{br}', '\n').trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter")),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter", style: const TextStyle(color: Colors.blue))),
         actions: [
           DropdownButton<String>(
             value: _currentVersion,
+            underline: const SizedBox(),
+            onChanged: (v) { if (v != null) { setState(() => _currentVersion = v); _initDatabase(); } },
             items: ["TB", "TL", "KJV"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-            onChanged: (v) { if (v != null) { setState(() { _currentVersion = v; }); _initDatabase(); } },
-          )
+          ),
+          const SizedBox(width: 10),
         ],
       ),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
-        itemCount: _verses.length,
-        padding: const EdgeInsets.all(15),
-        itemBuilder: (ctx, i) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: RichText(text: TextSpan(
-            style: const TextStyle(color: Colors.black, fontSize: 16),
-            children: [
-              TextSpan(text: "${_verses[i]['number']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-              TextSpan(text: _verses[i]['text']),
-            ]
-          )),
-        ),
-      ),
+      body: _isLoading 
+          ? const Center(child: CircularProgressIndicator()) 
+          : ListView.builder(
+              itemCount: _verses.length,
+              padding: const EdgeInsets.all(16),
+              itemBuilder: (ctx, i) {
+                var v = _verses[i];
+                // Handle beda nama kolom antara TB (verse) dan KJV (number)
+                var vNum = v['number'] ?? v['verse'] ?? (i + 1);
+                var vText = v['text'] ?? "";
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Colors.black, fontSize: 17, height: 1.6),
+                      children: [
+                        TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                        TextSpan(text: _cleanHtml(vText.toString())),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

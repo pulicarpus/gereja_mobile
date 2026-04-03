@@ -107,7 +107,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  // --- FITUR CATATAN (GAYA KOTLIN) ---
+  // --- FITUR CATATAN (GAYA KOTLIN - PERBAIKAN ERROR) ---
   void _tambahCatatan() async {
     _selectedVerses.sort();
     String nas = "$_displayTitle $_chapter:${_selectedVerses.join(",")}";
@@ -135,15 +135,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("BATAL")),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               String key = "Note_${DateTime.now().millisecondsSinceEpoch}";
               String dataFinal = "$nas~|~${titleCtrl.text}~|~Pengkhotbah~|~${DateTime.now().toString()}~|~Pendahuluan~|~${contentCtrl.text}";
               
-              List<String> allKeys = _prefs.getStringSet("ALL_NOTE_KEYS")?.toList() ?? [];
+              // PERBAIKAN DISINI: Menggunakan getStringList dan setStringList
+              List<String> allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
               allKeys.add(key);
-              _prefs.setStringSet("ALL_NOTE_KEYS", allKeys.toSet());
-              _prefs.setString(key, dataFinal);
+              await _prefs.setStringList("ALL_NOTE_KEYS", allKeys);
+              await _prefs.setString(key, dataFinal);
 
+              if(!context.mounted) return;
               Navigator.pop(context);
               setState(() => _selectedVerses.clear());
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan tersimpan")));
@@ -158,7 +160,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   // --- FITUR PENCARIAN ---
   void _showSearchDialog() {
     TextEditingController searchCtrl = TextEditingController();
-    String scope = "SEMUA"; // SEMUA, PL, PB, KITAB
+    String scope = "SEMUA"; 
 
     showModalBottomSheet(
       context: context,
@@ -222,7 +224,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
               var r = results[i];
               int bNum = r['book_number'];
               int idx = _allBooks.indexWhere((b) => b['book_number'] == bNum);
-              String bName = _bibleMeta[idx]['abbr']!;
+              String bName = (idx >= 0 && idx < _bibleMeta.length) ? _bibleMeta[idx]['abbr']! : "???";
               return ListTile(
                 title: Text("$bName ${r['chapter']}:${r['verse']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 subtitle: Text(_cleanText(r['text']), maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -300,10 +302,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
         return InkWell(
           onTap: () => onSelect(book['book_number'], shortName),
           child: Container(
-            width: (MediaQuery.of(context).size.width - 65) / 5, height: 42, // Dipertinggi sedikit
+            width: (MediaQuery.of(context).size.width - 65) / 5, height: 42,
             decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[200]!)),
             alignment: Alignment.center,
-            child: Text(shortName, style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 11)), // FONT DIPERBESAR & BOLD
+            child: Text(shortName, style: TextStyle(color: col, fontWeight: FontWeight.bold, fontSize: 11)),
           ),
         );
       }),
@@ -319,7 +321,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onTap: () => onSelect(i + 1),
         child: Container(
           decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[200]!)),
-          alignment: Alignment.center, child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), // FONT DIPERBESAR
+          alignment: Alignment.center, child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
         ),
       ),
     );
@@ -335,8 +337,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           child: Row(children: [Text("$_displayTitle $_chapter", style: const TextStyle(fontSize: 18)), const Icon(Icons.arrow_drop_down)]),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: _showSearchDialog), // TOMBOL CARI
-          IconButton(icon: const Icon(Icons.book), onPressed: () { /* Navigasi ke Daftar Catatan */ }), // TOMBOL CATATAN
+          IconButton(icon: const Icon(Icons.search), onPressed: _showSearchDialog),
+          IconButton(icon: const Icon(Icons.book), onPressed: () { /* Navigasi ke Daftar Catatan */ }), 
           TextButton(
             onPressed: () { setState(() => _currentVersion = (_currentVersion == "TB" ? "TJL" : "TB")); _initDatabase(); },
             child: Text(_currentVersion, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -369,7 +371,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 );
               },
             ),
-            // FLOATING MENU SAAT AYAT DIPILIH
             if (_selectedVerses.isNotEmpty) Positioned(
               top: 0, left: 0, right: 0,
               child: Container(

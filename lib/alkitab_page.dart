@@ -2,7 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+// BERI ALIAS 'p' supaya tidak bentrok dengan BuildContext Flutter
+import 'package:path/path.dart' as p;
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -25,7 +26,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     "TL": "TJL.SQLite3",
   };
 
-  int _bookId = 10; // Default: Ayub atau sesuai pilihan
+  int _bookId = 10; 
   int _chapter = 1;
   String _bookName = "Kejadian";
 
@@ -40,9 +41,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
       setState(() => _isLoading = true);
       var dbPath = await getDatabasesPath();
       String fileName = _bibleFiles[_currentVersion] ?? "TB.SQLite3";
-      var path = join(dbPath, fileName);
+      // Gunakan alias p. di sini
+      var path = p.join(dbPath, fileName);
 
       if (!(await databaseExists(path))) {
+        // Gunakan alias p. di sini
+        await Directory(p.dirname(path)).create(recursive: true);
         ByteData data = await rootBundle.load("assets/$fileName");
         List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
         await File(path).writeAsBytes(bytes, flush: true);
@@ -77,20 +81,24 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
       Map<int, String> storyMap = {};
       if (_currentVersion == "TB") {
-        final List<Map<String, dynamic>> stories = await _db!.query(
-          'stories',
-          where: 'book_number = ? AND chapter = ?',
-          whereArgs: [_bookId, _chapter],
-        );
-        for (var s in stories) {
-          storyMap[s['verse']] = s['title'];
-        }
+        try {
+          final List<Map<String, dynamic>> stories = await _db!.query(
+            'stories',
+            where: 'book_number = ? AND chapter = ?',
+            whereArgs: [_bookId, _chapter],
+          );
+          for (var s in stories) {
+            storyMap[s['verse']] = s['title'];
+          }
+        } catch (_) {}
       }
 
       setState(() {
         _verses = verses;
         _pericopes = storyMap;
-        _bookName = _allBooks.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
+        if (_allBooks.isNotEmpty) {
+          _bookName = _allBooks.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -99,11 +107,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _showPicker() {
+    // Sekarang compiler tahu context di sini adalah BuildContext, bukan path Context
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => DefaultTabController(
+      builder: (innerContext) => DefaultTabController(
         length: 2,
         child: Container(
           height: MediaQuery.of(context).size.height * 0.7,
@@ -118,7 +127,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    // GRID KITAB (Singkatan)
                     GridView.builder(
                       padding: const EdgeInsets.only(top: 10),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -139,6 +147,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                           child: Text(
                             _allBooks[i]['short_name'],
                             style: TextStyle(
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                               color: _bookId == _allBooks[i]['book_number'] ? Colors.white : Colors.black87,
                             ),
@@ -146,13 +155,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         ),
                       ),
                     ),
-                    // GRID PASAL (Dinamis 1-50 atau sesuai isi kitab)
                     GridView.builder(
                       padding: const EdgeInsets.only(top: 10),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
                       ),
-                      itemCount: 50, // Idealnya ambil max chapter dari DB, sementara set 50
+                      itemCount: 150, // Pasal maksimal (Misal Mazmur ada 150)
                       itemBuilder: (context, i) => InkWell(
                         onTap: () {
                           setState(() {
@@ -205,8 +213,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
             icon: const Icon(Icons.compare_arrows, color: Colors.white),
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             onChanged: (v) {
-              setState(() { _currentVersion = v!; _db = null; });
-              _initDatabase();
+              if (v != null) {
+                setState(() { _currentVersion = v; _db = null; });
+                _initDatabase();
+              }
             },
             items: ["TB", "TL"].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
           ),

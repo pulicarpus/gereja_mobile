@@ -19,8 +19,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
   cached_network_image: ^3.4.1
+  shimmer: ^3.0.0 # Tambahan: Untuk efek loading 'bayangan' yang smooth
 
-  # Inti Firebase (VERSI TERBARU & SINKRON)
+  # Inti Firebase (SINKRON)
   firebase_core: ^3.10.1
   firebase_auth: ^5.4.1
   cloud_firestore: ^5.6.1
@@ -30,13 +31,15 @@ dependencies:
   google_sign_in: ^6.2.1
   onesignal_flutter: ^5.2.6
 
-  # Penyimpanan Data Sesi
+  # Penyimpanan & Berbagi Data
   shared_preferences: ^2.3.5
+  share_plus: ^10.1.0       # WAJIB: Untuk fitur bagikan ayat ke WA/Medsos
+  permission_handler: ^11.3.1 # WAJIB: Untuk handle izin Galeri/Kamera (Image Picker)
 
   # --- TAMBAHAN UNTUK ALKITAB SQLITE ---
   sqflite: ^2.3.0
-  path: ^1.8.3
-  path_provider: ^2.1.1
+  path: ^1.9.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
@@ -48,5 +51,7 @@ flutter:
 
   # --- PENDAFTARAN ASSETS ---
   assets:
-  - assets/TB.SQLite3
-  - assets/TJL.SQLite3
+    - assets/TB.SQLite3
+    - assets/TJL.SQLite3
+    # Tambahkan folder images jika ada foto-foto aset
+    # - assets/images/

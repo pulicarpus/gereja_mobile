@@ -18,14 +18,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
   bool _isLoading = true;
   String _errorMessage = "";
 
-  // Pengaturan Versi & Lokasi (Sesuai Screenshot Drive Bos)
+  // Versi: TB (Terjemahan Baru) & TL (Terjemahan Lama)
   String _currentVersion = "TB"; 
   final Map<String, String> _bibleFiles = {
     "TB": "TB.SQLite3",
-    "TL": "TJL.SQLite3", // Nama file di Drive Bos adalah TJL.SQLite3
+    "TL": "TJL.SQLite3", 
   };
 
-  int _bookId = 10; // Kejadian
+  int _bookId = 10; // Contoh: Ayub (sesuai nomor di database)
   int _chapter = 1;
 
   @override
@@ -39,7 +39,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (newVersion != null && newVersion != _currentVersion) {
       setState(() {
         _currentVersion = newVersion;
-        _db = null; // Reset koneksi DB
+        _db = null; 
+        _pericopes = {}; // Kosongkan perikop saat pindah versi
       });
       _initDatabase();
     }
@@ -56,18 +57,19 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
       if (!exists) {
         await Directory(dirname(path)).create(recursive: true);
-        // Pastikan file ini sudah didaftarkan di pubspec.yaml assets
+        // Pastikan file sudah ada di folder assets proyek bos
         ByteData data = await rootBundle.load("assets/$fileName");
         List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
         await File(path).writeAsBytes(bytes, flush: true);
       }
 
-      _db = await openDatabase(path);
+      _db = await openDatabase(path, readOnly: true);
       await _loadData();
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = "File $currentVersion belum ada di assets: $e";
+        // Perbaikan: Gunakan _currentVersion (dengan underscore)
+        _errorMessage = "File $_currentVersion belum ada di assets: $e";
       });
     }
   }
@@ -75,7 +77,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _loadData() async {
     if (_db == null) return;
     try {
-      // Query Verses (Sesuai kolom di SQLite Editor Bos)
+      // 1. Ambil Ayat (Untuk TB maupun TL)
       final List<Map<String, dynamic>> verses = await _db!.query(
         'verses',
         where: 'book_number = ? AND chapter = ?',
@@ -83,16 +85,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
         orderBy: 'verse ASC',
       );
 
-      // Query Stories/Perikop
-      final List<Map<String, dynamic>> stories = await _db!.query(
-        'stories',
-        where: 'book_number = ? AND chapter = ?',
-        whereArgs: [_bookId, _chapter],
-      );
-
+      // 2. Ambil Perikop (Hanya jika versi TB, karena TL tidak punya tabel stories)
       Map<int, String> storyMap = {};
-      for (var s in stories) {
-        storyMap[s['verse']] = s['title'];
+      if (_currentVersion == "TB") {
+        try {
+          final List<Map<String, dynamic>> stories = await _db!.query(
+            'stories',
+            where: 'book_number = ? AND chapter = ?',
+            whereArgs: [_bookId, _chapter],
+          );
+          for (var s in stories) {
+            storyMap[s['verse']] = s['title'];
+          }
+        } catch (e) {
+          debugPrint("Tabel stories tidak ditemukan atau error: $e");
+        }
       }
 
       setState(() {
@@ -104,11 +111,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = "Gagal memuat data: $e";
+        _errorMessage = "Gagal memuat data $_currentVersion: $e";
       });
     }
   }
 
+  // Membersihkan tag HTML jika ada di dalam teks database
   String _cleanText(String text) {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
@@ -121,7 +129,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
         actions: [
-          // Tombol Pilih Versi
+          // Dropdown Switcher TB/TL
           DropdownButton<String>(
             value: _currentVersion,
             dropdownColor: Colors.indigo,
@@ -153,23 +161,36 @@ class _AlkitabPageState extends State<AlkitabPage> {
                     final verse = _verses[index];
                     final int vNum = verse['verse'];
                     final String rawText = verse['text'] ?? "";
+                    
+                    // Ambil perikop jika ada (Hanya akan muncul di mode TB)
                     final String? perikopTitle = _pericopes[vNum];
 
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (perikopTitle != null)
+                        if (perikopTitle != null && _currentVersion == "TB")
                           Padding(
                             padding: const EdgeInsets.only(top: 20, bottom: 8),
-                            child: Text(perikopTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.brown)),
+                            child: Text(
+                              perikopTitle, 
+                              style: const TextStyle(
+                                fontSize: 18, 
+                                fontWeight: FontWeight.bold, 
+                                color: Colors.brown,
+                                fontStyle: FontStyle.italic
+                              )
+                            ),
                           ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
                           child: RichText(
                             text: TextSpan(
-                              style: const TextStyle(fontSize: 17, color: Colors.black87),
+                              style: const TextStyle(fontSize: 17, color: Colors.black87, height: 1.5),
                               children: [
-                                TextSpan(text: "$vNum ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                TextSpan(
+                                  text: "$vNum ", 
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)
+                                ),
                                 TextSpan(text: _cleanText(rawText)),
                               ],
                             ),

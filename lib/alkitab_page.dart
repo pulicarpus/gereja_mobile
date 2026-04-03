@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
-// BERI ALIAS 'p' supaya tidak bentrok dengan BuildContext Flutter
 import 'package:path/path.dart' as p;
 
 class AlkitabPage extends StatefulWidget {
@@ -26,9 +25,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
     "TL": "TJL.SQLite3",
   };
 
-  int _bookId = 10; 
+  int _bookId = 10; // Default Kejadian
   int _chapter = 1;
   String _bookName = "Kejadian";
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -41,11 +41,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       setState(() => _isLoading = true);
       var dbPath = await getDatabasesPath();
       String fileName = _bibleFiles[_currentVersion] ?? "TB.SQLite3";
-      // Gunakan alias p. di sini
       var path = p.join(dbPath, fileName);
 
       if (!(await databaseExists(path))) {
-        // Gunakan alias p. di sini
         await Directory(p.dirname(path)).create(recursive: true);
         ByteData data = await rootBundle.load("assets/$fileName");
         List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
@@ -69,7 +67,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     setState(() => _allBooks = books);
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({int? scrollToVerse}) async {
     if (_db == null) return;
     try {
       final List<Map<String, dynamic>> verses = await _db!.query(
@@ -101,92 +99,130 @@ class _AlkitabPageState extends State<AlkitabPage> {
         }
         _isLoading = false;
       });
+
+      // Jika ada request lompat ke ayat tertentu
+      if (scrollToVerse != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          // Anggaran tinggi item, lebih baik pakai itemScrollController jika list kompleks
+          double position = (scrollToVerse - 1) * 70.0; 
+          _scrollController.animateTo(position, duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
+        });
+      }
     } catch (e) {
       setState(() { _isLoading = false; _errorMessage = "Gagal muat ayat: $e"; });
     }
   }
 
-  void _showPicker() {
-    // Sekarang compiler tahu context di sini adalah BuildContext, bukan path Context
+  // MODAL PEMILIHAN 3 TAHAP (KITAB > PASAL > AYAT)
+  void _showBiblePicker() {
+    int tempBookId = _bookId;
+    int tempChapter = _chapter;
+    int currentStep = 0; // 0: Kitab, 1: Pasal, 2: Ayat
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (innerContext) => DefaultTabController(
-        length: 2,
-        child: Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              const TabBar(
-                labelColor: Colors.indigo,
-                indicatorColor: Colors.indigo,
-                tabs: [Tab(text: "KITAB"), Tab(text: "PASAL")],
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            String title = "Pilih Kitab";
+            if (currentStep == 1) title = "Pilih Pasal";
+            if (currentStep == 2) title = "Pilih Ayat";
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.8,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (currentStep > 0)
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => setModalState(() => currentStep--),
+                        )
+                      else
+                        const SizedBox(width: 48),
+                      Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                    ],
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: currentStep == 0
+                        ? _buildBookGrid(setModalState, (id) {
+                            tempBookId = id;
+                            currentStep = 1;
+                          })
+                        : currentStep == 1
+                            ? _buildNumberGrid(150, (n) { // Anggap max 150 pasal
+                                tempChapter = n;
+                                currentStep = 2;
+                              }, setModalState)
+                            : _buildNumberGrid(176, (n) { // Anggap max 176 ayat
+                                setState(() {
+                                  _bookId = tempBookId;
+                                  _chapter = tempChapter;
+                                  _isLoading = true;
+                                });
+                                _loadData(scrollToVerse: n);
+                                Navigator.pop(context);
+                              }, setModalState),
+                  ),
+                ],
               ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    GridView.builder(
-                      padding: const EdgeInsets.only(top: 10),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
-                      ),
-                      itemCount: _allBooks.length,
-                      itemBuilder: (context, i) => InkWell(
-                        onTap: () {
-                          setState(() => _bookId = _allBooks[i]['book_number']);
-                          DefaultTabController.of(context).animateTo(1);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: _bookId == _allBooks[i]['book_number'] ? Colors.indigo : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            _allBooks[i]['short_name'],
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: _bookId == _allBooks[i]['book_number'] ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    GridView.builder(
-                      padding: const EdgeInsets.only(top: 10),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
-                      ),
-                      itemCount: 150, // Pasal maksimal (Misal Mazmur ada 150)
-                      itemBuilder: (context, i) => InkWell(
-                        onTap: () {
-                          setState(() {
-                            _chapter = i + 1;
-                            _isLoading = true;
-                          });
-                          _loadData();
-                          Navigator.pop(context);
-                        },
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: _chapter == i + 1 ? Colors.indigo : Colors.grey[200],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text("${i + 1}"),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBookGrid(StateSetter setModalState, Function(int) onSelect) {
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8,
       ),
+      itemCount: _allBooks.length,
+      itemBuilder: (context, i) {
+        bool isSelected = _allBooks[i]['book_number'] == _bookId;
+        return InkWell(
+          onTap: () => setModalState(() => onSelect(_allBooks[i]['book_number'])),
+          child: Container(
+            decoration: BoxDecoration(
+              color: isSelected ? Colors.indigo : Colors.grey[200],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              _allBooks[i]['short_name'],
+              style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildNumberGrid(int max, Function(int) onSelect, StateSetter setModalState) {
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
+      ),
+      itemCount: max,
+      itemBuilder: (context, i) {
+        int num = i + 1;
+        return InkWell(
+          onTap: () => setModalState(() => onSelect(num)),
+          child: Container(
+            decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+            alignment: Alignment.center,
+            child: Text("$num"),
+          ),
+        );
+      },
     );
   }
 
@@ -195,12 +231,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         title: GestureDetector(
-          onTap: _showPicker,
-          child: Row(
-            children: [
-              Text("$_bookName $_chapter"),
-              const Icon(Icons.arrow_drop_down),
-            ],
+          onTap: _showBiblePicker,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text("$_bookName $_chapter", style: const TextStyle(fontSize: 16)),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
           ),
         ),
         backgroundColor: Colors.indigo,
@@ -210,22 +251,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
             value: _currentVersion,
             dropdownColor: Colors.indigo,
             underline: const SizedBox(),
-            icon: const Icon(Icons.compare_arrows, color: Colors.white),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            icon: const Icon(Icons.translate, color: Colors.white),
             onChanged: (v) {
               if (v != null) {
                 setState(() { _currentVersion = v; _db = null; });
                 _initDatabase();
               }
             },
-            items: ["TB", "TL"].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+            items: ["TB", "TL"].map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(color: Colors.white)))).toList(),
           ),
-          const SizedBox(width: 10),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(16),
               itemCount: _verses.length,
               itemBuilder: (context, index) {
@@ -240,12 +280,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         child: Text(pTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontStyle: FontStyle.italic, color: Colors.brown)),
                       ),
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(vertical: 6),
                       child: RichText(
                         text: TextSpan(
-                          style: const TextStyle(fontSize: 17, color: Colors.black, height: 1.5),
+                          style: const TextStyle(fontSize: 18, color: Colors.black87, height: 1.6),
                           children: [
-                            TextSpan(text: "${v['verse']} ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13)),
+                            TextSpan(text: "${v['verse']} ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)),
                             TextSpan(text: v['text'].toString().replaceAll(RegExp(r'<[^>]*>'), '')),
                           ],
                         ),

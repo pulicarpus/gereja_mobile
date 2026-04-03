@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart' as p;
+import 'package:path/path.dart';
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -11,29 +11,38 @@ class AlkitabPage extends StatefulWidget {
   State<AlkitabPage> createState() => _AlkitabPageState();
 }
 
-class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin {
+class _AlkitabPageState extends State<AlkitabPage> {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
-  List<Map<String, dynamic>> _booksOT = [];
-  List<Map<String, dynamic>> _booksNT = [];
+  Map<int, String> _pericopes = {};
   bool _isLoading = true;
-  late TabController _tabController;
+  String _errorMessage = "";
 
-  String _currentVersion = "TB";
-  int _selectedBookIndex = 1; // 1 = Kejadian, 2 = Keluaran, dst.
-  int _chapter = 1;
-  String _bookName = "KEJADIAN";
-
+  // Pengaturan Versi & Lokasi (Sesuai Screenshot Drive Bos)
+  String _currentVersion = "TB"; 
   final Map<String, String> _bibleFiles = {
     "TB": "TB.SQLite3",
-    "TL": "TJL.SQLite3",
+    "TL": "TJL.SQLite3", // Nama file di Drive Bos adalah TJL.SQLite3
   };
+
+  int _bookId = 10; // Kejadian
+  int _chapter = 1;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _initDatabase();
+  }
+
+  // Fungsi untuk ganti versi Alkitab
+  void _changeVersion(String? newVersion) {
+    if (newVersion != null && newVersion != _currentVersion) {
+      setState(() {
+        _currentVersion = newVersion;
+        _db = null; // Reset koneksi DB
+      });
+      _initDatabase();
+    }
   }
 
   Future<void> _initDatabase() async {
@@ -41,165 +50,134 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       setState(() => _isLoading = true);
       var dbPath = await getDatabasesPath();
       String fileName = _bibleFiles[_currentVersion] ?? "TB.SQLite3";
-      var path = p.join(dbPath, fileName);
+      var path = join(dbPath, fileName);
 
-      if (!await databaseExists(path)) {
-        await Directory(p.dirname(path)).create(recursive: true);
+      bool exists = await databaseExists(path);
+
+      if (!exists) {
+        await Directory(dirname(path)).create(recursive: true);
+        // Pastikan file ini sudah didaftarkan di pubspec.yaml assets
         ByteData data = await rootBundle.load("assets/$fileName");
-        await File(path).writeAsBytes(data.buffer.asUint8List(), flush: true);
+        List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(path).writeAsBytes(bytes, flush: true);
       }
-      
-      if (_db != null) await _db!.close();
+
       _db = await openDatabase(path);
-      
-      await _loadBooks();
-      await _loadVerses();
+      await _loadData();
     } catch (e) {
-      debugPrint("DB Error: $e");
-    }
-  }
-
-  Future<void> _loadBooks() async {
-    if (_db == null) return;
-    try {
-      // TB/TL biasanya pakai tabel 'books'
-      final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'id ASC');
-      List<Map<String, dynamic>> ot = [];
-      List<Map<String, dynamic>> nt = [];
-      
-      for (int i = 0; i < books.length; i++) {
-        if (i < 39) ot.add(books[i]); else nt.add(books[i]);
-      }
-
-      // Cari nama kitab yang aktif berdasarkan index pilihan
-      // Ingat: ID di DB bisa 10, 20, 30... jadi kita cari yang matches
-      var b = books.firstWhere(
-        (e) => e['id'] == _selectedBookIndex * 10 || e['id'] == _selectedBookIndex, 
-        orElse: () => books.first
-      );
-
       setState(() {
-        _booksOT = ot;
-        _booksNT = nt;
-        _bookName = (b['name'] ?? "KITAB").toString().toUpperCase();
+        _isLoading = false;
+        _errorMessage = "File $currentVersion belum ada di assets: $e";
       });
-    } catch (e) {
-      debugPrint("Load Books Error: $e");
     }
   }
 
-  Future<void> _loadVerses() async {
+  Future<void> _loadData() async {
     if (_db == null) return;
     try {
-      setState(() => _isLoading = true);
-      
-      // Khusus TB & TL: 
-      // Tabel: verses
-      // Kolom ID Kitab: book_number (isinya 10, 20, 30...)
-      // Kolom Ayat: verse
-      // Kolom Teks: text
-      
-      int queryId = _selectedBookIndex * 10; 
-
-      final List<Map<String, dynamic>> result = await _db!.query(
+      // Query Verses (Sesuai kolom di SQLite Editor Bos)
+      final List<Map<String, dynamic>> verses = await _db!.query(
         'verses',
         where: 'book_number = ? AND chapter = ?',
-        whereArgs: [queryId, _chapter],
-        orderBy: 'verse ASC'
+        whereArgs: [_bookId, _chapter],
+        orderBy: 'verse ASC',
       );
 
+      // Query Stories/Perikop
+      final List<Map<String, dynamic>> stories = await _db!.query(
+        'stories',
+        where: 'book_number = ? AND chapter = ?',
+        whereArgs: [_bookId, _chapter],
+      );
+
+      Map<int, String> storyMap = {};
+      for (var s in stories) {
+        storyMap[s['verse']] = s['title'];
+      }
+
       setState(() {
-        _verses = result;
+        _verses = verses;
+        _pericopes = storyMap;
         _isLoading = false;
+        _errorMessage = "";
       });
     } catch (e) {
-      debugPrint("Query Error: $e");
-      setState(() { _verses = []; _isLoading = false; });
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Gagal memuat data: $e";
+      });
     }
   }
 
-  void _showPicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.8,
-        child: Column(
-          children: [
-            const SizedBox(height: 10),
-            TabBar(
-              controller: _tabController,
-              labelColor: Colors.blue,
-              tabs: const [Tab(text: "PL"), Tab(text: "PB")]
-            ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [_gridKitab(_booksOT, 0), _gridKitab(_booksNT, 39)],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _gridKitab(List<Map<String, dynamic>> data, int offset) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(15),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8
-      ),
-      itemCount: data.length,
-      itemBuilder: (ctx, i) {
-        String name = data[i]['name'] ?? "KITAB";
-        int realIndex = offset + i + 1; // Konversi ke urutan 1-66
-        
-        return ActionChip(
-          label: SizedBox(width: double.infinity, child: Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11))),
-          onPressed: () {
-            Navigator.pop(ctx);
-            setState(() {
-              _selectedBookIndex = realIndex;
-              _bookName = name.toUpperCase();
-              _chapter = 1;
-            });
-            _loadVerses();
-          },
-        );
-      },
-    );
+  String _cleanText(String text) {
+    return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter")),
+        title: const Text("Alkitab Mobile"),
+        backgroundColor: Colors.indigo,
+        foregroundColor: Colors.white,
         actions: [
+          // Tombol Pilih Versi
           DropdownButton<String>(
             value: _currentVersion,
-            onChanged: (v) { if (v != null) { setState(() => _currentVersion = v); _initDatabase(); } },
-            items: ["TB", "TL"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            dropdownColor: Colors.indigo,
+            underline: Container(),
+            icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            onChanged: _changeVersion,
+            items: ["TB", "TL"].map((String value) {
+              return DropdownMenuItem<String>(
+                value: value,
+                child: Text(value),
+              );
+            }).toList(),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 15),
         ],
       ),
-      body: _isLoading 
-          ? const Center(child: CircularProgressIndicator()) 
-          : _verses.isEmpty 
-              ? Center(child: Text("Data tidak ditemukan.\nCoba pilih kitab lain."))
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _errorMessage.isNotEmpty
+              ? Center(child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Text(_errorMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+                ))
               : ListView.builder(
+                  padding: const EdgeInsets.all(16),
                   itemCount: _verses.length,
-                  padding: const EdgeInsets.all(15),
-                  itemBuilder: (ctx, i) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Text.rich(TextSpan(children: [
-                      TextSpan(text: "${_verses[i]['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 17)),
-                      TextSpan(text: "${_verses[i]['text']}", style: const TextStyle(fontSize: 17)),
-                    ])),
-                  ),
+                  itemBuilder: (context, index) {
+                    final verse = _verses[index];
+                    final int vNum = verse['verse'];
+                    final String rawText = verse['text'] ?? "";
+                    final String? perikopTitle = _pericopes[vNum];
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (perikopTitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 20, bottom: 8),
+                            child: Text(perikopTitle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.brown)),
+                          ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          child: RichText(
+                            text: TextSpan(
+                              style: const TextStyle(fontSize: 17, color: Colors.black87),
+                              children: [
+                                TextSpan(text: "$vNum ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                TextSpan(text: _cleanText(rawText)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
     );
   }

@@ -25,7 +25,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     "TL": "TJL.SQLite3",
   };
 
-  int _bookId = 10; // Default Kejadian
+  int _bookId = 10; 
   int _chapter = 1;
   String _bookName = "Kejadian";
   final ScrollController _scrollController = ScrollController();
@@ -54,10 +54,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       await _loadBooks();
       await _loadData();
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-        _errorMessage = "Error Database: $e";
-      });
+      setState(() { _isLoading = false; _errorMessage = "Error DB: $e"; });
     }
   }
 
@@ -65,6 +62,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (_db == null) return;
     final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'book_number ASC');
     setState(() => _allBooks = books);
+  }
+
+  // Fungsi untuk mendapatkan jumlah Pasal di sebuah Kitab
+  Future<int> _getMaxChapter(int bookId) async {
+    var res = await _db!.rawQuery('SELECT MAX(chapter) as max FROM verses WHERE book_number = ?', [bookId]);
+    return res.first['max'] as int? ?? 1;
+  }
+
+  // Fungsi untuk mendapatkan jumlah Ayat di sebuah Pasal
+  Future<int> _getMaxVerse(int bookId, int chapter) async {
+    var res = await _db!.rawQuery('SELECT MAX(verse) as max FROM verses WHERE book_number = ? AND chapter = ?', [bookId, chapter]);
+    return res.first['max'] as int? ?? 1;
   }
 
   Future<void> _loadData({int? scrollToVerse}) async {
@@ -85,39 +94,33 @@ class _AlkitabPageState extends State<AlkitabPage> {
             where: 'book_number = ? AND chapter = ?',
             whereArgs: [_bookId, _chapter],
           );
-          for (var s in stories) {
-            storyMap[s['verse']] = s['title'];
-          }
+          for (var s in stories) { storyMap[s['verse']] = s['title']; }
         } catch (_) {}
       }
 
       setState(() {
         _verses = verses;
         _pericopes = storyMap;
-        if (_allBooks.isNotEmpty) {
-          _bookName = _allBooks.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
-        }
+        _bookName = _allBooks.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
         _isLoading = false;
       });
 
-      // Jika ada request lompat ke ayat tertentu
       if (scrollToVerse != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Anggaran tinggi item, lebih baik pakai itemScrollController jika list kompleks
-          double position = (scrollToVerse - 1) * 70.0; 
-          _scrollController.animateTo(position, duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
+          _scrollController.jumpTo((scrollToVerse - 1) * 80.0); 
         });
       }
     } catch (e) {
-      setState(() { _isLoading = false; _errorMessage = "Gagal muat ayat: $e"; });
+      setState(() { _isLoading = false; _errorMessage = "Error: $e"; });
     }
   }
 
-  // MODAL PEMILIHAN 3 TAHAP (KITAB > PASAL > AYAT)
-  void _showBiblePicker() {
+  void _showBiblePicker() async {
     int tempBookId = _bookId;
     int tempChapter = _chapter;
-    int currentStep = 0; // 0: Kitab, 1: Pasal, 2: Ayat
+    int currentStep = 0; 
+    int maxChapters = await _getMaxChapter(tempBookId);
+    int maxVerses = await _getMaxVerse(tempBookId, tempChapter);
 
     showModalBottomSheet(
       context: context,
@@ -125,11 +128,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) {
         return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            String title = "Pilih Kitab";
-            if (currentStep == 1) title = "Pilih Pasal";
-            if (currentStep == 2) title = "Pilih Ayat";
-
+          builder: (context, setModalState) {
             return Container(
               height: MediaQuery.of(context).size.height * 0.8,
               padding: const EdgeInsets.all(16),
@@ -138,38 +137,33 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (currentStep > 0)
-                        IconButton(
-                          icon: const Icon(Icons.arrow_back),
-                          onPressed: () => setModalState(() => currentStep--),
-                        )
-                      else
-                        const SizedBox(width: 48),
-                      Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      currentStep > 0 
+                        ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setModalState(() => currentStep--))
+                        : const SizedBox(width: 48),
+                      Text(currentStep == 0 ? "Pilih Kitab" : currentStep == 1 ? "Pilih Pasal" : "Pilih Ayat", 
+                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
                     ],
                   ),
                   const Divider(),
                   Expanded(
                     child: currentStep == 0
-                        ? _buildBookGrid(setModalState, (id) {
+                        ? _buildBookGrid(setModalState, (id) async {
                             tempBookId = id;
-                            currentStep = 1;
+                            maxChapters = await _getMaxChapter(id);
+                            setModalState(() => currentStep = 1);
                           })
                         : currentStep == 1
-                            ? _buildNumberGrid(150, (n) { // Anggap max 150 pasal
+                            ? _buildNumberGrid(maxChapters, (n) async {
                                 tempChapter = n;
-                                currentStep = 2;
-                              }, setModalState)
-                            : _buildNumberGrid(176, (n) { // Anggap max 176 ayat
-                                setState(() {
-                                  _bookId = tempBookId;
-                                  _chapter = tempChapter;
-                                  _isLoading = true;
-                                });
+                                maxVerses = await _getMaxVerse(tempBookId, n);
+                                setModalState(() => currentStep = 2);
+                              })
+                            : _buildNumberGrid(maxVerses, (n) {
+                                setState(() { _bookId = tempBookId; _chapter = tempChapter; _isLoading = true; });
                                 _loadData(scrollToVerse: n);
                                 Navigator.pop(context);
-                              }, setModalState),
+                              }),
                   ),
                 ],
               ),
@@ -183,43 +177,35 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Widget _buildBookGrid(StateSetter setModalState, Function(int) onSelect) {
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8,
+        crossAxisCount: 3, childAspectRatio: 2.2, mainAxisSpacing: 8, crossAxisSpacing: 8,
       ),
       itemCount: _allBooks.length,
       itemBuilder: (context, i) {
-        bool isSelected = _allBooks[i]['book_number'] == _bookId;
         return InkWell(
-          onTap: () => setModalState(() => onSelect(_allBooks[i]['book_number'])),
+          onTap: () => onSelect(_allBooks[i]['book_number']),
           child: Container(
-            decoration: BoxDecoration(
-              color: isSelected ? Colors.indigo : Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
-            ),
+            decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
             alignment: Alignment.center,
-            child: Text(
-              _allBooks[i]['short_name'],
-              style: TextStyle(color: isSelected ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
-            ),
+            child: Text(_allBooks[i]['short_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
         );
       },
     );
   }
 
-  Widget _buildNumberGrid(int max, Function(int) onSelect, StateSetter setModalState) {
+  Widget _buildNumberGrid(int max, Function(int) onSelect) {
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
       ),
       itemCount: max,
       itemBuilder: (context, i) {
-        int num = i + 1;
         return InkWell(
-          onTap: () => setModalState(() => onSelect(num)),
+          onTap: () => onSelect(i + 1),
           child: Container(
-            decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
             alignment: Alignment.center,
-            child: Text("$num"),
+            child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
           ),
         );
       },
@@ -253,10 +239,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             underline: const SizedBox(),
             icon: const Icon(Icons.translate, color: Colors.white),
             onChanged: (v) {
-              if (v != null) {
-                setState(() { _currentVersion = v; _db = null; });
-                _initDatabase();
-              }
+              if (v != null) { setState(() { _currentVersion = v; _db = null; }); _initDatabase(); }
             },
             items: ["TB", "TL"].map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(color: Colors.white)))).toList(),
           ),

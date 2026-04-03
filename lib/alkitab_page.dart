@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
-import 'package:intl/intl.dart';
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -18,19 +17,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _allBooks = [];
   Map<int, String> _pericopes = {};
   bool _isLoading = true;
-  
-  Set<int> _selectedVerses = {}; 
-  Map<int, String> _userNotes = {};
 
-  String _currentVersion = "TB";
-  int _bookId = 10; 
+  // State Navigasi
+  int _bookId = 10; // Default Kejadian
   int _chapter = 1;
   String _bookName = "Kejadian";
+  String _currentVersion = "TB";
+  
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
-  
-  // State untuk filter pencarian
-  String _searchScope = "SEMUA"; // SEMUA, PL, PB, KITAB
+  String _searchScope = "SEMUA"; 
 
   @override
   void initState() {
@@ -38,30 +34,24 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initDatabase();
   }
 
-  // --- MEMBERSIHKAN TEKS & SINGKATAN NAMA KITAB ---
-  String _cleanText(String text) {
-    if (text.isEmpty) return "";
-    return text.replaceAll(RegExp(r'<[^>]*>|\\f.*?\\f|\\.*?\\'), '').trim();
-  }
-
-  String _shortenBookName(String name) {
-    // Memotong nama panjang dari database agar rapi di UI
-    return name
-      .replaceAll(RegExp(r'Surat Paulus (Yang Pertama|Yang Kedua|Kepada|Yang Ketiga) ', caseSensitive: false), '')
-      .replaceAll(RegExp(r'Kepada Jemaat Di |Kepada Orang |Dari |Injil Menurut |Kisah Para ', caseSensitive: false), '')
-      .trim();
-  }
-
-  // --- DATABASE OPS ---
+  // --- DATABASE LOGIC ---
   Future<void> _initDatabase() async {
     try {
       var dbPath = await getDatabasesPath();
       var path = p.join(dbPath, "TB.SQLite3");
+      
+      if (!(await databaseExists(path))) {
+        ByteData data = await rootBundle.load("assets/TB.SQLite3");
+        List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+
       _db = await openDatabase(path);
-      await _db!.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, book_id INTEGER, chapter INTEGER, verse INTEGER, content TEXT, date TEXT)');
       await _loadBooks();
       await _loadData();
-    } catch (e) { debugPrint("DB Error: $e"); }
+    } catch (e) {
+      debugPrint("Error DB: $e");
+    }
   }
 
   Future<void> _loadBooks() async {
@@ -71,57 +61,47 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   Future<void> _loadData({int? scrollToVerse}) async {
     setState(() => _isLoading = true);
-    final verses = await _db!.query('verses', where: 'book_number = ? AND chapter = ?', whereArgs: [_bookId, _chapter]);
-    final notes = await _db!.query('notes', where: 'book_id = ? AND chapter = ?', whereArgs: [_bookId, _chapter]);
-    
-    Map<int, String> tempNotes = {};
-    for (var n in notes) { tempNotes[n['verse'] as int] = n['content'] as String; }
+    final verses = await _db!.query('verses', 
+        where: 'book_number = ? AND chapter = ?', 
+        whereArgs: [_bookId, _chapter]);
 
     Map<int, String> storyMap = {};
     try {
-      final stories = await _db!.query('stories', where: 'book_number = ? AND chapter = ?', whereArgs: [_bookId, _chapter]);
-      for (var s in stories) { storyMap[s['verse'] as int] = s['title'] as String; }
+      final stories = await _db!.query('stories', 
+          where: 'book_number = ? AND chapter = ?', 
+          whereArgs: [_bookId, _chapter]);
+      for (var s in stories) { 
+        storyMap[s['verse'] as int] = s['title'] as String; 
+      }
     } catch (_) {}
 
     setState(() {
       _verses = verses;
       _pericopes = storyMap;
-      _userNotes = tempNotes;
       _bookName = _allBooks.firstWhere((b) => b['book_number'] == _bookId)['long_name'];
       _isLoading = false;
-      _selectedVerses.clear();
     });
 
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollController.animateTo((scrollToVerse - 1) * 100.0, duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
+        // Estimasi tinggi item 90.0 agar pas ke ayat tujuan
+        _scrollController.animateTo((scrollToVerse - 1) * 90.0, 
+            duration: const Duration(milliseconds: 500), curve: Curves.easeOut);
       });
     }
   }
 
-  // --- LOGIKA PENCARIAN ADVANCED ---
-  Future<List<Map<String, dynamic>>> _searchBible(String query) async {
-    if (query.length < 2) return [];
-    String whereClause = "v.text LIKE ?";
-    List<dynamic> args = ['%$query%'];
-
-    if (_searchScope == "PL") {
-      whereClause += " AND v.book_number <= 39";
-    } else if (_searchScope == "PB") {
-      whereClause += " AND v.book_number > 39";
-    } else if (_searchScope == "KITAB") {
-      whereClause += " AND v.book_number = ?";
-      args.add(_bookId);
-    }
-
-    return await _db!.rawQuery('''
-      SELECT v.*, b.long_name 
-      FROM verses v 
-      JOIN books b ON v.book_number = b.book_number 
-      WHERE $whereClause
-    ''', args); // Batasan LIMIT dihapus sesuai request
+  // --- UTILS ---
+  String _cleanText(String text) {
+    return text.replaceAll(RegExp(r'<[^>]*>|\\f.*?\\f|\\.*?\\'), '').trim();
   }
 
+  String _abbr(String name) {
+    if (name.length <= 4) return name.toUpperCase();
+    return name.substring(0, 3).toUpperCase();
+  }
+
+  // --- FITUR PENCARIAN (HIGHLIGHT & FILTER) ---
   void _showSearch() {
     showModalBottomSheet(
       context: context,
@@ -136,29 +116,25 @@ class _AlkitabPageState extends State<AlkitabPage> {
               TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: "Cari kata...",
+                  hintText: "Cari kata kunci...",
                   prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchController.clear(); setST(() {}); }),
+                  suffixIcon: IconButton(icon: const Icon(Icons.clear), 
+                      onPressed: () { _searchController.clear(); setST(() {}); }),
                 ),
                 onChanged: (_) => setST(() {}),
               ),
               const SizedBox(height: 10),
-              // Filter Chips PL/PB/Semua
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
-                  children: ["SEMUA", "PL", "PB", "KITAB"].map((scope) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(scope == "KITAB" ? _shortenBookName(_bookName) : scope),
-                        selected: _searchScope == scope,
-                        onSelected: (bool selected) {
-                          if (selected) setST(() => _searchScope = scope);
-                        },
-                      ),
-                    );
-                  }).toList(),
+                  children: ["SEMUA", "PL", "PB", "KITAB"].map((scope) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(scope == "KITAB" ? _abbr(_bookName) : scope),
+                      selected: _searchScope == scope,
+                      onSelected: (selected) { if (selected) setST(() => _searchScope = scope); },
+                    ),
+                  )).toList(),
                 ),
               ),
               const Divider(),
@@ -166,30 +142,24 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 child: FutureBuilder<List<Map<String, dynamic>>>(
                   future: _searchBible(_searchController.text),
                   builder: (context, snapshot) {
-                    if (_searchController.text.isEmpty) return const Center(child: Text("Ketik untuk mencari"));
+                    if (_searchController.text.isEmpty) return const Center(child: Text("Hasil akan muncul di sini..."));
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     final results = snapshot.data!;
-                    return Column(
-                      children: [
-                        Text("Ditemukan ${results.length} hasil", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Expanded(
-                          child: ListView.builder(
-                            itemCount: results.length,
-                            itemBuilder: (context, i) {
-                              var res = results[i];
-                              return ListTile(
-                                title: Text("${_shortenBookName(res['long_name'])} ${res['chapter']}:${res['verse']}", style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold)),
-                                subtitle: Text(_cleanText(res['text'])),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  setState(() { _bookId = res['book_number']; _chapter = res['chapter']; });
-                                  _loadData(scrollToVerse: res['verse']);
-                                },
-                              );
-                            },
-                          ),
-                        ),
-                      ],
+                    return ListView.builder(
+                      itemCount: results.length,
+                      itemBuilder: (context, i) {
+                        var res = results[i];
+                        return ListTile(
+                          title: Text("${_abbr(res['long_name'])} ${res['chapter']}:${res['verse']}", 
+                              style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold)),
+                          subtitle: _highlightedWidget(_cleanText(res['text']), _searchController.text),
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() { _bookId = res['book_number']; _chapter = res['chapter']; });
+                            _loadData(scrollToVerse: res['verse']);
+                          },
+                        );
+                      },
                     );
                   },
                 ),
@@ -201,73 +171,124 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // --- PICKER TERPISAH PL & PB ---
-  void _showTopPicker() {
-    showGeneralDialog(
+  Future<List<Map<String, dynamic>>> _searchBible(String query) async {
+    if (query.length < 3) return [];
+    String where = "v.text LIKE ?";
+    List<dynamic> args = ['%$query%'];
+    if (_searchScope == "PL") where += " AND v.book_number <= 39";
+    if (_searchScope == "PB") where += " AND v.book_number >= 40";
+    if (_searchScope == "KITAB") { where += " AND v.book_number = ?"; args.add(_bookId); }
+
+    return await _db!.rawQuery('SELECT v.*, b.long_name FROM verses v JOIN books b ON v.book_number = b.book_number WHERE $where', args);
+  }
+
+  Widget _highlightedWidget(String text, String query) {
+    if (query.isEmpty || !text.toLowerCase().contains(query.toLowerCase())) return Text(text);
+    List<TextSpan> spans = [];
+    int start = 0;
+    int indexOfHighlight;
+    while ((indexOfHighlight = text.toLowerCase().indexOf(query.toLowerCase(), start)) != -1) {
+      if (indexOfHighlight > start) spans.add(TextSpan(text: text.substring(start, indexOfHighlight)));
+      spans.add(TextSpan(text: text.substring(indexOfHighlight, indexOfHighlight + query.length), 
+          style: const TextStyle(backgroundColor: Colors.yellow, color: Colors.black, fontWeight: FontWeight.bold)));
+      start = indexOfHighlight + query.length;
+    }
+    if (start < text.length) spans.add(TextSpan(text: text.substring(start)));
+    return RichText(text: TextSpan(style: const TextStyle(color: Colors.black87), children: spans));
+  }
+
+  // --- ALUR PEMILIH (KITAB > PASAL > AYAT) ---
+  void _showBiblePicker() {
+    int currentStep = 0; // 0: Kitab, 1: Pasal, 2: Ayat
+    int? tempBookId;
+    String tempBookName = "";
+    int? tempChapter;
+    int maxChap = 0;
+    int maxVerse = 0;
+
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: "Tutup",
-      pageBuilder: (context, a1, a2) => StatefulBuilder(
-        builder: (context, setST) => DefaultTabController(
-          length: 2,
-          child: Scaffold(
-            appBar: AppBar(
-              backgroundColor: Colors.indigo,
-              title: const Text("Pilih Kitab"),
-              bottom: const TabBar(
-                tabs: [Tab(text: "PERJANJIAN LAMA"), Tab(text: "PERJANJIAN BARU")],
-                indicatorColor: Colors.white,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setST) => Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Text(currentStep == 0 ? "PILIH KITAB" : (currentStep == 1 ? "$tempBookName - PASAL" : "$tempBookName $tempChapter - AYAT"),
+                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+              const SizedBox(height: 15),
+              Expanded(
+                child: currentStep == 0 
+                  ? _buildBookList(setST, (id, name) async {
+                      tempBookId = id; tempBookName = name;
+                      var res = await _db!.rawQuery('SELECT MAX(chapter) as m FROM verses WHERE book_number = ?', [id]);
+                      maxChap = res.first['m'] as int;
+                      setST(() => currentStep = 1);
+                    })
+                  : (currentStep == 1 
+                      ? _buildGrid(maxChap, (val) async {
+                          tempChapter = val;
+                          var res = await _db!.rawQuery('SELECT MAX(verse) as m FROM verses WHERE book_number = ? AND chapter = ?', [tempBookId, val]);
+                          maxVerse = res.first['m'] as int;
+                          setST(() => currentStep = 2);
+                        })
+                      : _buildGrid(maxVerse, (val) {
+                          setState(() { _bookId = tempBookId!; _chapter = tempChapter!; });
+                          _loadData(scrollToVerse: val);
+                          Navigator.pop(context);
+                        })
+                    ),
               ),
-            ),
-            body: TabBarView(
-              children: [
-                _buildGridKitab(_allBooks.where((b) => b['book_number'] <= 39).toList()),
-                _buildGridKitab(_allBooks.where((b) => b['book_number'] > 39).toList()),
-              ],
-            ),
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text("BATAL")),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildGridKitab(List<Map<String, dynamic>> books) {
+  Widget _buildBookList(StateSetter setST, Function(int, String) onSelect) {
+    var pl = _allBooks.where((b) => (b['book_number'] as int) <= 39).toList();
+    var pb = _allBooks.where((b) => (b['book_number'] as int) >= 40).toList();
+    return ListView(
+      children: [
+        const Text("PERJANJIAN LAMA", style: TextStyle(color: Colors.pink, fontWeight: FontWeight.bold, fontSize: 11)),
+        _bookGrid(pl, Colors.pink, onSelect),
+        const SizedBox(height: 20),
+        const Text("PERJANJIAN BARU", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 11)),
+        _bookGrid(pb, Colors.blue, onSelect),
+      ],
+    );
+  }
+
+  Widget _bookGrid(List<Map<String, dynamic>> books, Color color, Function(int, String) onSelect) {
     return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2.5, mainAxisSpacing: 8, crossAxisSpacing: 8),
+      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 2, mainAxisSpacing: 8, crossAxisSpacing: 8),
       itemCount: books.length,
-      itemBuilder: (context, i) => ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[200], foregroundColor: Colors.black, elevation: 0),
-        onPressed: () async {
-          int bid = books[i]['book_number'];
-          var res = await _db!.rawQuery('SELECT MAX(chapter) as m FROM verses WHERE book_number = ?', [bid]);
-          int maxChap = res.first['m'] as int;
-          _showChapterPicker(bid, books[i]['long_name'], maxChap);
-        },
-        child: Text(_shortenBookName(books[i]['long_name']), textAlign: TextAlign.center, style: const TextStyle(fontSize: 11)),
+      itemBuilder: (context, i) => InkWell(
+        onTap: () => onSelect(books[i]['book_number'], books[i]['long_name']),
+        child: Container(
+          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(5)),
+          alignment: Alignment.center,
+          child: Text(_abbr(books[i]['long_name']), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+        ),
       ),
     );
   }
 
-  void _showChapterPicker(int bid, String bname, int max) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10),
-        itemCount: max,
-        itemBuilder: (context, i) => InkWell(
-          onTap: () {
-            setState(() { _bookId = bid; _chapter = i + 1; });
-            _loadData();
-            Navigator.pop(context); // Tutup pasal
-            Navigator.pop(context); // Tutup kitab
-          },
-          child: Container(
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(8)),
-            child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
+  Widget _buildGrid(int count, Function(int) onSelect) {
+    return GridView.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10),
+      itemCount: count,
+      itemBuilder: (context, i) => InkWell(
+        onTap: () => onSelect(i + 1),
+        child: Container(
+          decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
+          alignment: Alignment.center, child: Text("${i + 1}"),
         ),
       ),
     );
@@ -277,11 +298,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.indigo, foregroundColor: Colors.white,
         title: GestureDetector(
-          onTap: _showTopPicker,
-          child: Row(children: [Text("${_shortenBookName(_bookName)} $_chapter"), const Icon(Icons.arrow_drop_down)]),
+          onTap: _showBiblePicker,
+          child: Row(children: [Text("${_abbr(_bookName)} $_chapter"), const Icon(Icons.arrow_drop_down)]),
         ),
         actions: [IconButton(icon: const Icon(Icons.search), onPressed: _showSearch)],
       ),
@@ -295,10 +315,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (pTitle != null) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text(pTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontStyle: FontStyle.italic, color: Colors.brown))),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: RichText(text: TextSpan(style: const TextStyle(fontSize: 18, color: Colors.black87), children: [
+              if (pTitle != null) Padding(padding: const EdgeInsets.only(top: 15, bottom: 5), 
+                  child: Text(pTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontStyle: FontStyle.italic, color: Colors.brown))),
+              Padding(padding: const EdgeInsets.symmetric(vertical: 6), 
+                child: RichText(text: TextSpan(style: const TextStyle(fontSize: 18, color: Colors.black87, height: 1.6), children: [
                   TextSpan(text: "${v['verse']} ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)),
                   TextSpan(text: _cleanText(v['text'])),
                 ])),

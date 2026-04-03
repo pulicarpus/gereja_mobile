@@ -14,14 +14,13 @@ class AlkitabPage extends StatefulWidget {
 class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
-  Map<int, String> _pericopes = {};
   List<Map<String, dynamic>> _booksOT = [];
   List<Map<String, dynamic>> _booksNT = [];
   bool _isLoading = true;
   late TabController _tabController;
 
   String _currentVersion = "TB";
-  int _selectedBookRawId = 1; // ID asli dari DB (bisa 1 atau 10)
+  int _bookIndex = 1; // 1 = Kejadian, dst.
   int _chapter = 1;
   String _bookName = "KEJADIAN";
 
@@ -54,50 +53,29 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
       if (!await databaseExists(path)) {
         await Directory(p.dirname(path)).create(recursive: true);
         ByteData data = await rootBundle.load("assets/$fileName");
-        List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-        await File(path).writeAsBytes(bytes, flush: true);
+        await File(path).writeAsBytes(data.buffer.asUint8List(), flush: true);
       }
       _db = await openDatabase(path);
-      await _loadBooksGrid();
+      await _loadBooks();
       await _loadVerses();
     } catch (e) {
-      debugPrint("Error Init DB: $e");
+      debugPrint("Gagal buka DB: $e");
     }
   }
 
-  Future<void> _loadBooksGrid() async {
+  Future<void> _loadBooks() async {
     if (_db == null) return;
-    try {
-      final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'book_number ASC');
-      List<Map<String, dynamic>> ot = [];
-      List<Map<String, dynamic>> nt = [];
-
-      // Cari tahu ID kitab yang sedang dipilih di DB baru ini
-      // Kita cari berdasarkan nama kitab agar sinkron saat pindah versi
-      int newRawId = _selectedBookRawId;
-
-      for (int i = 0; i < books.length; i++) {
+    final List<Map<String, dynamic>> books = await _db!.query('books');
+    List<Map<String, dynamic>> ot = [];
+    List<Map<String, dynamic>> nt = [];
+    for (int i = 0; i < books.length; i++) {
+      if (i < 39) ot.add(books[i]); else nt.add(books[i]);
+      if ((i + 1) == _bookIndex) {
         var b = books[i];
-        int rawId = b['book_number'] ?? b['book_id'] ?? b['b'] ?? 0;
-        String name = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? '').toString().toUpperCase();
-
-        // Jika nama kitab cocok dengan yang sebelumnya, update rawId-nya
-        if (name.contains(_bookName) || _bookName.contains(name)) {
-          newRawId = rawId;
-        }
-
-        if (i < 39) { ot.add(b); } else { nt.add(b); }
+        _bookName = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? b['name'] ?? "KITAB").toString().toUpperCase();
       }
-
-      setState(() {
-        _booksOT = ot;
-        _booksNT = nt;
-        _selectedBookRawId = newRawId;
-        _tabController.index = (ot.any((element) => (element['book_number'] ?? element['book_id'] ?? element['b']) == _selectedBookRawId)) ? 0 : 1;
-      });
-    } catch (e) {
-      debugPrint("Error Load Books: $e");
     }
+    setState(() { _booksOT = ot; _booksNT = nt; });
   }
 
   Future<void> _loadVerses() async {
@@ -105,212 +83,123 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     try {
       setState(() => _isLoading = true);
       
-      // 1. SCAN TABEL
-      var tableCheck = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
-      String activeTable = tableCheck.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
+      // 1. CARI TABEL (Deteksi 'verse', 'verses', atau 'bible')
+      var tables = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
+      String table = tables.any((t) => t['name'] == 'verse') ? 'verse' : 
+                     tables.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
       
-      // 2. SCAN KOLOM
-      List<Map<String, dynamic>> columnInfo = await _db!.rawQuery("PRAGMA table_info($activeTable)");
-      String bookCol = columnInfo.any((c) => c['name'] == 'b') ? 'b' : 
-                       columnInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
-      String chapterCol = columnInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
-      String verseCol = columnInfo.any((c) => c['name'] == 'v') ? 'v' : 'verse';
-      String textCol = columnInfo.any((c) => c['name'] == 'content') ? 'content' :
-                       columnInfo.any((c) => c['name'] == 't') ? 't' : 'text';
+      // 2. CARI KOLOM
+      List<Map<String, dynamic>> cols = await _db!.rawQuery("PRAGMA table_info($table)");
+      
+      // Cek kolom Kitab
+      String bCol = cols.any((c) => c['name'] == 'book_id') ? 'book_id' :
+                   cols.any((c) => c['name'] == 'book') ? 'book' : 
+                   cols.any((c) => c['name'] == 'b') ? 'b' : 'book_number';
+      
+      // Cek kolom Pasal & Ayat
+      String cCol = cols.any((c) => c['name'] == 'chapter') ? 'chapter' : 'c';
+      String vNumCol = cols.any((c) => c['name'] == 'verse_number') ? 'verse_number' :
+                       cols.any((c) => c['name'] == 'verse') && table != 'verse' ? 'verse' : 'v';
+      
+      // Cek kolom Teks (Di KJV Bos namanya 'verse')
+      String tCol = (table == 'verse' && cols.any((c) => c['name'] == 'verse')) ? 'verse' :
+                    cols.any((c) => c['name'] == 'content') ? 'content' :
+                    cols.any((c) => c['name'] == 't') ? 't' : 'text';
 
-      final List<Map<String, dynamic>> verses = await _db!.query(
-          activeTable, 
-          where: '$bookCol = ? AND $chapterCol = ?', 
-          whereArgs: [_selectedBookRawId, _chapter], 
-          orderBy: '$verseCol ASC'
+      // Logika ID (TB pakai ID*10, KJV pakai 1-66)
+      int targetId = (bCol == 'book_number') ? _bookIndex * 10 : _bookIndex;
+
+      final List<Map<String, dynamic>> result = await _db!.query(
+        table,
+        where: '$bCol = ? AND $cCol = ?',
+        whereArgs: [targetId, _chapter],
+        orderBy: '$vNumCol ASC'
       );
-      
-      // Load Perikop
-      Map<int, String> storyMap = {};
-      try {
-        var storyTable = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='stories'");
-        if (storyTable.isNotEmpty) {
-          final List<Map<String, dynamic>> stories = await _db!.query('stories', where: '$bookCol = ? AND $chapterCol = ?', whereArgs: [_selectedBookRawId, _chapter]);
-          for (var s in stories) {
-            int vNum = s['verse'] ?? s['v'] ?? 0;
-            storyMap[vNum] = s['title'] ?? s['t'] ?? "";
-          }
-        }
-      } catch (_) {}
 
       setState(() {
-        _verses = verses.map((v) => {'verse': v[verseCol], 'text': v[textCol]}).toList();
-        _pericopes = storyMap;
+        _verses = result.map((v) => {
+          'number': v[vNumCol],
+          'text': v[tCol].toString().replaceAll(RegExp(r'<[^>]*>'), '').trim()
+        }).toList();
         _isLoading = false;
       });
     } catch (e) {
-      setState(() { _isLoading = false; _verses = []; });
-      debugPrint("Error Query: $e");
+      debugPrint("Gagal load ayat: $e");
+      setState(() { _verses = []; _isLoading = false; });
     }
   }
 
-  // --- MODAL PICKER ---
-  void _showMainNavigation() {
+  // --- UI PICKER SEDERHANA ---
+  void _showPicker() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) => _buildGridPickerModal(ctx),
-    );
-  }
-
-  Widget _buildGridPickerModal(BuildContext modalContext) {
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
-      ),
-      child: Column(
-        children: [
-          const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text("PILIH KITAB", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-          TabBar(
-            controller: _tabController,
-            labelColor: Colors.pinkAccent,
-            indicatorColor: Colors.pinkAccent,
-            tabs: const [Tab(text: "PERJANJIAN LAMA"), Tab(text: "PERJANJIAN BARU")],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [_buildBookGrid(modalContext, _booksOT), _buildBookGrid(modalContext, _booksNT)],
-            ),
-          ),
-          TextButton(onPressed: () => Navigator.pop(modalContext), child: const Text("BATAL")),
-          const SizedBox(height: 10),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBookGrid(BuildContext modalContext, List<Map<String, dynamic>> books) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(15),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1.8),
-      itemCount: books.length,
-      itemBuilder: (context, i) {
-        final b = books[i];
-        String sName = (b['short_name'] ?? b['long_name'] ?? b['n'] ?? '').toString().toUpperCase();
-        if (sName.length > 4) sName = sName.substring(0, 4);
-        return InkWell(
-          onTap: () {
-            Navigator.pop(modalContext);
-            _handleBookSelection(b);
-          },
-          child: Container(
-            decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(8)),
-            child: Center(child: Text(sName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-          ),
-        );
-      },
-    );
-  }
-
-  Future<void> _handleBookSelection(Map<String, dynamic> bookData) async {
-    int rawId = bookData['book_number'] ?? bookData['book_id'] ?? bookData['b'] ?? 0;
-    
-    // Cari Max Chapter
-    var tableCheck = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
-    String activeTable = tableCheck.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
-    List<Map<String, dynamic>> colInfo = await _db!.rawQuery("PRAGMA table_info($activeTable)");
-    String bookCol = colInfo.any((c) => c['name'] == 'b') ? 'b' : 
-                     colInfo.any((c) => c['name'] == 'book_number') ? 'book_number' : 'book_id';
-    String chapterCol = colInfo.any((c) => c['name'] == 'c') ? 'c' : 'chapter';
-
-    int maxChapter = 50;
-    try {
-      var res = await _db!.rawQuery("SELECT MAX($chapterCol) as max FROM $activeTable WHERE $bookCol = ?", [rawId]);
-      if (res.isNotEmpty && res.first['max'] != null) maxChapter = res.first['max'] as int;
-    } catch (_) {}
-
-    _showGridNumberPicker(
-      title: "${bookData['long_name'] ?? bookData['n']} - PASAL",
-      itemCount: maxChapter,
-      onSelected: (selectedChapter) {
-        setState(() {
-          _selectedBookRawId = rawId;
-          _chapter = selectedChapter;
-          _bookName = (bookData['short_name'] ?? bookData['long_name'] ?? bookData['n']).toString().toUpperCase();
-        });
-        _loadVerses();
-      },
-    );
-  }
-
-  void _showGridNumberPicker({required String title, required int itemCount, required Function(int) onSelected}) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20))),
+        height: MediaQuery.of(context).size.height * 0.8,
         child: Column(
           children: [
-            Padding(padding: const EdgeInsets.symmetric(vertical: 20), child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+            TabBar(controller: _tabController, tabs: const [Tab(text: "PL"), Tab(text: "PB")]),
             Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.all(15),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10),
-                itemCount: itemCount,
-                itemBuilder: (context, i) => InkWell(
-                  onTap: () { Navigator.pop(ctx); onSelected(i + 1); },
-                  child: Container(decoration: BoxDecoration(color: const Color(0xFFF5F5F7), borderRadius: BorderRadius.circular(8)), child: Center(child: Text("${i + 1}", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)))),
-                ),
+              child: TabBarView(
+                controller: _tabController,
+                children: [_grid(0, _booksOT), _grid(39, _booksNT)],
               ),
             ),
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("BATAL")),
           ],
         ),
       ),
     );
   }
 
+  Widget _grid(int offset, List<Map<String, dynamic>> list) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(10),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, childAspectRatio: 2),
+      itemCount: list.length,
+      itemBuilder: (ctx, i) {
+        var b = list[i];
+        String name = (b['short_name'] ?? b['n'] ?? b['name'] ?? "KTB").toString();
+        return ActionChip(
+          label: Text(name, style: const TextStyle(fontSize: 10)),
+          onPressed: () {
+            Navigator.pop(ctx);
+            _bookIndex = offset + i + 1;
+            _bookName = name.toUpperCase();
+            _chapter = 1;
+            _loadVerses();
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: InkWell(
-          onTap: _showMainNavigation,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text("$_bookName $_chapter", style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold)),
-            const Icon(Icons.arrow_drop_down, color: Colors.indigo),
-          ]),
-        ),
+        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter")),
         actions: [
           DropdownButton<String>(
             value: _currentVersion,
-            underline: const SizedBox(),
-            onChanged: (v) { if (v != null) { setState(() => _currentVersion = v); _initDatabase(); } },
-            items: ["TB", "TL", "KJV"].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-          ),
-          const SizedBox(width: 15),
+            items: ["TB", "TL", "KJV"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+            onChanged: (v) { if (v != null) { setState(() { _currentVersion = v; }); _initDatabase(); } },
+          )
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _verses.length,
-              itemBuilder: (context, index) {
-                final v = _verses[index];
-                final String? perikop = _pericopes[v['verse']];
-                return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  if (perikop != null) Padding(padding: const EdgeInsets.only(top: 25, bottom: 10), child: Text(perikop, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.brown))),
-                  Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: RichText(text: TextSpan(style: const TextStyle(fontSize: 17, color: Colors.black87, height: 1.5), children: [
-                    TextSpan(text: "${v['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)),
-                    TextSpan(text: v['text'].toString().replaceAll(RegExp(r'<[^>]*>'), '').trim()),
-                  ]))),
-                ]);
-              },
-            ),
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
+        itemCount: _verses.length,
+        padding: const EdgeInsets.all(15),
+        itemBuilder: (ctx, i) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: RichText(text: TextSpan(
+            style: const TextStyle(color: Colors.black, fontSize: 16),
+            children: [
+              TextSpan(text: "${_verses[i]['number']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+              TextSpan(text: _verses[i]['text']),
+            ]
+          )),
+        ),
+      ),
     );
   }
 }

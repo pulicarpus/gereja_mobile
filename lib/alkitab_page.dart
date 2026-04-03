@@ -20,7 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   late TabController _tabController;
 
   String _currentVersion = "TB";
-  int _selectedBookId = 1; 
+  int _activeBookId = 1; 
   int _chapter = 1;
   String _bookName = "KEJADIAN";
 
@@ -63,8 +63,9 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   Future<void> _loadBooks() async {
     if (_db == null) return;
     try {
-      // Ambil data dari tabel 'books'
+      // Ambil dari tabel 'books'
       final List<Map<String, dynamic>> books = await _db!.query('books', orderBy: 'id ASC');
+      
       List<Map<String, dynamic>> ot = [];
       List<Map<String, dynamic>> nt = [];
       
@@ -72,19 +73,14 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
         if (i < 39) ot.add(books[i]); else nt.add(books[i]);
       }
 
-      // Cari kitab yang cocok (berdasarkan urutan index supaya aman antar versi)
-      // Kalau TB pindah ke KJV, kita pakai urutan ke-N
-      int bookIndex = _selectedBookId > 66 ? 1 : _selectedBookId; 
-      // Tapi khusus TB, ID-nya sering dikali 10, kita normalisasi dulu
-      if (_selectedBookId % 10 == 0 && _selectedBookId <= 660) bookIndex = _selectedBookId ~/ 10;
-
-      var currentBook = (bookIndex <= books.length) ? books[bookIndex - 1] : books[0];
+      // Cari nama kitab yang aktif biar judul di atas bener
+      var b = books.firstWhere((e) => e['id'] == _activeBookId, orElse: () => books.first);
 
       setState(() {
         _booksOT = ot;
         _booksNT = nt;
-        _selectedBookId = currentBook['id'];
-        _bookName = (currentBook['name'] ?? currentBook['short_name'] ?? "KITAB").toString().toUpperCase();
+        _bookName = (b['name'] ?? b['short_name'] ?? "KITAB").toString().toUpperCase();
+        _isLoading = false;
       });
     } catch (e) {
       debugPrint("Gagal load books: $e");
@@ -96,46 +92,47 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     try {
       setState(() => _isLoading = true);
       
-      // 1. CEK NAMA TABEL (Penting: KJV Bos pakai 'verse', TB pakai 'verses')
+      // Deteksi Tabel: KJV pakai 'verse', TB/TL pakai 'verses'
       var tables = await _db!.rawQuery("SELECT name FROM sqlite_master WHERE type='table'");
-      String activeTable = tables.any((t) => t['name'] == 'verse') ? 'verse' : 
-                          tables.any((t) => t['name'] == 'verses') ? 'verses' : 'bible';
+      String activeTable = tables.any((t) => t['name'] == 'verse') ? 'verse' : 'verses';
       
-      // 2. CEK NAMA KOLOM
+      // Deteksi Kolom
       List<Map<String, dynamic>> cols = await _db!.rawQuery("PRAGMA table_info($activeTable)");
       
+      // Kolom Book: TB pakai book_number, KJV pakai book_id
       String bCol = cols.any((c) => c['name'] == 'book_id') ? 'book_id' : 'book_number';
-      String vCol = cols.any((c) => c['name'] == 'number') ? 'number' : 
-                    cols.any((c) => c['name'] == 'verse_number') ? 'verse_number' : 'verse';
-      String tCol = cols.any((c) => c['name'] == 'verse') && activeTable == 'verse' ? 'verse' : 
-                    cols.any((c) => c['name'] == 'text') ? 'text' : 'content';
+      // Kolom Ayat: KJV pakai number, TB pakai verse
+      String vCol = cols.any((c) => c['name'] == 'number') ? 'number' : 'verse';
+      // Kolom Teks: INI PENYEBAB KOSONG! KJV teksnya di kolom 'verse', TB di kolom 'text'
+      String tCol = (activeTable == 'verse' && cols.any((c) => c['name'] == 'verse')) ? 'verse' : 'text';
 
-      // 3. QUERY
+      // Khusus TB/TL, ID-nya harus dikali 10 (misal: Kejadian = 10)
+      int queryId = (bCol == 'book_number') ? (_activeBookId <= 66 ? _activeBookId * 10 : _activeBookId) : _activeBookId;
+
       final List<Map<String, dynamic>> result = await _db!.query(
         activeTable,
         where: '$bCol = ? AND chapter = ?',
-        whereArgs: [_selectedBookId, _chapter],
+        whereArgs: [queryId, _chapter],
         orderBy: '$vCol ASC'
       );
 
       setState(() {
         _verses = result.map((row) => {
           'num': row[vCol],
-          'txt': _clean(row[tCol]),
+          'txt': _cleanText(row[tCol])
         }).toList();
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint("Query Error: $e");
       setState(() { _verses = []; _isLoading = false; });
     }
   }
 
-  String _clean(dynamic text) {
+  String _cleanText(dynamic text) {
     if (text == null) return "";
     return text.toString()
-        .replaceAll(RegExp(r'<[^>]*>'), '') // Hapus HTML
-        .replaceAll(RegExp(r'\{[^}]*\}'), '') // Hapus tag kurung kurawal
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .replaceAll(RegExp(r'\{[^}]*\}'), '')
         .trim();
   }
 
@@ -143,36 +140,49 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => SizedBox(
-        height: MediaQuery.of(context).size.height * 0.8,
-        child: Column(
-          children: [
-            TabBar(controller: _tabController, labelColor: Colors.blue, tabs: const [Tab(text: "PL"), Tab(text: "PB")]),
-            Expanded(
-              child: TabBarView(
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => StatefulBuilder( // PENTING: Pake ini supaya GridView kelihatan
+        builder: (context, setModalState) => SizedBox(
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: Column(
+            children: [
+              TabBar(
                 controller: _tabController,
-                children: [_grid(_booksOT), _grid(_booksNT)],
+                labelColor: Colors.blue,
+                unselectedLabelColor: Colors.grey,
+                tabs: const [Tab(text: "PL"), Tab(text: "PB")]
               ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [_gridKitab(_booksOT), _gridKitab(_booksNT)],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _grid(List<Map<String, dynamic>> data) {
+  Widget _gridKitab(List<Map<String, dynamic>> data) {
+    if (data.isEmpty) return const Center(child: Text("Memuat Kitab..."));
     return GridView.builder(
-      padding: const EdgeInsets.all(10),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, childAspectRatio: 2.5),
+      padding: const EdgeInsets.all(15),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3, childAspectRatio: 2.2, mainAxisSpacing: 10, crossAxisSpacing: 10
+      ),
       itemCount: data.length,
       itemBuilder: (ctx, i) {
-        String name = data[i]['name'] ?? "KITAB";
+        var b = data[i];
+        String name = (b['name'] ?? b['short_name'] ?? "KITAB").toString();
         return ActionChip(
-          label: Text(name, style: const TextStyle(fontSize: 10)),
+          label: SizedBox(width: double.infinity, child: Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11))),
           onPressed: () {
             Navigator.pop(ctx);
             setState(() {
-              _selectedBookId = data[i]['id'];
+              _activeBookId = b['id'];
               _bookName = name.toUpperCase();
               _chapter = 1;
             });
@@ -186,29 +196,34 @@ class _AlkitabPageState extends State<AlkitabPage> with TickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter")),
+        backgroundColor: Colors.white,
+        elevation: 1,
+        title: InkWell(onTap: _showPicker, child: Text("$_bookName $_chapter", style: const TextStyle(color: Colors.blue))),
         actions: [
           DropdownButton<String>(
             value: _currentVersion,
+            underline: const SizedBox(),
             onChanged: (v) { if (v != null) { setState(() => _currentVersion = v); _initDatabase(); } },
             items: ["TB", "TL", "KJV"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
           ),
+          const SizedBox(width: 10),
         ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator()) 
           : _verses.isEmpty 
-              ? Center(child: Text("Zonk di ID: $_selectedBookId\nCoba pilih kitab lagi."))
+              ? Center(child: Text("Zonk di ID: $_activeBookId\nCoba pilih kitab lagi."))
               : ListView.builder(
                   itemCount: _verses.length,
                   padding: const EdgeInsets.all(15),
                   itemBuilder: (ctx, i) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text.rich(TextSpan(children: [
-                      TextSpan(text: "${_verses[i]['num']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                      TextSpan(text: _verses[i]['txt']),
-                    ], style: const TextStyle(fontSize: 17))),
+                      TextSpan(text: "${_verses[i]['num']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue, fontSize: 18)),
+                      TextSpan(text: "${_verses[i]['txt']}", style: const TextStyle(fontSize: 18)),
+                    ])),
                   ),
                 ),
     );

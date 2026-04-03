@@ -36,6 +36,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initDatabase();
   }
 
+  String _shortenBookName(String name) {
+    return name
+      .replaceAll("Surat Paulus Yang Pertama Kepada Jemaat Di ", "1 ")
+      .replaceAll("Surat Paulus Yang Kedua Kepada Jemaat Di ", "2 ")
+      .replaceAll("Surat Paulus Kepada Jemaat Di ", "")
+      .replaceAll("Surat Kepada Orang ", "")
+      .replaceAll("Surat Paulus Kepada ", "")
+      .replaceAll("Surat Yang Pertama Dari ", "1 ")
+      .replaceAll("Surat Yang Kedua Dari ", "2 ")
+      .replaceAll("Surat Yang Ketiga Dari ", "3 ")
+      .replaceAll("Surat Dari ", "")
+      .replaceAll("Injil Menurut ", "")
+      .replaceAll("Kisah Para ", "")
+      .trim();
+  }
+
   Future<void> _initDatabase() async {
     try {
       setState(() => _isLoading = true);
@@ -64,13 +80,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     setState(() => _allBooks = books);
   }
 
-  // Fungsi untuk mendapatkan jumlah Pasal di sebuah Kitab
   Future<int> _getMaxChapter(int bookId) async {
     var res = await _db!.rawQuery('SELECT MAX(chapter) as max FROM verses WHERE book_number = ?', [bookId]);
     return res.first['max'] as int? ?? 1;
   }
 
-  // Fungsi untuk mendapatkan jumlah Ayat di sebuah Pasal
   Future<int> _getMaxVerse(int bookId, int chapter) async {
     var res = await _db!.rawQuery('SELECT MAX(verse) as max FROM verses WHERE book_number = ? AND chapter = ?', [bookId, chapter]);
     return res.first['max'] as int? ?? 1;
@@ -107,7 +121,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
       if (scrollToVerse != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          _scrollController.jumpTo((scrollToVerse - 1) * 80.0); 
+          _scrollController.jumpTo((scrollToVerse - 1) * 85.0); 
         });
       }
     } catch (e) {
@@ -115,55 +129,85 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  void _showBiblePicker() async {
+  // --- TAMPILAN PICKER DARI ATAS (FULL SCREEN DIALOG) ---
+  void _showTopPicker() async {
     int tempBookId = _bookId;
     int tempChapter = _chapter;
-    int currentStep = 0; 
+    int currentStep = 0; // 0: Kitab, 1: Pasal, 2: Ayat
     int maxChapters = await _getMaxChapter(tempBookId);
     int maxVerses = await _getMaxVerse(tempBookId, tempChapter);
 
-    showModalBottomSheet(
+    showGeneralDialog(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
+      barrierDismissible: true,
+      barrierLabel: "Close",
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, anim1, anim2) {
         return StatefulBuilder(
           builder: (context, setModalState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.8,
-              padding: const EdgeInsets.all(16),
-              child: Column(
+            // Pisahkan PL dan PB
+            List<Map<String, dynamic>> pl = _allBooks.where((b) => b['book_number'] <= 39).toList();
+            List<Map<String, dynamic>> pb = _allBooks.where((b) => b['book_number'] > 39).toList();
+
+            return Scaffold(
+              backgroundColor: Colors.white,
+              appBar: AppBar(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                leading: currentStep > 0 
+                  ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setModalState(() => currentStep--))
+                  : IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                title: Text(currentStep == 0 ? "Pilih Kitab" : currentStep == 1 ? "Pilih Pasal" : "Pilih Ayat"),
+              ),
+              body: Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      currentStep > 0 
-                        ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setModalState(() => currentStep--))
-                        : const SizedBox(width: 48),
-                      Text(currentStep == 0 ? "Pilih Kitab" : currentStep == 1 ? "Pilih Pasal" : "Pilih Ayat", 
-                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                    ],
-                  ),
-                  const Divider(),
                   Expanded(
                     child: currentStep == 0
-                        ? _buildBookGrid(setModalState, (id) async {
-                            tempBookId = id;
-                            maxChapters = await _getMaxChapter(id);
-                            setModalState(() => currentStep = 1);
-                          })
-                        : currentStep == 1
-                            ? _buildNumberGrid(maxChapters, (n) async {
-                                tempChapter = n;
-                                maxVerses = await _getMaxVerse(tempBookId, n);
-                                setModalState(() => currentStep = 2);
-                              })
-                            : _buildNumberGrid(maxVerses, (n) {
-                                setState(() { _bookId = tempBookId; _chapter = tempChapter; _isLoading = true; });
-                                _loadData(scrollToVerse: n);
-                                Navigator.pop(context);
+                        ? ListView(
+                            padding: const EdgeInsets.all(16),
+                            children: [
+                              _buildSectionTitle("PERJANJIAN LAMA"),
+                              _buildBookGrid(pl, setModalState, (id) async {
+                                tempBookId = id;
+                                maxChapters = await _getMaxChapter(id);
+                                setModalState(() => currentStep = 1);
                               }),
+                              const SizedBox(height: 20),
+                              _buildSectionTitle("PERJANJIAN BARU"),
+                              _buildBookGrid(pb, setModalState, (id) async {
+                                tempBookId = id;
+                                maxChapters = await _getMaxChapter(id);
+                                setModalState(() => currentStep = 1);
+                              }),
+                            ],
+                          )
+                        : GridView.builder(
+                            padding: const EdgeInsets.all(16),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10,
+                            ),
+                            itemCount: currentStep == 1 ? maxChapters : maxVerses,
+                            itemBuilder: (context, i) {
+                              return InkWell(
+                                onTap: () async {
+                                  if (currentStep == 1) {
+                                    tempChapter = i + 1;
+                                    maxVerses = await _getMaxVerse(tempBookId, tempChapter);
+                                    setModalState(() => currentStep = 2);
+                                  } else {
+                                    setState(() { _bookId = tempBookId; _chapter = tempChapter; _isLoading = true; });
+                                    _loadData(scrollToVerse: i + 1);
+                                    Navigator.pop(context);
+                                  }
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  alignment: Alignment.center,
+                                  child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                ),
+                              );
+                            },
+                          ),
                   ),
                 ],
               ),
@@ -171,41 +215,38 @@ class _AlkitabPageState extends State<AlkitabPage> {
           },
         );
       },
-    );
-  }
-
-  Widget _buildBookGrid(StateSetter setModalState, Function(int) onSelect) {
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3, childAspectRatio: 2.2, mainAxisSpacing: 8, crossAxisSpacing: 8,
-      ),
-      itemCount: _allBooks.length,
-      itemBuilder: (context, i) {
-        return InkWell(
-          onTap: () => onSelect(_allBooks[i]['book_number']),
-          child: Container(
-            decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
-            alignment: Alignment.center,
-            child: Text(_allBooks[i]['short_name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-          ),
+      transitionBuilder: (context, anim1, anim2, child) {
+        return SlideTransition(
+          position: Tween(begin: const Offset(0, -1), end: const Offset(0, 0)).animate(anim1),
+          child: child,
         );
       },
     );
   }
 
-  Widget _buildNumberGrid(int max, Function(int) onSelect) {
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.2)),
+    );
+  }
+
+  Widget _buildBookGrid(List<Map<String, dynamic>> books, StateSetter setModalState, Function(int) onSelect) {
     return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5, mainAxisSpacing: 8, crossAxisSpacing: 8,
+        crossAxisCount: 3, childAspectRatio: 2.4, mainAxisSpacing: 8, crossAxisSpacing: 8,
       ),
-      itemCount: max,
+      itemCount: books.length,
       itemBuilder: (context, i) {
+        String displayTitle = _shortenBookName(books[i]['long_name']);
         return InkWell(
-          onTap: () => onSelect(i + 1),
+          onTap: () => onSelect(books[i]['book_number']),
           child: Container(
-            decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+            decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)),
             alignment: Alignment.center,
-            child: Text("${i + 1}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+            child: Text(displayTitle, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
           ),
         );
       },
@@ -217,14 +258,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         title: GestureDetector(
-          onTap: _showBiblePicker,
+          onTap: _showTopPicker,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text("$_bookName $_chapter", style: const TextStyle(fontSize: 16)),
+                Text("${_shortenBookName(_bookName)} $_chapter", style: const TextStyle(fontSize: 16)),
                 const Icon(Icons.arrow_drop_down),
               ],
             ),
@@ -237,7 +278,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             value: _currentVersion,
             dropdownColor: Colors.indigo,
             underline: const SizedBox(),
-            icon: const Icon(Icons.translate, color: Colors.white),
+            icon: const Icon(Icons.compare_arrows, color: Colors.white),
             onChanged: (v) {
               if (v != null) { setState(() { _currentVersion = v; _db = null; }); _initDatabase(); }
             },

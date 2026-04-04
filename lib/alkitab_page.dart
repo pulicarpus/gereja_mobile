@@ -17,20 +17,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _verses = [];
   List<Map<String, dynamic>> _allBooks = [];
   List<int> _selectedVerses = [];
+  
+  // Cache untuk ikon catatan (Key: Nas, Value: NoteKey)
   Map<String, String> _savedNotes = {}; 
   
   bool _isLoading = true;
-  bool _isSearching = false;
   double _textSize = 18.0;
   String _currentVersion = "TB"; 
-  int _bookId = 10; 
+  int _bookId = 10; // Default Kejadian
   int _chapter = 1;
   String _displayTitle = "Kejadian"; 
 
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchCtrl = TextEditingController();
   late SharedPreferences _prefs;
 
+  // Meta data kitab sama dengan versi sebelumnya...
   final List<Map<String, String>> _bibleMeta = [
     {"abbr": "KEJ", "full": "Kejadian"}, {"abbr": "KEL", "full": "Keluaran"}, {"abbr": "IMA", "full": "Imamat"}, {"abbr": "BIL", "full": "Bilangan"}, {"abbr": "ULA", "full": "Ulangan"},
     {"abbr": "YOS", "full": "Yosua"}, {"abbr": "HAK", "full": "Hakim-hakim"}, {"abbr": "RUT", "full": "Rut"}, {"abbr": "1SAM", "full": "1 Samuel"}, {"abbr": "2SAM", "full": "2 Samuel"},
@@ -54,7 +55,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _initData() async {
-    _prefs = await SharedPreferences.getInstance();
+    // Sesuai dengan nama SharedPreferences di file Kotlin bos
+    _prefs = await SharedPreferences.getInstance(); 
     _textSize = _prefs.getDouble('text_size') ?? 18.0;
     _refreshNotesCache();
     await _initDatabase();
@@ -62,18 +64,20 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _refreshNotesCache() {
     Map<String, String> tempNotes = {};
+    // Sesuai key di Kotlin bos: ALL_NOTE_KEYS
     List<String> keys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+    
     for (String k in keys) {
       String? data = _prefs.getString(k);
-      if (data != null) {
+      if (data != null && data.contains("~|~")) {
         try {
-          String nas = data.split("~|~")[0];
-          String kitabPasal = nas.split(":")[0];
-          List<String> listAyat = nas.split(":")[1].split(",");
-          for (var a in listAyat) {
-            tempNotes["$kitabPasal:$a"] = k; // Simpan KEY catatan di sini
+          String nas = data.split("~|~")[0]; // Ambil Nas (Kejadian 1:1)
+          String kitabPasal = nas.split(":")[0]; // Kejadian 1
+          List<String> ayatList = nas.split(":")[1].split(",");
+          for (var a in ayatList) {
+            tempNotes["$kitabPasal:$a"] = k; 
           }
-        } catch (e) { debugPrint("Error cache: $e"); }
+        } catch (e) { /* Data format lama, abaikan ikon */ }
       }
     }
     setState(() => _savedNotes = tempNotes);
@@ -111,19 +115,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
     });
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollController.jumpTo((scrollToVerse - 1) * 80.0);
+        _scrollController.jumpTo((scrollToVerse - 1) * 85.0);
       });
     }
-  }
-
-  void _bukaEditor(String nas, String isi, {String? existingKey}) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => NoteEditorPage(
-        nas: nas, isiAyat: isi, existingKey: existingKey, prefs: _prefs,
-        onJumpToBible: (nasTarget) => _jumpToVerse(nasTarget),
-      )),
-    ).then((_) => _refreshNotesCache());
   }
 
   void _jumpToVerse(String nas) {
@@ -134,16 +128,41 @@ class _AlkitabPageState extends State<AlkitabPage> {
       List<String> cv = chapVerPart.split(":");
       int bIdx = _bibleMeta.indexWhere((m) => m['full'] == kitabName);
       if (bIdx != -1) {
-        setState(() { _bookId = _allBooks[bIdx]['book_number']; _chapter = int.parse(cv[0]); });
+        setState(() { 
+          _bookId = _allBooks[bIdx]['book_number']; 
+          _chapter = int.parse(cv[0]); 
+        });
         _loadContent(scrollToVerse: int.parse(cv[1].split(",")[0]));
       }
     } catch(e) { debugPrint("Jump error: $e"); }
   }
 
+  void _bukaEditor(String nas, {String? existingKey}) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => NoteEditorPage(
+        nas: nas, existingKey: existingKey, prefs: _prefs,
+        onJumpToBible: (n) => _jumpToVerse(n),
+      )),
+    ).then((_) => _refreshNotesCache());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _buildAppBar(),
+      appBar: AppBar(
+        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
+        title: Text("$_displayTitle $_chapter"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.book), 
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(
+              prefs: _prefs, 
+              onNoteSelected: (k) => _bukaEditor("", existingKey: k)
+            )))
+          ),
+        ],
+      ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : Stack(
         children: [
           ListView.builder(
@@ -167,13 +186,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                       ]))),
                       if (noteKey != null) IconButton(
                         icon: const Icon(Icons.edit_note, color: Colors.orange, size: 28),
-                        onPressed: () {
-                          String? data = _prefs.getString(noteKey);
-                          if(data != null) {
-                            List<String> p = data.split("~|~");
-                            _bukaEditor(p[0], "Klik untuk melihat ayat", existingKey: noteKey);
-                          }
-                        },
+                        onPressed: () => _bukaEditor("", existingKey: noteKey),
                       ),
                     ],
                   ),
@@ -181,102 +194,125 @@ class _AlkitabPageState extends State<AlkitabPage> {
               );
             },
           ),
-          if (_selectedVerses.isNotEmpty) _buildSelectionToolbar(),
+          if (_selectedVerses.isNotEmpty) Positioned(top: 0, left: 0, right: 0, child: Container(
+            color: Colors.indigo[900], 
+            child: Row(children: [
+              IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => setState(() => _selectedVerses.clear())),
+              const Spacer(),
+              IconButton(icon: const Icon(Icons.note_add, color: Colors.white), onPressed: () {
+                _selectedVerses.sort();
+                String nas = "$_displayTitle $_chapter:${_selectedVerses.join(",")}";
+                _bukaEditor(nas);
+                setState(() => _selectedVerses.clear());
+              }),
+            ]),
+          )),
         ],
       ),
     );
   }
-
-  Widget _buildSelectionToolbar() {
-    return Positioned(top: 0, left: 0, right: 0, child: Container(color: Colors.indigo[900], child: Row(children: [
-      IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => setState(() => _selectedVerses.clear())),
-      const Spacer(),
-      IconButton(icon: const Icon(Icons.note_add, color: Colors.white), onPressed: () {
-        _selectedVerses.sort();
-        String nas = "$_displayTitle $_chapter:${_selectedVerses.join(",")}";
-        _bukaEditor(nas, "Ayat terpilih...");
-        setState(() => _selectedVerses.clear());
-      }),
-    ])));
-  }
-
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-      title: Text("$_displayTitle $_chapter"),
-      actions: [
-        IconButton(icon: const Icon(Icons.book), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, onNoteSelected: (k) {
-          String? data = _prefs.getString(k);
-          if(data != null) {
-            List<String> p = data.split("~|~");
-            _bukaEditor(p[0], "Isi Catatan", existingKey: k);
-          }
-        })))),
-      ],
-    );
-  }
 }
 
+// --- HALAMAN EDITOR CATATAN ---
 class NoteEditorPage extends StatefulWidget {
-  final String nas; final String isiAyat; final String? existingKey; final SharedPreferences prefs;
+  final String nas; final String? existingKey; final SharedPreferences prefs;
   final Function(String) onJumpToBible;
-  const NoteEditorPage({super.key, required this.nas, required this.isiAyat, this.existingKey, required this.prefs, required this.onJumpToBible});
+  const NoteEditorPage({super.key, required this.nas, this.existingKey, required this.prefs, required this.onJumpToBible});
   @override State<NoteEditorPage> createState() => _NoteEditorPageState();
 }
 class _NoteEditorPageState extends State<NoteEditorPage> {
   late TextEditingController _titleCtrl, _contentCtrl;
+  String currentNas = "";
+
   @override
   void initState() {
     super.initState();
     String t = "", c = "";
+    currentNas = widget.nas;
     if (widget.existingKey != null) {
-      List<String> p = widget.prefs.getString(widget.existingKey!)!.split("~|~");
-      t = p[1]; c = p[5];
+      String? data = widget.prefs.getString(widget.existingKey!);
+      if (data != null && data.contains("~|~")) {
+        List<String> p = data.split("~|~");
+        currentNas = p[0]; t = p[1]; c = p[5];
+      }
     }
     _titleCtrl = TextEditingController(text: t);
     _contentCtrl = TextEditingController(text: c);
   }
+
   @override Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Isi Catatan"), actions: [IconButton(icon: const Icon(Icons.save), onPressed: () async {
-        String key = widget.existingKey ?? "Note_${DateTime.now().millisecondsSinceEpoch}";
-        String data = "${widget.nas}~|~${_titleCtrl.text}~|~-~|~${DateTime.now()}~|~-~|~${_contentCtrl.text}";
-        if (widget.existingKey == null) {
+      appBar: AppBar(title: const Text("Isi Catatan"), actions: [
+        IconButton(icon: const Icon(Icons.save), onPressed: () async {
+          String key = widget.existingKey ?? "Note_${DateTime.now().millisecondsSinceEpoch}";
+          // Format data sinkron dengan Kotlin: Nas ~|~ Judul ~|~ Pengkhotbah ~|~ Tanggal ~|~ Pendahuluan ~|~ Isi
+          String data = "$currentNas~|~${_titleCtrl.text}~|~-~|~${DateTime.now().toString().substring(0,16)}~|~-~|~${_contentCtrl.text}";
+          
           List<String> keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-          keys.add(key); await widget.prefs.setStringList("ALL_NOTE_KEYS", keys);
-        }
-        await widget.prefs.setString(key, data);
-        Navigator.pop(context);
-      })]),
+          if (!keys.contains(key)) {
+            keys.add(key);
+            await widget.prefs.setStringList("ALL_NOTE_KEYS", keys);
+          }
+          await widget.prefs.setString(key, data);
+          Navigator.pop(context);
+        })
+      ]),
       body: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
         InkWell(
-          onTap: () { Navigator.pop(context); widget.onJumpToBible(widget.nas); },
-          child: Container(padding: const EdgeInsets.all(10), color: Colors.blue[50], child: Text(widget.nas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+          onTap: () { Navigator.pop(context); widget.onJumpToBible(currentNas); },
+          child: Container(
+            width: double.infinity, padding: const EdgeInsets.all(12), 
+            decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(8)),
+            child: Text(currentNas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+          ),
         ),
-        TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: "Judul")),
-        Expanded(child: TextField(controller: _contentCtrl, maxLines: null, decoration: const InputDecoration(hintText: "Mulai menulis...", border: InputBorder.none))),
+        TextField(controller: _titleCtrl, decoration: const InputDecoration(hintText: "Judul Khotbah")),
+        const Divider(),
+        Expanded(child: TextField(controller: _contentCtrl, maxLines: null, decoration: const InputDecoration(hintText: "Tulis catatan...", border: InputBorder.none))),
       ])),
     );
   }
 }
 
-class NoteListPage extends StatelessWidget {
+// --- HALAMAN LIST CATATAN ---
+class NoteListPage extends StatefulWidget {
   final SharedPreferences prefs; final Function(String) onNoteSelected;
   const NoteListPage({super.key, required this.prefs, required this.onNoteSelected});
+  @override State<NoteListPage> createState() => _NoteListPageState();
+}
+class _NoteListPageState extends State<NoteListPage> {
+  List<String> _keys = [];
+  @override void initState() { super.initState(); _load(); }
+  void _load() { setState(() { 
+    _keys = (widget.prefs.getStringList("ALL_NOTE_KEYS") ?? []).reversed.toList(); 
+  }); }
+
   @override Widget build(BuildContext context) {
-    List<String> keys = (prefs.getStringList("ALL_NOTE_KEYS") ?? []).reversed.toList();
     return Scaffold(
       appBar: AppBar(title: const Text("Daftar Catatan")),
-      body: ListView.builder(
-        itemCount: keys.length,
+      body: _keys.isEmpty ? const Center(child: Text("Belum ada catatan")) : ListView.builder(
+        itemCount: _keys.length,
         itemBuilder: (context, i) {
-          String? raw = prefs.getString(keys[i]);
+          String? raw = widget.prefs.getString(_keys[i]);
           if (raw == null) return const SizedBox();
           List<String> p = raw.split("~|~");
-          return ListTile(
-            title: Text(p[1].isEmpty ? "Tanpa Judul" : p[1]),
-            subtitle: Text(p[0]),
-            onTap: () => onNoteSelected(keys[i]),
+          String judul = (p.length > 1 && p[1].isNotEmpty) ? p[1] : "Tanpa Judul";
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: ListTile(
+              leading: const Icon(Icons.description, color: Colors.indigo),
+              title: Text(judul, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: Text("${p[0]}\n${p[3]}"),
+              onTap: () { Navigator.pop(context); widget.onNoteSelected(_keys[i]); },
+              trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async {
+                String k = _keys[i];
+                List<String> all = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+                all.remove(k);
+                await widget.prefs.setStringList("ALL_NOTE_KEYS", all);
+                await widget.prefs.remove(k);
+                _load();
+              }),
+            ),
           );
         },
       ),

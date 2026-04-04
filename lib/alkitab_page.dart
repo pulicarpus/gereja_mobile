@@ -18,9 +18,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _allBooks = [];
   List<int> _selectedVerses = [];
   bool _isLoading = true;
+  String _errorMessage = "";
   int _bookId = 1; 
   int _chapter = 1;
-  String _displayTitle = "Kejadian"; 
+  String _displayTitle = "Memuat..."; 
   late SharedPreferences _prefs;
 
   @override
@@ -30,40 +31,50 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _initData() async {
-    _prefs = await SharedPreferences.getInstance(); 
-    await _initDatabase();
+    try {
+      _prefs = await SharedPreferences.getInstance(); 
+      await _initDatabase();
+    } catch (e) {
+      setState(() => _errorMessage = "Gagal inisialisasi: $e");
+    }
   }
 
   Future<void> _initDatabase() async {
     var dbPath = await getDatabasesPath();
     String path = p.join(dbPath, "TB.SQLite3");
     
-    if (!(await databaseExists(path))) {
-      ByteData data = await rootBundle.load("assets/TB.SQLite3");
-      List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await File(path).writeAsBytes(bytes, flush: true);
-    }
+    // Paksa copy jika bos merasa file assets berubah tapi di app tidak berubah
+    ByteData data = await rootBundle.load("assets/TB.SQLite3");
+    List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    await File(path).writeAsBytes(bytes, flush: true);
     
     _db = await openDatabase(path);
-    // Ambil daftar kitab langsung dari database
     _allBooks = await _db!.query('books', orderBy: '_id ASC');
     await _loadContent();
   }
 
   Future<void> _loadContent() async {
     if (_db == null) return;
-    setState(() => _isLoading = true);
+    setState(() { _isLoading = true; _errorMessage = ""; });
     
-    // QUERY DISESUAIKAN: kolom 'book_id' dan 'content'
-    final verses = await _db!.query('verses', 
-        where: 'book_id = ? AND chapter = ?', 
-        whereArgs: [_bookId, _chapter]);
-        
-    if (mounted) {
-      setState(() { 
-        _verses = verses; 
-        _displayTitle = _allBooks.firstWhere((b) => b['_id'] == _bookId)['name'];
-        _isLoading = false; 
+    try {
+      // Sesuai screenshot SQLite Editor: book_id, chapter
+      final verses = await _db!.query('verses', 
+          where: 'book_id = ? AND chapter = ?', 
+          whereArgs: [_bookId, _chapter]);
+          
+      if (mounted) {
+        setState(() { 
+          _verses = verses; 
+          _displayTitle = _allBooks.firstWhere((b) => b['_id'] == _bookId)['name'];
+          _isLoading = false; 
+          _selectedVerses.clear();
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = "Error Query: Kolom tidak ditemukan. Coba Reinstall App.\nDetail: $e";
       });
     }
   }
@@ -78,7 +89,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         prefs: _prefs, 
         db: _db!, 
         allBooks: _allBooks,
-        onJumpToBible: (n) => {}, // Implementasi jump jika perlu
+        onJumpToBible: (n) => {}, 
       )),
     );
   }
@@ -99,30 +110,37 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ),
         ],
       ),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
-        itemCount: _verses.length,
-        itemBuilder: (context, i) {
-          final v = _verses[i];
-          final bool isSelected = _selectedVerses.contains(v['verse']);
-          return ListTile(
-            selected: isSelected,
-            onTap: () {
-              setState(() { isSelected ? _selectedVerses.remove(v['verse']) : _selectedVerses.add(v['verse']); });
-            },
-            title: RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18), children: [
-              TextSpan(text: "${v['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-              TextSpan(text: v['content'].toString()), // KOLOM 'content'
-            ])),
-          );
-        },
-      ),
-      floatingActionButton: _selectedVerses.isNotEmpty ? FloatingActionButton(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : _errorMessage.isNotEmpty 
+          ? Center(padding: const EdgeInsets.all(20), child: Text(_errorMessage, style: const TextStyle(color: Colors.red)))
+          : ListView.builder(
+              itemCount: _verses.length,
+              itemBuilder: (context, i) {
+                final v = _verses[i];
+                final bool isSelected = _selectedVerses.contains(v['verse']);
+                return ListTile(
+                  selected: isSelected,
+                  selectedTileColor: Colors.indigo[50],
+                  onTap: () {
+                    setState(() { isSelected ? _selectedVerses.remove(v['verse']) : _selectedVerses.add(v['verse']); });
+                  },
+                  title: RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
+                    TextSpan(text: "${v['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                    TextSpan(text: v['content'].toString()), // Menggunakan 'content' sesuai SQLite Editor
+                  ])),
+                );
+              },
+            ),
+      floatingActionButton: _selectedVerses.isNotEmpty ? FloatingActionButton.extended(
         onPressed: () {
           _selectedVerses.sort();
-          _bukaCatatan("$_displayTitle $_chapter:${_selectedVerses.join(",")}");
+          String nas = "$_displayTitle $_chapter:${_selectedVerses.join(",")}";
+          _bukaCatatan(nas);
           setState(() => _selectedVerses.clear());
         },
-        child: const Icon(Icons.note_add),
+        label: const Text("Buat Catatan"),
+        icon: const Icon(Icons.note_add),
       ) : null,
     );
   }

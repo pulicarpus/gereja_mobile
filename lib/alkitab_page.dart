@@ -20,6 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<int> _selectedVerses = [];
   
   bool _isLoading = true;
+  bool _isSearching = false; // Flag untuk search dari atas
   double _textSize = 18.0;
   String _currentVersion = "TB"; 
   int _bookId = 10; 
@@ -27,6 +28,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _displayTitle = "Kejadian"; 
 
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchCtrl = TextEditingController();
   late SharedPreferences _prefs;
 
   final List<Map<String, String>> _bibleMeta = [
@@ -102,13 +104,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollController.jumpTo((scrollToVerse - 1) * 85.0);
+        _scrollController.animateTo(
+          (scrollToVerse - 1) * 85.0, 
+          duration: const Duration(milliseconds: 500), 
+          curve: Curves.easeOut
+        );
       });
     }
   }
 
-  // --- FITUR CATATAN (GAYA KOTLIN - PERBAIKAN ERROR) ---
-  void _tambahCatatan() async {
+  // --- PERBAIKAN: HALAMAN CATATAN FULL PAGE ---
+  void _bukaHalamanCatatan() {
     _selectedVerses.sort();
     String nas = "$_displayTitle $_chapter:${_selectedVerses.join(",")}";
     String isiAyat = "";
@@ -117,108 +123,88 @@ class _AlkitabPageState extends State<AlkitabPage> {
       isiAyat += "$vNum. ${_cleanText(v['text'])}\n";
     }
 
-    TextEditingController titleCtrl = TextEditingController();
-    TextEditingController contentCtrl = TextEditingController(text: "1. ");
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => NoteEditorPage(
+          nas: nas,
+          isiAyat: isiAyat,
+          onSave: (title, content) async {
+            String key = "Note_${DateTime.now().millisecondsSinceEpoch}";
+            String dataFinal = "$nas~|~$title~|~Pengkhotbah~|~${DateTime.now().toString()}~|~Pendahuluan~|~$content";
+            
+            List<String> allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+            allKeys.add(key);
+            await _prefs.setStringList("ALL_NOTE_KEYS", allKeys);
+            await _prefs.setString(key, dataFinal);
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Catatan: $nas", style: const TextStyle(fontSize: 14)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: titleCtrl, decoration: const InputDecoration(hintText: "Judul Khotbah/Catatan")),
-            const SizedBox(height: 10),
-            TextField(controller: contentCtrl, maxLines: 5, decoration: const InputDecoration(hintText: "Isi Catatan...")),
-          ],
+            setState(() => _selectedVerses.clear());
+          },
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("BATAL")),
-          ElevatedButton(
-            onPressed: () async {
-              String key = "Note_${DateTime.now().millisecondsSinceEpoch}";
-              String dataFinal = "$nas~|~${titleCtrl.text}~|~Pengkhotbah~|~${DateTime.now().toString()}~|~Pendahuluan~|~${contentCtrl.text}";
-              
-              // PERBAIKAN DISINI: Menggunakan getStringList dan setStringList
-              List<String> allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-              allKeys.add(key);
-              await _prefs.setStringList("ALL_NOTE_KEYS", allKeys);
-              await _prefs.setString(key, dataFinal);
-
-              if(!context.mounted) return;
-              Navigator.pop(context);
-              setState(() => _selectedVerses.clear());
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan tersimpan")));
-            },
-            child: const Text("SIMPAN"),
-          )
-        ],
       ),
     );
   }
 
-  // --- FITUR PENCARIAN ---
-  void _showSearchDialog() {
-    TextEditingController searchCtrl = TextEditingController();
-    String scope = "SEMUA"; 
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setST) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 20, right: 20, top: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: searchCtrl,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: "Cari kata...",
-                  suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: () async {
-                    String query = searchCtrl.text.trim();
-                    if(query.length < 3) return;
-                    
-                    String whereClause = "text LIKE ?";
-                    List<dynamic> args = ["%$query%"];
-
-                    if(scope == "PL") { whereClause += " AND book_number <= 390"; }
-                    else if(scope == "PB") { whereClause += " AND book_number > 390"; }
-                    else if(scope == "KITAB") { whereClause += " AND book_number = $_bookId"; }
-
-                    var results = await _db!.query('verses', where: whereClause, whereArgs: args, limit: 100);
-                    
-                    if(!mounted) return;
-                    Navigator.pop(context);
-                    _showSearchResults(results, query);
-                  }),
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: ["SEMUA", "PL", "PB", "KITAB"].map((s) => ChoiceChip(
-                  label: Text(s, style: const TextStyle(fontSize: 10)),
-                  selected: scope == s,
-                  onSelected: (val) => setST(() => scope = s),
-                )).toList(),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+  // --- PERBAIKAN: PENCARIAN DARI ATAS (SEARCH BAR) ---
+  PreferredSizeWidget _buildAppBar() {
+    if (_isSearching) {
+      return AppBar(
+        backgroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => setState(() { _isSearching = false; _searchCtrl.clear(); }),
         ),
+        title: TextField(
+          controller: _searchCtrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.black87),
+          decoration: const InputDecoration(
+            hintText: "Cari ayat atau kata...",
+            border: InputBorder.none,
+          ),
+          onSubmitted: (val) => _prosesCari(val),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search, color: Colors.indigo),
+            onPressed: () => _prosesCari(_searchCtrl.text),
+          )
+        ],
+      );
+    }
+
+    return AppBar(
+      backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
+      title: GestureDetector(
+        onTap: _showSelectionDialog,
+        child: Row(children: [Text("$_displayTitle $_chapter", style: const TextStyle(fontSize: 18)), const Icon(Icons.arrow_drop_down)]),
       ),
+      actions: [
+        IconButton(icon: const Icon(Icons.search), onPressed: () => setState(() => _isSearching = true)),
+        IconButton(icon: const Icon(Icons.book), onPressed: () { /* Halaman List Catatan */ }), 
+        TextButton(
+          onPressed: () { setState(() => _currentVersion = (_currentVersion == "TB" ? "TJL" : "TB")); _initDatabase(); },
+          child: Text(_currentVersion, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
+  }
+
+  void _prosesCari(String query) async {
+    if(query.trim().length < 3) return;
+    var results = await _db!.query('verses', where: "text LIKE ?", whereArgs: ["%$query%"], limit: 100);
+    if(!mounted) return;
+    _showSearchResults(results, query);
   }
 
   void _showSearchResults(List<Map<String, dynamic>> results, String query) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Hasil: ${results.length} ditemukan", style: const TextStyle(fontSize: 14)),
+        title: Text("Hasil untuk: '$query'", style: const TextStyle(fontSize: 14)),
         content: SizedBox(
           width: double.maxFinite,
-          child: ListView.builder(
+          child: results.isEmpty ? const Text("Tidak ditemukan") : ListView.builder(
             itemCount: results.length,
             itemBuilder: (context, i) {
               var r = results[i];
@@ -229,7 +215,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 title: Text("$bName ${r['chapter']}:${r['verse']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 subtitle: Text(_cleanText(r['text']), maxLines: 2, overflow: TextOverflow.ellipsis),
                 onTap: () {
-                  setState(() { _bookId = bNum; _chapter = r['chapter']; });
+                  setState(() { _bookId = bNum; _chapter = r['chapter']; _isSearching = false; });
                   _loadContent(scrollToVerse: r['verse']);
                   Navigator.pop(context);
                 },
@@ -241,7 +227,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // --- DIALOG PEMILIH KITAB (FONT DIPERBESAR) ---
+  // --- DIALOG PEMILIH KITAB ---
   void _showSelectionDialog() {
     int step = 0; int? tId; String tAbbr = ""; int? tChap; int mChap = 0; int mVer = 0;
     showGeneralDialog(
@@ -330,21 +316,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-        title: GestureDetector(
-          onTap: _showSelectionDialog,
-          child: Row(children: [Text("$_displayTitle $_chapter", style: const TextStyle(fontSize: 18)), const Icon(Icons.arrow_drop_down)]),
-        ),
-        actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: _showSearchDialog),
-          IconButton(icon: const Icon(Icons.book), onPressed: () { /* Navigasi ke Daftar Catatan */ }), 
-          TextButton(
-            onPressed: () { setState(() => _currentVersion = (_currentVersion == "TB" ? "TJL" : "TB")); _initDatabase(); },
-            child: Text(_currentVersion, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
         onScaleUpdate: (d) => setState(() { _textSize = (18.0 * d.scale).clamp(12.0, 45.0); _prefs.setDouble('text_size', _textSize); }),
         child: Stack(
@@ -390,11 +362,73 @@ class _AlkitabPageState extends State<AlkitabPage> {
                       for(var n in _selectedVerses) t += "$n. ${_cleanText(_verses.firstWhere((e)=>e['verse']==n)['text'])}\n";
                       Share.share(t); setState(() => _selectedVerses.clear());
                     }),
-                    IconButton(tooltip: "Catatan", icon: const Icon(Icons.note_add, color: Colors.white, size: 20), onPressed: _tambahCatatan),
+                    IconButton(tooltip: "Catatan", icon: const Icon(Icons.note_add, color: Colors.white, size: 20), onPressed: _bukaHalamanCatatan),
                   ],
                 ),
               ),
             )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- SUB-HALAMAN: EDITOR CATATAN FULL PAGE ---
+class NoteEditorPage extends StatefulWidget {
+  final String nas;
+  final String isiAyat;
+  final Function(String, String) onSave;
+
+  const NoteEditorPage({super.key, required this.nas, required this.isiAyat, required this.onSave});
+
+  @override
+  State<NoteEditorPage> createState() => _NoteEditorPageState();
+}
+
+class _NoteEditorPageState extends State<NoteEditorPage> {
+  final TextEditingController _titleCtrl = TextEditingController();
+  final TextEditingController _contentCtrl = TextEditingController(text: "\n\n1. ");
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Buat Catatan", style: TextStyle(fontSize: 16)),
+        backgroundColor: Colors.white, foregroundColor: Colors.black,
+        elevation: 1,
+        actions: [
+          TextButton(
+            onPressed: () {
+              widget.onSave(_titleCtrl.text, _contentCtrl.text);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan berhasil disimpan")));
+            }, 
+            child: const Text("SIMPAN", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+          )
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.nas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 18)),
+            const SizedBox(height: 5),
+            Text(widget.isiAyat, style: TextStyle(color: Colors.grey[700], fontStyle: FontStyle.italic, fontSize: 13)),
+            const Divider(height: 30),
+            TextField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(hintText: "Judul Khotbah / Tema", border: InputBorder.none),
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _contentCtrl,
+              maxLines: null,
+              decoration: const InputDecoration(hintText: "Tulis isi catatan di sini...", border: InputBorder.none),
+              style: const TextStyle(fontSize: 16, height: 1.5),
+            ),
           ],
         ),
       ),

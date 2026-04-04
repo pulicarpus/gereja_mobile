@@ -55,11 +55,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _initData() async {
     _prefs = await SharedPreferences.getInstance(); 
     _textSize = _prefs.getDouble('text_size') ?? 18.0;
-    _refreshNotesIcons(); // Load ikon catatan
+    _refreshNotesIcons(); 
     await _initDatabase();
   }
 
-  // Fungsi untuk memetakan ikon hanya di ayat terakhir
   void _refreshNotesIcons() {
     Map<String, String> tempMap = {};
     List<String> keys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
@@ -68,13 +67,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
       String? data = _prefs.getString(k);
       if (data != null && data.contains("~|~")) {
         try {
-          String nas = data.split("~|~")[0]; // Contoh: "Keluaran 1:1,2,3,4"
-          String header = nas.split(":")[0]; // "Keluaran 1"
+          String nas = data.split("~|~")[0]; 
+          String header = nas.split(":")[0]; 
           List<int> verses = nas.split(":")[1].split(",").map((e) => int.parse(e.trim())).toList();
           verses.sort();
-          // Simpan hanya pada ayat terakhir dalam list
           tempMap["$header:${verses.last}"] = k;
-        } catch (e) { /* Abaikan format lama */ }
+        } catch (e) { }
       }
     }
     setState(() => _noteIconsMap = tempMap);
@@ -134,7 +132,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       String kitabName = parts.length > 2 ? "${parts[0]} ${parts[1]}" : parts[0];
       String chapVerPart = parts.last;
       List<String> cv = chapVerPart.split(":");
-      int bIdx = _bibleMeta.indexWhere((m) => m['full'].toLowerCase() == kitabName.toLowerCase());
+      // Perbaikan null safety di bawah ini
+      int bIdx = _bibleMeta.indexWhere((m) => m['full']!.toLowerCase() == kitabName.toLowerCase());
       if (bIdx != -1) {
         setState(() { 
           _bookId = _allBooks[bIdx]['book_number']; 
@@ -153,7 +152,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onJumpToBible: (n) => _jumpToVerse(n),
       )),
     ).then((_) {
-      _refreshNotesIcons(); // Refresh ikon setelah kembali
+      _refreshNotesIcons(); 
     });
   }
 
@@ -197,7 +196,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
                           TextSpan(text: v['text'].replaceAll(RegExp(r'<[^>]*>'), '')),
                         ])),
                       ),
-                      // TAMPILKAN IKON HANYA DI AYAT TERAKHIR YANG ADA CATATANNYA
                       if (noteKey != null) 
                         IconButton(
                           padding: EdgeInsets.zero, constraints: const BoxConstraints(),
@@ -229,7 +227,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// --- DETAIL CATATAN (READ ONLY) ---
 class NoteDetailsPage extends StatefulWidget {
   final String nas; final String rawNas; final String? existingKey; final SharedPreferences prefs;
   final Database db; final List<Map<String, String>> bibleMeta; final Function(String) onJumpToBible;
@@ -257,7 +254,6 @@ class _NoteDetailsPageState extends State<NoteDetailsPage> {
     }
   }
 
-  // Parse konten untuk deteksi "Floating Verse"
   List<TextSpan> _getParsedContent(String text) {
     List<TextSpan> spans = [];
     final regex = RegExp(r'([1-3]?\s?[A-Za-z]+)\s(\d+):(\d+)(-\d+)?');
@@ -289,7 +285,8 @@ class _NoteDetailsPageState extends State<NoteDetailsPage> {
         for (int i = int.parse(r[0]); i <= int.parse(r[1]); i++) { ayatRange.add(i); }
       } else { ayatRange.add(int.parse(cv[1])); }
 
-      int bIdx = widget.bibleMeta.indexWhere((m) => m['full'].toLowerCase() == kitab.toLowerCase());
+      // Perbaikan null safety di bawah ini
+      int bIdx = widget.bibleMeta.indexWhere((m) => m['full']!.toLowerCase() == kitab.toLowerCase());
       if (bIdx == -1) return;
       int bNum = bIdx + 1;
 
@@ -320,7 +317,7 @@ class _NoteDetailsPageState extends State<NoteDetailsPage> {
         IconButton(icon: const Icon(Icons.edit), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(
           nas: displayNas, existingKey: widget.existingKey, prefs: widget.prefs,
         ))).then((_) {
-          setState(() { _loadData(); }); // Refresh setelah edit
+          setState(() { _loadData(); }); 
         }))
       ]),
       body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -339,7 +336,6 @@ class _NoteDetailsPageState extends State<NoteDetailsPage> {
   }
 }
 
-// --- EDITOR CATATAN ---
 class NoteEditorPage extends StatefulWidget {
   final String nas; final String? existingKey; final SharedPreferences prefs;
   const NoteEditorPage({super.key, required this.nas, this.existingKey, required this.prefs});
@@ -376,7 +372,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   }
 }
 
-// --- DAFTAR CATATAN ---
 class NoteListPage extends StatefulWidget {
   final SharedPreferences prefs; final Function(String) formatFunc; final Database db; 
   final List<Map<String, String>> bibleMeta; final Function(String) onJump; final Function(String) onOpenNote;

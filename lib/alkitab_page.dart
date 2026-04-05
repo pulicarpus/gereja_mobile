@@ -20,7 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Set<int> _selectedVerses = {};
   
   String _currentVersion = "TB.SQLite3"; 
-  int _currentBookNum = 10; 
+  int _currentBookNum = 10; // Kejadian biasanya mulai dari 10 di database bos
   int _currentChapter = 1;
   bool _isLoading = true;
   late SharedPreferences _prefs;
@@ -41,27 +41,27 @@ class _AlkitabPageState extends State<AlkitabPage> {
     var dbPath = await getDatabasesPath();
     String path = p.join(dbPath, _currentVersion);
     
-    // Copy database dari assets ke sistem internal tablet
+    // Paksa copy file agar database terbaru dari assets selalu terpakai
     ByteData data = await rootBundle.load("assets/$_currentVersion");
     List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     await File(path).writeAsBytes(bytes, flush: true);
     
     _db = await openDatabase(path);
-    final bookData = await _db!.query('books', orderBy: 'book_number ASC');
     
-    setState(() {
-      _allBooks = bookData.map((e) => BibleBook(
-        bookNumber: e['book_number'] as int, 
-        name: e['long_name'].toString()
-      )).toList();
-    });
+    // Ambil daftar buku (tabel 'books')
+    final bookData = await _db!.query('books', orderBy: 'book_number ASC');
+    _allBooks = bookData.map((e) => BibleBook(
+      bookNumber: e['book_number'] as int, 
+      name: e['long_name'].toString()
+    )).toList();
     
     await _loadContent();
   }
 
   Future<void> _loadContent() async {
     if (_db == null) return;
-    // Mengambil ayat berdasarkan book_number dan chapter
+    
+    // FIX: Nama tabel 'verses', kolom filter 'book_number'
     final data = await _db!.query('verses', 
         where: 'book_number = ? AND chapter = ?', 
         whereArgs: [_currentBookNum, _currentChapter],
@@ -74,6 +74,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     });
   }
 
+  // --- MODAL NAVIGASI GRID ---
   void _showNavigation() {
     showModalBottomSheet(
       context: context,
@@ -93,10 +94,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
               children: [
                 const SizedBox(height: 20),
                 const Text("PILIH KITAB", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-                _sectionHeader("PERJANJIAN LAMA", Colors.pink),
-                _bookGrid(pl),
-                _sectionHeader("PERJANJIAN BARU", Colors.blue),
-                _bookGrid(pb),
+                _header("PERJANJIAN LAMA", Colors.pink),
+                _grid(pl),
+                _header("PERJANJIAN BARU", Colors.blue),
+                _grid(pb),
                 const SizedBox(height: 30),
               ],
             ),
@@ -106,38 +107,30 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  Widget _sectionHeader(String title, Color color) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-      child: Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
-    );
-  }
+  Widget _header(String t, Color c) => Container(
+    width: double.infinity, padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+    child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 13)),
+  );
 
-  Widget _bookGrid(List<BibleBook> books) {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 15),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 6, crossAxisSpacing: 6
+  Widget _grid(List<BibleBook> books) => GridView.builder(
+    shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+    padding: const EdgeInsets.symmetric(horizontal: 15),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 6, crossAxisSpacing: 6),
+    itemCount: books.length,
+    itemBuilder: (context, i) => InkWell(
+      onTap: () {
+        setState(() { _currentBookNum = books[i].bookNumber; _currentChapter = 1; });
+        _loadContent();
+        Navigator.pop(context);
+      },
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
+        child: Text(books[i].name.length > 3 ? books[i].name.substring(0, 3).toUpperCase() : books[i].name.toUpperCase(), 
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
       ),
-      itemCount: books.length,
-      itemBuilder: (context, i) => InkWell(
-        onTap: () {
-          setState(() { _currentBookNum = books[i].bookNumber; _currentChapter = 1; });
-          _loadContent();
-          Navigator.pop(context);
-        },
-        child: Container(
-          alignment: Alignment.center,
-          decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
-          child: Text(books[i].name.length > 3 ? books[i].name.substring(0, 3).toUpperCase() : books[i].name.toUpperCase(), 
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-        ),
-      ),
-    );
-  }
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -150,10 +143,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
           onTap: _showNavigation,
           child: Row(
             mainAxisSize: MainAxisSize.min,
-            children: [
-              Text("$bookName $_currentChapter", style: const TextStyle(fontSize: 17)),
-              const Icon(Icons.arrow_drop_down),
-            ],
+            children: [Text("$bookName $_currentChapter"), const Icon(Icons.arrow_drop_down)],
           ),
         ),
         actions: [
@@ -172,12 +162,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ],
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 10),
         itemCount: _verses.length,
         itemBuilder: (context, i) {
           final v = _verses[i];
           final vNum = v['verse'] as int;
-          // PAKAI verse_text SESUAI SQL BOS
-          final vText = v['verse_text']?.toString() ?? ""; 
+          
+          // FIX: Ambil dari kolom 'content' sesuai screenshot jam 12:16
+          final vText = v['content']?.toString() ?? "Teks Kosong"; 
+          
           final isSelected = _selectedVerses.contains(vNum);
           
           return ListTile(
@@ -188,7 +181,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             },
             title: RichText(
               text: TextSpan(
-                style: const TextStyle(color: Colors.black, fontSize: 19, height: 1.6),
+                style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.6),
                 children: [
                   TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                   TextSpan(text: vText),

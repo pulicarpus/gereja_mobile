@@ -27,9 +27,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Map<int, List<String>> _verseNotesMap = {}; 
   final ScrollController _scrollController = ScrollController();
   
-  // Versi default (Disimpan ke SharedPreferences nanti)
   String _currentVersion = "TB.SQLite3"; 
-  
   int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
@@ -48,10 +46,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     
-    // Muat riwayat bacaan & versi Alkitab terakhir
     _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
     _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
-    _currentVersion = _prefs.getString('LAST_VERSION') ?? "TB.SQLite3"; // <--- Mengingat versi terakhir
+    _currentVersion = _prefs.getString('LAST_VERSION') ?? "TB.SQLite3"; 
 
     await _loadDatabase();
   }
@@ -62,7 +59,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _prefs.setString('LAST_VERSION', _currentVersion);
   }
 
-  // ==== FUNGSI BARU: Ganti Versi Alkitab ====
   Future<void> _changeVersion(String newVersion) async {
     if (_currentVersion == newVersion) return;
     
@@ -71,9 +67,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _isLoading = true;
     });
     
-    _saveLastPosition(); // Simpan pilihan versi ke memori
+    _saveLastPosition(); 
     
-    // Tutup database lama sebelum buka yang baru
     if (_db != null) {
       await _db!.close();
       _db = null;
@@ -81,72 +76,91 @@ class _AlkitabPageState extends State<AlkitabPage> {
     
     await _loadDatabase();
   }
-  // ==========================================
 
+  // ==== PERBAIKAN 1: Try-Catch saat Load Database ====
   Future<void> _loadDatabase() async {
     setState(() => _isLoading = true);
-    var dbPath = await getDatabasesPath();
-    String path = p.join(dbPath, _currentVersion);
-    
-    bool exists = await databaseExists(path);
-    if (!exists) {
-      ByteData data = await rootBundle.load("assets/$_currentVersion");
-      List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await File(path).writeAsBytes(bytes, flush: true);
+    try {
+      var dbPath = await getDatabasesPath();
+      String path = p.join(dbPath, _currentVersion);
+      
+      bool exists = await databaseExists(path);
+      if (!exists) {
+        ByteData data = await rootBundle.load("assets/$_currentVersion");
+        List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+      
+      _db = await openDatabase(path);
+      final bookData = await _db!.query('books', orderBy: 'book_number ASC');
+      
+      setState(() {
+        _allBooks = bookData.map((e) => BibleBook(
+          bookNumber: e['book_number'] as int, 
+          name: e['long_name'].toString(),
+          shortName: e['short_name'].toString()
+        )).toList();
+      });
+      
+      await _loadContent();
+    } catch (e) {
+      // Jika terjadi error (misal file DB tidak terbaca), hentikan loading
+      setState(() => _isLoading = false);
+      debugPrint("Gagal memuat database: $e");
     }
-    
-    _db = await openDatabase(path);
-    final bookData = await _db!.query('books', orderBy: 'book_number ASC');
-    
-    setState(() {
-      _allBooks = bookData.map((e) => BibleBook(
-        bookNumber: e['book_number'] as int, 
-        name: e['long_name'].toString(),
-        shortName: e['short_name'].toString()
-      )).toList();
-    });
-    
-    await _loadContent();
   }
 
+  // ==== PERBAIKAN 2: Try-Catch Khusus Tabel Stories (Perikop) ====
   Future<void> _loadContent({int? scrollToVerse}) async {
     if (_db == null) return;
 
-    final verseData = await _db!.query('verses', 
-        where: 'book_number = ? AND chapter = ?', 
-        whereArgs: [_currentBookNum, _currentChapter],
-        orderBy: 'verse ASC');
-        
-    final storyData = await _db!.query('stories',
-        where: 'book_number = ? AND chapter = ?',
-        whereArgs: [_currentBookNum, _currentChapter],
-        orderBy: 'verse ASC, order_if_several ASC');
-
-    _perikopMap.clear();
-    for (var s in storyData) {
-      int vNum = s['verse'] as int;
-      String title = s['title'].toString();
-      if (!_perikopMap.containsKey(vNum)) {
-        _perikopMap[vNum] = [];
+    try {
+      final verseData = await _db!.query('verses', 
+          where: 'book_number = ? AND chapter = ?', 
+          whereArgs: [_currentBookNum, _currentChapter],
+          orderBy: 'verse ASC');
+          
+      List<Map<String, dynamic>> storyData = [];
+      try {
+        // Coba panggil tabel stories. Jika TJL tidak punya, akan error lalu masuk ke catch
+        storyData = await _db!.query('stories',
+            where: 'book_number = ? AND chapter = ?',
+            whereArgs: [_currentBookNum, _currentChapter],
+            orderBy: 'verse ASC, order_if_several ASC');
+      } catch (e) {
+        // Abaikan error jika tabel stories tidak ada di TJL
+        debugPrint("Tabel stories tidak ditemukan, abaikan perikop.");
       }
-      _perikopMap[vNum]!.add(title);
-    }
 
-    _verses = verseData;
-    await _syncNotes(); 
-    
-    setState(() {
-      _isLoading = false;
-      _selectedVerses.clear();
-    });
-
-    if (scrollToVerse != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          double position = (scrollToVerse - 1) * 110.0; 
-          _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
+      _perikopMap.clear();
+      for (var s in storyData) {
+        int vNum = s['verse'] as int;
+        String title = s['title'].toString();
+        if (!_perikopMap.containsKey(vNum)) {
+          _perikopMap[vNum] = [];
         }
+        _perikopMap[vNum]!.add(title);
+      }
+
+      _verses = verseData;
+      await _syncNotes(); 
+      
+      setState(() {
+        _isLoading = false;
+        _selectedVerses.clear();
       });
+
+      if (scrollToVerse != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            double position = (scrollToVerse - 1) * 110.0; 
+            _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
+          }
+        });
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      debugPrint("Gagal memuat ayat: $e");
     }
   }
 
@@ -253,9 +267,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
               child: _NavSheet(
                 allBooks: _allBooks,
                 db: _db!,
-                currentVersion: _currentVersion, // Kirim versi saat ini ke NavSheet
+                currentVersion: _currentVersion, 
                 onVersionChange: (newVersion) {
-                  Navigator.pop(context); // Tutup dialog saat ganti versi
+                  Navigator.pop(context); 
                   _changeVersion(newVersion);
                 },
                 onSelectionComplete: (bookNum, chapter, verse) {
@@ -406,7 +420,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
             orElse: () => _allBooks.first
           ).name;
     
-    // Hilangkan ekstensi .SQLite3 untuk ditampilkan di UI (misal TB.SQLite3 jadi TB)
     String displayNameVersion = _currentVersion.replaceAll(".SQLite3", "");
 
     return Scaffold(
@@ -465,59 +478,61 @@ class _AlkitabPageState extends State<AlkitabPage> {
       ),
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
-        : ListView.builder(
-            controller: _scrollController,
-            itemCount: _verses.length,
-            itemBuilder: (context, i) {
-              final v = _verses[i]; 
-              final vNum = v['verse'] as int; 
-              final isSelected = _selectedVerses.contains(vNum); 
-              final noteKeys = _verseNotesMap[vNum];
-              final perikopList = _perikopMap[vNum];
+        : _verses.isEmpty 
+            ? const Center(child: Text("Tidak ada ayat ditemukan.")) // Fallback jika DB kosong
+            : ListView.builder(
+                controller: _scrollController,
+                itemCount: _verses.length,
+                itemBuilder: (context, i) {
+                  final v = _verses[i]; 
+                  final vNum = v['verse'] as int; 
+                  final isSelected = _selectedVerses.contains(vNum); 
+                  final noteKeys = _verseNotesMap[vNum];
+                  final perikopList = _perikopMap[vNum];
 
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (perikopList != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
-                      child: Column(
-                        children: perikopList.map((title) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4.0),
-                          child: _buildPerikopItem(title),
-                        )).toList(),
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (perikopList != null)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
+                          child: Column(
+                            children: perikopList.map((title) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4.0),
+                              child: _buildPerikopItem(title),
+                            )).toList(),
+                          ),
+                        ),
+                      GestureDetector(
+                        onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
+                        onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
+                        child: Container(
+                          color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent, 
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
+                                TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                                TextSpan(text: _cleanText(v['text'])),
+                              ])),
+                              if (noteKeys != null && noteKeys.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: InkWell(
+                                    onTap: () => _showNoteSelection(noteKeys),
+                                    child: const Padding(padding: EdgeInsets.all(4.0), child: Text("📝", style: TextStyle(fontSize: 28))),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                    ),
-                  GestureDetector(
-                    onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
-                    onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
-                    child: Container(
-                      color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent, 
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
-                            TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                            TextSpan(text: _cleanText(v['text'])),
-                          ])),
-                          if (noteKeys != null && noteKeys.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: InkWell(
-                                onTap: () => _showNoteSelection(noteKeys),
-                                child: const Padding(padding: EdgeInsets.all(4.0), child: Text("📝", style: TextStyle(fontSize: 28))),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+                    ],
+                  );
+                },
+              ),
     );
   }
 }
@@ -528,8 +543,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;
-  final String currentVersion; // Tambahan untuk Versi
-  final Function(String) onVersionChange; // Fungsi dipanggil saat ganti versi
+  final String currentVersion; 
+  final Function(String) onVersionChange; 
   final Function(int bookNum, int chapter, int verse) onSelectionComplete;
   
   const _NavSheet({
@@ -590,11 +605,10 @@ class _NavSheetState extends State<_NavSheet> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // ==== WIDGET PILIHAN VERSI ALKITAB ====
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: Colors.indigo[50], // Background sedikit kebiruan
+          color: Colors.indigo[50], 
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -626,7 +640,6 @@ class _NavSheetState extends State<_NavSheet> {
             ],
           ),
         ),
-        // ======================================
 
         Flexible(
           child: ListView(

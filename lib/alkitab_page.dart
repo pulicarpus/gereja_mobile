@@ -28,7 +28,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
   final ScrollController _scrollController = ScrollController();
   
   String _currentVersion = "TB.SQLite3"; 
-  int _currentBookNum = 10; 
+  
+  // Default ke 1 (Kejadian) kalau aplikasi baru pertama kali diinstal
+  int _currentBookNum = 1; 
   int _currentChapter = 1;
   bool _isLoading = true;
   late SharedPreferences _prefs;
@@ -45,8 +47,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
+    
+    // ==== LOGIKA BARU: Muat riwayat bacaan terakhir ====
+    _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 1; 
+    _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
+    // ===================================================
+
     await _loadDatabase();
   }
+
+  // ==== FUNGSI BARU: Simpan riwayat bacaan ====
+  void _saveLastPosition() {
+    _prefs.setInt('LAST_BOOK_NUM', _currentBookNum);
+    _prefs.setInt('LAST_CHAPTER', _currentChapter);
+  }
+  // ============================================
 
   Future<void> _loadDatabase() async {
     setState(() => _isLoading = true);
@@ -179,7 +194,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // ==== PERBAIKAN 1: Tambah db & allBooks ====
   void _openNote(String key) {
     String? raw = _prefs.getString(key);
     if (raw != null) {
@@ -217,6 +231,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 db: _db!,
                 onSelectionComplete: (bookNum, chapter, verse) {
                   setState(() { _currentBookNum = bookNum; _currentChapter = chapter; });
+                  _saveLastPosition(); // <--- Simpan otomatis
                   _loadContent(scrollToVerse: verse);
                 },
               ),
@@ -252,8 +267,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         mainAxisSize: MainAxisSize.min, 
         children: [
           Padding(padding: const EdgeInsets.all(16), child: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold))),
-          
-          // ==== PERBAIKAN 2: Tambah db & allBooks ====
           ListTile(
             leading: const Icon(Icons.add_comment, color: Colors.blue), 
             title: const Text("Buat Catatan Baru"), 
@@ -326,6 +339,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ),
             recognizer: TapGestureRecognizer()..onTap = () {
               setState(() { _currentBookNum = bNum; _currentChapter = chap; });
+              _saveLastPosition(); // <--- Simpan otomatis saat klik referensi
               _loadContent(scrollToVerse: vStart);
             },
           ));
@@ -364,7 +378,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ]),
         ),
         actions: [
-          // ==== PERBAIKAN 3: Tambah db & allBooks ====
           IconButton(
             icon: const Icon(Icons.event_note), 
             onPressed: () => Navigator.push(context, MaterialPageRoute(
@@ -379,6 +392,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   _currentBookNum = res['book_number']; 
                   _currentChapter = res['chapter']; 
                 }); 
+                _saveLastPosition(); // <--- Simpan otomatis
                 _loadContent(scrollToVerse: res['verse']);
               } else {
                 _loadContent(); 
@@ -400,6 +414,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   _currentBookNum = res['book_number']; 
                   _currentChapter = res['chapter']; 
                 }); 
+                _saveLastPosition(); // <--- Simpan otomatis
                 _loadContent(scrollToVerse: res['verse']); 
               }
             })

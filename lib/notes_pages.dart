@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart'; // Wajib untuk TapGestureRecognizer (teks bisa diklik)
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
@@ -6,8 +7,8 @@ import 'bible_models.dart';
 
 class NoteListPage extends StatefulWidget {
   final SharedPreferences prefs;
-  final Database db; // Tambahan: Butuh DB untuk floating ayat
-  final List<BibleBook> allBooks; // Tambahan: Butuh daftar kitab
+  final Database db; 
+  final List<BibleBook> allBooks; 
 
   const NoteListPage({
     super.key, 
@@ -35,7 +36,6 @@ class _NoteListPageState extends State<NoteListPage> {
       String? raw = widget.prefs.getString(k);
       if (raw != null) temp.add(NoteModel.fromRaw(k, raw));
     }
-    // Urutkan dari yang terbaru
     temp.sort((a, b) => b.key.compareTo(a.key));
     setState(() { _allNotes = temp; _filteredNotes = temp; });
   }
@@ -78,7 +78,6 @@ class _NoteListPageState extends State<NoteListPage> {
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: ListTile(
                         title: Text(note.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        // Menampilkan nas dan tanggal di subtitle
                         subtitle: Text("${note.nas}\n${note.date}", style: const TextStyle(height: 1.4)),
                         isThreeLine: true,
                         onTap: () {
@@ -91,11 +90,10 @@ class _NoteListPageState extends State<NoteListPage> {
                               allBooks: widget.allBooks,
                             )
                           )).then((res) {
-                            // Jika ada hasil balikan (user klik "Buka Ayat"), lempar lagi ke AlkitabPage
                             if (res != null) {
                               Navigator.pop(context, res);
                             } else {
-                              _loadNotes(); // Refresh jika hanya edit biasa
+                              _loadNotes(); 
                             }
                           });
                         },
@@ -134,7 +132,6 @@ class _NoteListPageState extends State<NoteListPage> {
   }
 }
 
-
 // =========================================================================
 // HALAMAN VIEWER & EDITOR CATATAN
 // =========================================================================
@@ -160,7 +157,7 @@ class NoteEditorPage extends StatefulWidget {
 
 class _NoteEditorPageState extends State<NoteEditorPage> {
   late TextEditingController _titleCtrl;
-  late TextEditingController _preacherCtrl; // Controller baru untuk Pengkhotbah
+  late TextEditingController _preacherCtrl; 
   late TextEditingController _contentCtrl;
   
   bool _isEditing = false;
@@ -170,7 +167,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void initState() {
     super.initState();
     
-    // Jika existingKey null, berarti buat baru. Langsung mode Edit.
     _isEditing = widget.existingKey == null; 
     
     String t = "", p = "", c = "";
@@ -181,7 +177,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       List<String> parts = raw.split("~|~");
       
       t = parts.length > 1 ? parts[1] : "";
-      p = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2] : ""; // Slot index 2 untuk pengkhotbah
+      p = parts.length > 2 && parts[2].trim().isNotEmpty ? parts[2] : ""; 
       _currentDate = parts.length > 3 ? parts[3] : _currentDate;
       c = parts.length > 5 ? parts[5] : "";
     }
@@ -193,7 +189,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   void _saveNote() async {
     String key = widget.existingKey ?? "Note_${DateTime.now().millisecondsSinceEpoch}";
-    // Format: nas ~|~ judul ~|~ pengkhotbah ~|~ tanggal ~|~ kosong ~|~ isi
     String data = "${widget.nas}~|~${_titleCtrl.text}~|~${_preacherCtrl.text}~|~$_currentDate~|~ ~|~${_contentCtrl.text}";
     
     List<String> keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
@@ -203,17 +198,19 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     await widget.prefs.setString(key, data);
     
     setState(() {
-      _isEditing = false; // Kembali ke mode baca setelah simpan
+      _isEditing = false; 
     });
     
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan disimpan!")));
   }
 
-  // Logika membedah String "Matius 1:1-5" dan menarik dari Database SQLite
-  void _showFloatingAyat() async {
-    // Parsing String NAS
+  // DIUBAH: Sekarang menerima parameter opsional (Bisa ayat utama, bisa ayat di dalam isi teks)
+  void _showFloatingAyat({String? customNas}) async {
+    // Gunakan customNas jika ada (saat di-klik dari dalam teks), jika tidak gunakan nas utama
+    String nasToSearch = customNas ?? widget.nas;
+
     final regex = RegExp(r'(.+?)\s+(\d+):(\d+)(?:-(\d+))?');
-    final match = regex.firstMatch(widget.nas);
+    final match = regex.firstMatch(nasToSearch);
 
     if (match == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Format ayat tidak dapat dibaca database")));
@@ -225,7 +222,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     int startVerse = int.parse(match.group(3)!);
     int? endVerse = match.group(4) != null ? int.parse(match.group(4)!) : startVerse;
 
-    // Cari nomor kitab
     int bookNum = -1;
     try {
       bookNum = widget.allBooks.firstWhere((b) => b.name.toLowerCase() == bookName.toLowerCase() || b.shortName.toLowerCase() == bookName.toLowerCase()).bookNumber;
@@ -234,7 +230,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       return;
     }
 
-    // Query Ayat
     final List<Map<String, dynamic>> results = await widget.db.query(
       'verses',
       where: 'book_number = ? AND chapter = ? AND verse >= ? AND verse <= ?',
@@ -242,7 +237,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       orderBy: 'verse ASC'
     );
 
-    // Tampilkan Bottom Sheet
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -254,7 +250,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(widget.nas, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
+              Text(nasToSearch, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue)),
               const Divider(),
               Expanded(
                 child: ListView.builder(
@@ -283,9 +279,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                   label: const Text("MENUJU KE PASAL INI"),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
                   onPressed: () {
-                    // Tutup dialog
                     Navigator.pop(context);
-                    // Tutup Editor, kirim data balikan ke AlkitabPage agar dia scroll ke sana
                     Navigator.pop(context, {'book_number': bookNum, 'chapter': chap, 'verse': startVerse});
                   },
                 ),
@@ -294,6 +288,54 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           ),
         );
       }
+    );
+  }
+
+  // FUNGSI BARU: Mendeteksi nama kitab di dalam isi teks dan mengubahnya jadi Link biru
+  Widget _buildClickableContent(String text) {
+    // Mengumpulkan semua nama dan singkatan kitab dari Database untuk dijadikan target Regex
+    List<String> bookNames = [];
+    for (var b in widget.allBooks) {
+      bookNames.add(RegExp.escape(b.name));
+      bookNames.add(RegExp.escape(b.shortName));
+    }
+    
+    // Pola Regex pintar: Hanya mendeteksi jika teks adalah [Nama Kitab di Database] [Angka]:[Angka]-[Angka]
+    String pattern = r'(' + bookNames.join('|') + r')\s+(\d+):(\d+)(?:-(\d+))?';
+    RegExp exp = RegExp(pattern, caseSensitive: false);
+
+    List<InlineSpan> spans = [];
+
+    text.splitMapJoin(
+      exp,
+      onMatch: (Match m) {
+        String fullRef = m.group(0)!; // Contoh: "Lukas 2:3-4"
+        spans.add(TextSpan(
+          text: fullRef,
+          style: const TextStyle(
+            color: Colors.blue, 
+            fontWeight: FontWeight.bold,
+            decoration: TextDecoration.underline
+          ),
+          recognizer: TapGestureRecognizer()..onTap = () {
+            // Ketika diklik, panggil Floating Ayat dengan referensi ayat yang diklik
+            _showFloatingAyat(customNas: fullRef); 
+          }
+        ));
+        return "";
+      },
+      onNonMatch: (String nonMatchText) {
+        // Teks biasa
+        spans.add(TextSpan(text: nonMatchText, style: const TextStyle(color: Colors.black87)));
+        return "";
+      }
+    );
+
+    return RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 16, height: 1.6),
+        children: spans
+      )
     );
   }
 
@@ -317,9 +359,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // TOMBOL FLOATING AYAT
+            // TOMBOL FLOATING AYAT UTAMA (Ayat yang di-mark)
             InkWell(
-              onTap: _showFloatingAyat,
+              onTap: () => _showFloatingAyat(), // Panggil tanpa parameter untuk ayat utama
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -340,7 +382,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             ),
             const SizedBox(height: 20),
 
-            // AREA KONTEN (Tergantung mode Edit atau Baca)
             Expanded(
               child: _isEditing ? _buildEditMode() : _buildReadMode(),
             ),
@@ -370,10 +411,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             ],
           ),
           const Divider(height: 30, thickness: 1),
-          Text(
-            _contentCtrl.text,
-            style: const TextStyle(fontSize: 16, height: 1.6),
-          ),
+          // MENGGUNAKAN FUNGSI BARU UNTUK KONTEN BACAAN
+          _buildClickableContent(_contentCtrl.text),
         ],
       ),
     );

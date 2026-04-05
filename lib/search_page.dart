@@ -5,13 +5,13 @@ import 'bible_models.dart';
 class SearchPage extends StatefulWidget {
   final Database db;
   final List<BibleBook> allBooks;
-  final int currentBookNum; // Tambahan: Menerima kitab yang sedang dibuka
+  final int currentBookNum;
 
   const SearchPage({
     super.key, 
     required this.db, 
     required this.allBooks,
-    required this.currentBookNum, // Wajib diisi dari alkitab_page
+    required this.currentBookNum,
   });
 
   @override
@@ -23,9 +23,8 @@ class _SearchPageState extends State<SearchPage> {
   List<Map<String, dynamic>> _results = [];
   String _scope = "Semua"; 
   bool _isSearching = false;
-  bool _hasSearched = false; // Penanda apakah user sudah pernah menekan tombol cari
+  bool _hasSearched = false;
 
-  // Fungsi untuk mengambil nama kitab yang sedang dibuka saat ini
   String get _currentBookName {
     try {
       return widget.allBooks.firstWhere((b) => b.bookNumber == widget.currentBookNum).name;
@@ -37,7 +36,6 @@ class _SearchPageState extends State<SearchPage> {
   void _doSearch() async {
     if (_searchCtrl.text.isEmpty) return;
     
-    // Sembunyikan keyboard saat mencari (Bagus untuk pengalaman di Tablet)
     FocusScope.of(context).unfocus(); 
     
     setState(() {
@@ -48,23 +46,69 @@ class _SearchPageState extends State<SearchPage> {
     String query = "SELECT * FROM verses WHERE text LIKE ?";
     List<dynamic> args = ["%${_searchCtrl.text}%"];
 
-    // Logika filter scope
     if (_scope == "PL") {
       query += " AND book_number < 400";
     } else if (_scope == "PB") {
       query += " AND book_number >= 400";
-    } else if (_scope == _currentBookName) { // Scope pencarian khusus kitab ini
+    } else if (_scope == _currentBookName) { 
       query += " AND book_number = ?";
       args.add(widget.currentBookNum);
     }
 
-    // LIMIT DIHAPUS - Menampilkan semua hasil
     final data = await widget.db.rawQuery(query, args);
 
     setState(() {
       _results = data;
       _isSearching = false;
     });
+  }
+
+  // =====================================================================
+  // FUNGSI BARU: Memberikan efek Stabilo Kuning pada kata kunci
+  // =====================================================================
+  Widget _buildHighlightedText(String text, String query) {
+    if (query.isEmpty) {
+      return Text(text, style: const TextStyle(fontSize: 16, color: Colors.black87));
+    }
+
+    String lowerText = text.toLowerCase();
+    String lowerQuery = query.toLowerCase();
+    List<TextSpan> spans = [];
+    int start = 0;
+    int indexOfMatch;
+
+    // Mencari semua kecocokan kata kunci di dalam teks ayat
+    while ((indexOfMatch = lowerText.indexOf(lowerQuery, start)) != -1) {
+      // Masukkan teks normal (sebelum kata kunci)
+      if (indexOfMatch > start) {
+        spans.add(TextSpan(
+          text: text.substring(start, indexOfMatch), 
+          style: const TextStyle(color: Colors.black87)
+        ));
+      }
+      // Masukkan teks kata kunci (diberi efek stabilo kuning & cetak tebal)
+      spans.add(TextSpan(
+        text: text.substring(indexOfMatch, indexOfMatch + query.length),
+        style: const TextStyle(
+          backgroundColor: Colors.yellow, 
+          color: Colors.black, 
+          fontWeight: FontWeight.bold
+        ),
+      ));
+      start = indexOfMatch + query.length;
+    }
+
+    // Masukkan sisa teks normal setelah kata kunci terakhir
+    if (start < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(start), 
+        style: const TextStyle(color: Colors.black87)
+      ));
+    }
+
+    return RichText(
+      text: TextSpan(style: const TextStyle(fontSize: 16), children: spans)
+    );
   }
 
   @override
@@ -82,7 +126,7 @@ class _SearchPageState extends State<SearchPage> {
             padding: const EdgeInsets.all(10),
             child: TextField(
               controller: _searchCtrl,
-              textInputAction: TextInputAction.search, // Tombol enter di keyboard jadi 'Cari'
+              textInputAction: TextInputAction.search, 
               decoration: InputDecoration(
                 hintText: "Ketik kata kunci...",
                 suffixIcon: IconButton(icon: const Icon(Icons.search), onPressed: _doSearch),
@@ -94,11 +138,9 @@ class _SearchPageState extends State<SearchPage> {
             ),
           ),
           
-          // Chip Filter Scope
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
-              // "Kitab" diganti dengan nama kitab asli (misal: "Matius")
               children: ["Semua", "PL", "PB", _currentBookName].map((s) => Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: ChoiceChip(
@@ -107,7 +149,6 @@ class _SearchPageState extends State<SearchPage> {
                   selected: _scope == s,
                   onSelected: (val) {
                     setState(() => _scope = s);
-                    // Langsung cari otomatis kalau text field tidak kosong
                     if (_searchCtrl.text.isNotEmpty) _doSearch(); 
                   },
                 ),
@@ -117,7 +158,6 @@ class _SearchPageState extends State<SearchPage> {
           
           if (_isSearching) const LinearProgressIndicator(),
           
-          // INDIKATOR JUMLAH PENCARIAN
           if (!_isSearching && _hasSearched)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -137,16 +177,18 @@ class _SearchPageState extends State<SearchPage> {
                   itemBuilder: (context, i) {
                     final r = _results[i];
                     final bName = widget.allBooks.firstWhere((b) => b.bookNumber == r['book_number']).name;
+                    
+                    // Bersihkan tag HTML terlebih dahulu
+                    final cleanedText = r['text'].toString().replaceAll(RegExp(r'<[^>]*>'), '');
+
                     return ListTile(
                       title: Text(
                         "$bName ${r['chapter']}:${r['verse']}", 
                         style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)
                       ),
-                      // Membersihkan tag HTML (seperti <x> atau <i>) dari teks pencarian
-                      subtitle: Text(
-                        r['text'].toString().replaceAll(RegExp(r'<[^>]*>'), ''),
-                        style: const TextStyle(fontSize: 16, color: Colors.black87),
-                      ),
+                      // Panggil fungsi Highlight di sini
+                      subtitle: _buildHighlightedText(cleanedText, _searchCtrl.text),
+                      // Saat diklik, lempar data kembali ke AlkitabPage untuk di-scroll
                       onTap: () => Navigator.pop(context, r),
                     );
                   },

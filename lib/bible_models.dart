@@ -1,7 +1,7 @@
 class BibleBook {
-  final int id;
+  final int bookNumber;
   final String name;
-  BibleBook({required this.id, required this.name});
+  BibleBook({required this.bookNumber, required this.name});
 }
 
 class NoteModel {
@@ -10,7 +10,7 @@ class NoteModel {
   final String title;
   final String date;
   final String content;
-  final String rawData; // Data asli format ~|~
+  final String rawData;
 
   NoteModel({
     required this.key,
@@ -21,7 +21,6 @@ class NoteModel {
     required this.rawData,
   });
 
-  // Fungsi untuk memecah string ~|~ ala Kotlin bos
   factory NoteModel.fromRaw(String key, String raw) {
     List<String> p = raw.split("~|~");
     return NoteModel(

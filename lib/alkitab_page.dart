@@ -18,7 +18,6 @@ class AlkitabPage extends StatefulWidget {
 class _AlkitabPageState extends State<AlkitabPage> {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
-  // Ubah ke Map<int, List<String>> agar bisa menampung banyak judul per ayat
   Map<int, List<String>> _perikopMap = {}; 
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
@@ -26,7 +25,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   final ScrollController _scrollController = ScrollController();
   
   String _currentVersion = "TB.SQLite3"; 
-  int _currentBookNum = 470; // Contoh: Matius
+  int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
   late SharedPreferences _prefs;
@@ -37,30 +36,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initApp();
   }
 
-  // Fungsi untuk membersihkan tag HTML/XML dari teks
   String _cleanText(String text) {
-    if (text.isEmpty) return "";
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
-  // Fungsi khusus untuk membersihkan dan merapikan teks Perikop/Referensi Paralel
   String _parsePerikop(String text) {
-    // Menghilangkan tag <x> dan </x>
     String cleaned = text.replaceAll("<x>", "").replaceAll("</x>", "");
-    
-    // Logika untuk mengubah angka kitab (seperti 490) menjadi nama singkat jika ada di dalam kurung
-    // Daftar kode kitab Injil umum di SQLite Alkitab:
     Map<String, String> bookCodes = {
       "470": "Mat",
       "480": "Mrk",
       "490": "Luk",
       "500": "Yoh",
     };
-
     bookCodes.forEach((code, name) {
       cleaned = cleaned.replaceAll(code, name);
     });
-
     return cleaned;
   }
 
@@ -105,7 +95,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         whereArgs: [_currentBookNum, _currentChapter],
         orderBy: 'verse ASC, order_if_several ASC');
 
-    // Perbaikan: Gunakan List agar judul tidak tertimpa referensi paralel
     _perikopMap.clear();
     for (var s in storyData) {
       int vNum = s['verse'] as int;
@@ -300,26 +289,61 @@ class _AlkitabPageState extends State<AlkitabPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // PERBAIKAN: Menampilkan semua baris perikop (Judul & Referensi Paralel)
               if (perikopList != null)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
                   child: Column(
                     children: perikopList.map((title) {
-                      bool isRef = title.contains("<x>"); // Cek apakah ini referensi paralel
+                      bool isRef = title.contains("<x>"); 
+                      // PERBAIKAN: Menampilkan semua baris perikop dengan warna hitam.
+                      // Menjadikan referensi paralel dapat diklik.
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 4.0),
-                        child: Text(
-                          _parsePerikop(title),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontWeight: isRef ? FontWeight.normal : FontWeight.bold, 
-                            fontSize: isRef ? 15 : 19, // Referensi lebih kecil, Judul lebih besar
-                            color: Colors.blue[300], // Biru Muda tetap dipertahankan
-                            fontStyle: isRef ? FontStyle.italic : FontStyle.normal,
-                          ),
-                        ),
+                        child: isRef
+                          ? InkWell(
+                              onTap: () {
+                                // Logika Regex untuk mengurai data navigasi dari teks mentah referensi paralel
+                                final regex = RegExp(r'<x>(\d+)\s+(\d+):(\d+)-?\d*</x>');
+                                final match = regex.firstMatch(title);
+                                
+                                if (match != null) {
+                                  // Ekstrak data target: kitab, pasal, ayat awal
+                                  int targetBookNum = int.parse(match.group(1)!);
+                                  int targetChapter = int.parse(match.group(2)!);
+                                  int targetVerseStart = int.parse(match.group(3)!);
+                                  
+                                  // Ubah state aplikasi
+                                  setState(() {
+                                    _currentBookNum = targetBookNum;
+                                    _currentChapter = targetChapter;
+                                  });
+                                  
+                                  // Muat konten baru dan gulir ke ayat target
+                                  _loadContent(scrollToVerse: targetVerseStart);
+                                }
+                              },
+                              child: Text(
+                                _parsePerikop(title),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.normal, 
+                                  fontSize: 15, 
+                                  color: Colors.black, // PERUBAHAN: Warna Hitam
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              _parsePerikop(title),
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold, 
+                                fontSize: 19, 
+                                color: Colors.black, // PERUBAHAN: Warna Hitam
+                                fontStyle: FontStyle.normal,
+                              ),
+                            ),
                       );
                     }).toList(),
                   ),
@@ -357,7 +381,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// Widget _NavSheet tetap sama seperti sebelumnya...
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;

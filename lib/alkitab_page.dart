@@ -39,7 +39,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initApp();
   }
 
-  // Fungsi membersihkan tag HTML standar
   String _cleanText(String text) {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
@@ -54,7 +53,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     var dbPath = await getDatabasesPath();
     String path = p.join(dbPath, _currentVersion);
     
-    // Cek apakah file sudah ada, jika belum salin dari assets
     bool exists = await databaseExists(path);
     if (!exists) {
       ByteData data = await rootBundle.load("assets/$_currentVersion");
@@ -110,7 +108,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          // Asumsi tinggi tiap ayat sekitar 110px. 
           double position = (scrollToVerse - 1) * 110.0; 
           _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
         }
@@ -182,23 +179,29 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
+  // ==== PERBAIKAN 1: Tambah db & allBooks ====
   void _openNote(String key) {
     String? raw = _prefs.getString(key);
     if (raw != null) {
       Navigator.push(context, MaterialPageRoute(
-        builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: key)
+        builder: (c) => NoteEditorPage(
+          nas: raw.split("~|~")[0], 
+          prefs: _prefs, 
+          existingKey: key,
+          db: _db!,
+          allBooks: _allBooks,
+        )
       )).then((_) => _loadContent());
     }
   }
 
-  // LOGIKA NAVIGASI BARU: Turun dari Atas
   void _showNavigation() {
     showGeneralDialog(
       context: context,
-      barrierDismissible: true, // Bisa ditutup dengan mengetuk area luar
+      barrierDismissible: true, 
       barrierLabel: "Tutup Navigasi",
-      barrierColor: Colors.black.withOpacity(0.5), // Efek gelap latar belakang
-      transitionDuration: const Duration(milliseconds: 300), // Kecepatan animasi
+      barrierColor: Colors.black.withOpacity(0.5), 
+      transitionDuration: const Duration(milliseconds: 300), 
       pageBuilder: (context, animation, secondaryAnimation) {
         return Align(
           alignment: Alignment.topCenter,
@@ -206,7 +209,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
             color: Colors.white,
             borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)),
             child: ConstrainedBox(
-              // Batasi tinggi maksimal agar tidak menutupi layar penuh
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.of(context).size.height * 0.85,
               ),
@@ -223,7 +225,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         );
       },
       transitionBuilder: (context, animation, secondaryAnimation, child) {
-        // Animasi meluncur dari atas
         return SlideTransition(
           position: Tween<Offset>(
             begin: const Offset(0, -1), 
@@ -251,12 +252,19 @@ class _AlkitabPageState extends State<AlkitabPage> {
         mainAxisSize: MainAxisSize.min, 
         children: [
           Padding(padding: const EdgeInsets.all(16), child: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold))),
+          
+          // ==== PERBAIKAN 2: Tambah db & allBooks ====
           ListTile(
             leading: const Icon(Icons.add_comment, color: Colors.blue), 
             title: const Text("Buat Catatan Baru"), 
             onTap: () { 
               Navigator.pop(context); 
-              Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs))).then((_) => _loadContent()); 
+              Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(
+                nas: nas, 
+                prefs: _prefs,
+                db: _db!,
+                allBooks: _allBooks,
+              ))).then((_) => _loadContent()); 
             }
           ),
           ListTile(
@@ -356,16 +364,35 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ]),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())),
+          // ==== PERBAIKAN 3: Tambah db & allBooks ====
+          IconButton(
+            icon: const Icon(Icons.event_note), 
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+              builder: (c) => NoteListPage(
+                prefs: _prefs,
+                db: _db!,
+                allBooks: _allBooks,
+              )
+            )).then((res) {
+              if (res != null && res is Map) {
+                setState(() { 
+                  _currentBookNum = res['book_number']; 
+                  _currentChapter = res['chapter']; 
+                }); 
+                _loadContent(scrollToVerse: res['verse']);
+              } else {
+                _loadContent(); 
+              }
+            })
+          ),
           
-          // ======== PERUBAHAN PENTING: MENGIRIMKAN currentBookNum ========
           IconButton(
             icon: const Icon(Icons.search), 
             onPressed: () => Navigator.push(context, MaterialPageRoute(
               builder: (c) => SearchPage(
                 db: _db!, 
                 allBooks: _allBooks,
-                currentBookNum: _currentBookNum, // Mengirimkan kitab yang sedang dibuka
+                currentBookNum: _currentBookNum,
               )
             )).then((res) {
               if (res != null) { 
@@ -377,8 +404,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
               }
             })
           ),
-          // =================================================================
-          
         ],
       ),
       body: _isLoading 
@@ -440,9 +465,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// =========================================================================
-// UI NAVIGATION SHEET (DROP-DOWN DARI ATAS)
-// =========================================================================
 // =========================================================================
 // UI NAVIGATION SHEET (RESPONSIF UNTUK HP KECIL & TABLET)
 // =========================================================================
@@ -516,7 +538,7 @@ class _NavSheetState extends State<_NavSheet> {
               
               _header("PERJANJIAN BARU", const Color(0xFF03A9F4)), 
               _kitabGrid(pb), 
-              const SizedBox(height: 10), // Margin bawah diperkecil
+              const SizedBox(height: 10), 
             ]
           ),
         ),
@@ -536,7 +558,6 @@ class _NavSheetState extends State<_NavSheet> {
     );
   }
 
-  // Grid untuk Angka Pasal & Ayat (Kotak bisa lebih kecil)
   Widget _buildGrid(String title, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -545,18 +566,17 @@ class _NavSheetState extends State<_NavSheet> {
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), 
         backgroundColor: Colors.transparent, 
         elevation: 0,
-        toolbarHeight: 48, // AppBar dibuat lebih pendek agar hemat ruang
+        toolbarHeight: 48, 
       ),
       Flexible(
         child: GridView.builder(
           shrinkWrap: true,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
-          // GUNAKAN MaxCrossAxisExtent AGAR OTOMATIS MENYESUAIKAN LAYAR
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 60, // Maksimal lebar tiap kotak angka (otomatis tambah kolom di Tablet)
-            childAspectRatio: 1.2,  // Proporsi kotak
-            mainAxisSpacing: 6,     // Spasi atas-bawah diperkecil
-            crossAxisSpacing: 6     // Spasi kiri-kanan diperkecil
+            maxCrossAxisExtent: 60, 
+            childAspectRatio: 1.2,  
+            mainAxisSpacing: 6,     
+            crossAxisSpacing: 6     
           ), 
           itemCount: items.length, 
           itemBuilder: (ctx, i) => InkWell(
@@ -570,7 +590,7 @@ class _NavSheetState extends State<_NavSheet> {
               ), 
               child: Text(
                 "${items[i]}", 
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14) // Font sedikit dikecilkan
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14) 
               )
             )
           )
@@ -580,7 +600,7 @@ class _NavSheetState extends State<_NavSheet> {
   );
 
   Widget _header(String t, Color c) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8), // Padding atas bawah diperkecil
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8), 
     child: Text(
       t, 
       style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5)
@@ -591,12 +611,11 @@ class _NavSheetState extends State<_NavSheet> {
     shrinkWrap: true, 
     physics: const NeverScrollableScrollPhysics(), 
     padding: const EdgeInsets.symmetric(horizontal: 12), 
-    // OTOMATIS MENYESUAIKAN HP/TABLET
     gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-      maxCrossAxisExtent: 68, // Maksimal lebar tiap kotak singkatan kitab
-      childAspectRatio: 1.9,  // Dibuat lebih pipih horizontal agar hemat ruang vertikal
-      mainAxisSpacing: 6,     // Spasi atas-bawah
-      crossAxisSpacing: 6     // Spasi kiri-kanan
+      maxCrossAxisExtent: 68, 
+      childAspectRatio: 1.9,  
+      mainAxisSpacing: 6,     
+      crossAxisSpacing: 6     
     ), 
     itemCount: books.length, 
     itemBuilder: (ctx, i) => InkWell(
@@ -611,7 +630,7 @@ class _NavSheetState extends State<_NavSheet> {
         ), 
         child: Text(
           books[i].shortName.toUpperCase(), 
-          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, color: Colors.black) // Font dikecilkan sedikit
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, color: Colors.black) 
         )
       )
     )

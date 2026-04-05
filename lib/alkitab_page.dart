@@ -18,14 +18,15 @@ class AlkitabPage extends StatefulWidget {
 class _AlkitabPageState extends State<AlkitabPage> {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
-  Map<int, String> _perikopMap = {}; 
+  // Ubah ke Map<int, List<String>> agar bisa menampung banyak judul per ayat
+  Map<int, List<String>> _perikopMap = {}; 
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
   Map<int, List<String>> _verseNotesMap = {}; 
   final ScrollController _scrollController = ScrollController();
   
   String _currentVersion = "TB.SQLite3"; 
-  int _currentBookNum = 10; 
+  int _currentBookNum = 470; // Contoh: Matius
   int _currentChapter = 1;
   bool _isLoading = true;
   late SharedPreferences _prefs;
@@ -36,8 +37,31 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initApp();
   }
 
+  // Fungsi untuk membersihkan tag HTML/XML dari teks
   String _cleanText(String text) {
+    if (text.isEmpty) return "";
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+  }
+
+  // Fungsi khusus untuk membersihkan dan merapikan teks Perikop/Referensi Paralel
+  String _parsePerikop(String text) {
+    // Menghilangkan tag <x> dan </x>
+    String cleaned = text.replaceAll("<x>", "").replaceAll("</x>", "");
+    
+    // Logika untuk mengubah angka kitab (seperti 490) menjadi nama singkat jika ada di dalam kurung
+    // Daftar kode kitab Injil umum di SQLite Alkitab:
+    Map<String, String> bookCodes = {
+      "470": "Mat",
+      "480": "Mrk",
+      "490": "Luk",
+      "500": "Yoh",
+    };
+
+    bookCodes.forEach((code, name) {
+      cleaned = cleaned.replaceAll(code, name);
+    });
+
+    return cleaned;
   }
 
   Future<void> _initApp() async {
@@ -78,11 +102,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
         
     final storyData = await _db!.query('stories',
         where: 'book_number = ? AND chapter = ?',
-        whereArgs: [_currentBookNum, _currentChapter]);
+        whereArgs: [_currentBookNum, _currentChapter],
+        orderBy: 'verse ASC, order_if_several ASC');
 
+    // Perbaikan: Gunakan List agar judul tidak tertimpa referensi paralel
     _perikopMap.clear();
     for (var s in storyData) {
-      _perikopMap[s['verse'] as int] = s['title'].toString();
+      int vNum = s['verse'] as int;
+      String title = s['title'].toString();
+      if (!_perikopMap.containsKey(vNum)) {
+        _perikopMap[vNum] = [];
+      }
+      _perikopMap[vNum]!.add(title);
     }
 
     _verses = verseData;
@@ -121,19 +152,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
             int lastVerse = int.parse(versePart.split(RegExp(r'[-,]')).last);
             if (!_verseNotesMap.containsKey(lastVerse)) _verseNotesMap[lastVerse] = [];
             _verseNotesMap[lastVerse]!.add(key);
-          } catch (e) { print(e); }
+          } catch (e) { /* ignore */ }
         }
       }
     }
   }
 
-  // FUNGSI FLOATING UNTUK MEMILIH CATATAN
   void _showNoteSelection(List<String> keys) {
     if (keys.length == 1) {
       _openNote(keys[0]);
       return;
     }
-
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -158,10 +187,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   leading: const Text("📝", style: TextStyle(fontSize: 20)),
                   title: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(isi, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _openNote(key);
-                  },
+                  onTap: () { Navigator.pop(context); _openNote(key); },
                 );
               },
             ),
@@ -176,11 +202,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String? raw = _prefs.getString(key);
     if (raw != null) {
       Navigator.push(context, MaterialPageRoute(
-        builder: (c) => NoteEditorPage(
-          nas: raw.split("~|~")[0], 
-          prefs: _prefs, 
-          existingKey: key
-        )
+        builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: key)
       )).then((_) => _loadContent());
     }
   }
@@ -259,16 +281,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ]),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.event_note), 
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())
-          ),
-          IconButton(
-            icon: const Icon(Icons.search), 
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
-              if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(); }
-            })
-          ),
+          IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())),
+          IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
+            if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(); }
+          })),
         ],
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
@@ -279,25 +295,33 @@ class _AlkitabPageState extends State<AlkitabPage> {
           final vNum = v['verse'] as int; 
           final isSelected = _selectedVerses.contains(vNum); 
           final noteKeys = _verseNotesMap[vNum];
-          final perikop = _perikopMap[vNum];
+          final perikopList = _perikopMap[vNum];
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // PERBAIKAN TAMPILAN PERIKOP: TENGAH, BESAR, BOLD, BIRU MUDA
-              if (perikop != null)
+              // PERBAIKAN: Menampilkan semua baris perikop (Judul & Referensi Paralel)
+              if (perikopList != null)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(16, 25, 16, 12),
-                  child: Text(
-                    perikop, 
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold, 
-                      fontSize: 20, 
-                      color: Colors.blue[300], // Biru Muda
-                      height: 1.3
-                    ),
+                  padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
+                  child: Column(
+                    children: perikopList.map((title) {
+                      bool isRef = title.contains("<x>"); // Cek apakah ini referensi paralel
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Text(
+                          _parsePerikop(title),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontWeight: isRef ? FontWeight.normal : FontWeight.bold, 
+                            fontSize: isRef ? 15 : 19, // Referensi lebih kecil, Judul lebih besar
+                            color: Colors.blue[300], // Biru Muda tetap dipertahankan
+                            fontStyle: isRef ? FontStyle.italic : FontStyle.normal,
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               GestureDetector(
@@ -313,17 +337,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                         TextSpan(text: _cleanText(v['text'])),
                       ])),
-                      
-                      // HANYA SATU IKON CATATAN MESKIPUN BANYAK CATATAN
                       if (noteKeys != null && noteKeys.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: InkWell(
                             onTap: () => _showNoteSelection(noteKeys),
-                            child: const Padding(
-                              padding: EdgeInsets.all(4.0),
-                              child: Text("📝", style: TextStyle(fontSize: 28)),
-                            ),
+                            child: const Padding(padding: EdgeInsets.all(4.0), child: Text("📝", style: TextStyle(fontSize: 28))),
                           ),
                         ),
                     ],
@@ -338,70 +357,40 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
+// Widget _NavSheet tetap sama seperti sebelumnya...
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;
   final Function(int bookNum, int chapter, int verse) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete});
-  @override
-  State<_NavSheet> createState() => _NavSheetState();
+  @override State<_NavSheet> createState() => _NavSheetState();
 }
-
 class _NavSheetState extends State<_NavSheet> {
-  BibleBook? selBook;
-  int? selChapter;
-  List<int> chapters = [];
-  List<int> verses = [];
-
+  BibleBook? selBook; int? selChapter; List<int> chapters = []; List<int> verses = [];
   void _getChapters(BibleBook book) async {
     final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [book.bookNumber]);
     setState(() { selBook = book; chapters = res.map((e) => e['chapter'] as int).toList(); selChapter = null; });
   }
-
   void _getVerses(int chapter) async {
     final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selBook!.bookNumber, chapter]);
     setState(() { selChapter = chapter; verses = res.map((e) => e['verse'] as int).toList(); });
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      expand: false, initialChildSize: 0.9, maxChildSize: 0.95,
-      builder: (_, controller) {
-        if (selChapter != null) {
-          return _buildGrid(controller, "Ayat: ${selBook!.name} $selChapter", verses, (v) {
-            widget.onSelectionComplete(selBook!.bookNumber, selChapter!, v);
-            Navigator.pop(context);
-          }, () => setState(() => selChapter = null));
-        }
-        if (selBook != null) {
-          return _buildGrid(controller, "Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
-        }
-
-        List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
-        List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
-
-        return ListView(controller: controller, children: [
-          const SizedBox(height: 10),
-          Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-          _header("PERJANJIAN LAMA", Colors.pink),
-          _kitabGrid(pl),
-          const Divider(),
-          _header("PERJANJIAN BARU", Colors.blue),
-          _kitabGrid(pb),
-          const SizedBox(height: 50),
-        ]);
-      },
-    );
+  @override Widget build(BuildContext context) {
+    return DraggableScrollableSheet(expand: false, initialChildSize: 0.9, maxChildSize: 0.95, builder: (_, controller) {
+      if (selChapter != null) return _buildGrid(controller, "Ayat: ${selBook!.name} $selChapter", verses, (v) { widget.onSelectionComplete(selBook!.bookNumber, selChapter!, v); Navigator.pop(context); }, () => setState(() => selChapter = null));
+      if (selBook != null) return _buildGrid(controller, "Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
+      List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
+      List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
+      return ListView(controller: controller, children: [
+        const SizedBox(height: 10), Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+        _header("PERJANJIAN LAMA", Colors.pink), _kitabGrid(pl), const Divider(), _header("PERJANJIAN BARU", Colors.blue), _kitabGrid(pb), const SizedBox(height: 50),
+      ]);
+    });
   }
-
   Widget _buildGrid(ScrollController c, String title, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(children: [
     AppBar(title: Text(title, style: const TextStyle(fontSize: 16, color: Colors.black)), leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), backgroundColor: Colors.transparent, elevation: 0),
-    Expanded(child: GridView.builder(controller: c, padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10), 
-      itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)))))),
+    Expanded(child: GridView.builder(controller: c, padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10), itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)))))),
   ]);
-
   Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 14)));
-  Widget _kitabGrid(List<BibleBook> books) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 12), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 8, crossAxisSpacing: 8), 
-    itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)))));
+  Widget _kitabGrid(List<BibleBook> books) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 12), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 8, crossAxisSpacing: 8), itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)))));
 }

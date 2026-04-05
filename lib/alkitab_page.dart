@@ -29,8 +29,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
   
   String _currentVersion = "TB.SQLite3"; 
   
-  // Default ke 1 (Kejadian) kalau aplikasi baru pertama kali diinstal
-  int _currentBookNum = 1; 
+  // Default ke 10 (Kejadian) sesuai database Anda
+  int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
   late SharedPreferences _prefs;
@@ -48,20 +48,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     
-    // ==== LOGIKA BARU: Muat riwayat bacaan terakhir ====
-    _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 1; 
+    // Muat riwayat bacaan terakhir (Aman, default kembali ke 10)
+    _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
     _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
-    // ===================================================
 
     await _loadDatabase();
   }
 
-  // ==== FUNGSI BARU: Simpan riwayat bacaan ====
+  // Simpan riwayat bacaan
   void _saveLastPosition() {
     _prefs.setInt('LAST_BOOK_NUM', _currentBookNum);
     _prefs.setInt('LAST_CHAPTER', _currentChapter);
   }
-  // ============================================
 
   Future<void> _loadDatabase() async {
     setState(() => _isLoading = true);
@@ -135,7 +133,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
     final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
     if (_allBooks.isEmpty) return;
     
-    String currentBookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
+    // Amankan pengambilan nama kitab
+    String currentBookName = _allBooks.firstWhere(
+      (b) => b.bookNumber == _currentBookNum, 
+      orElse: () => _allBooks.first
+    ).name;
+    
     String prefix = "$currentBookName $_currentChapter:";
 
     for (var key in allKeys) {
@@ -231,7 +234,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 db: _db!,
                 onSelectionComplete: (bookNum, chapter, verse) {
                   setState(() { _currentBookNum = bookNum; _currentChapter = chapter; });
-                  _saveLastPosition(); // <--- Simpan otomatis
+                  _saveLastPosition(); 
                   _loadContent(scrollToVerse: verse);
                 },
               ),
@@ -254,7 +257,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
-    String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
+    
+    // Aman dari crash
+    String bookName = _allBooks.firstWhere(
+      (b) => b.bookNumber == _currentBookNum,
+      orElse: () => _allBooks.first
+    ).name;
+    
     String verseRange = sorted.length > 1 && (sorted.last - sorted.first == sorted.length - 1)
         ? "${sorted.first}-${sorted.last}"
         : sorted.join(",");
@@ -339,7 +348,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ),
             recognizer: TapGestureRecognizer()..onTap = () {
               setState(() { _currentBookNum = bNum; _currentChapter = chap; });
-              _saveLastPosition(); // <--- Simpan otomatis saat klik referensi
+              _saveLastPosition(); 
               _loadContent(scrollToVerse: vStart);
             },
           ));
@@ -365,7 +374,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   @override
   Widget build(BuildContext context) {
-    String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
+    // Memastikan tidak akan pernah error saat awal mula load database
+    String bookName = _allBooks.isEmpty 
+        ? "" 
+        : _allBooks.firstWhere(
+            (b) => b.bookNumber == _currentBookNum, 
+            orElse: () => _allBooks.first
+          ).name;
     
     return Scaffold(
       appBar: AppBar(
@@ -392,7 +407,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   _currentBookNum = res['book_number']; 
                   _currentChapter = res['chapter']; 
                 }); 
-                _saveLastPosition(); // <--- Simpan otomatis
+                _saveLastPosition(); 
                 _loadContent(scrollToVerse: res['verse']);
               } else {
                 _loadContent(); 
@@ -414,7 +429,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   _currentBookNum = res['book_number']; 
                   _currentChapter = res['chapter']; 
                 }); 
-                _saveLastPosition(); // <--- Simpan otomatis
+                _saveLastPosition(); 
                 _loadContent(scrollToVerse: res['verse']); 
               }
             })
@@ -538,7 +553,8 @@ class _NavSheetState extends State<_NavSheet> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
+        // FIX: Menggunakan Flexible, bukan Expanded
+        Flexible(
           child: ListView(
             shrinkWrap: true,
             padding: EdgeInsets.zero,

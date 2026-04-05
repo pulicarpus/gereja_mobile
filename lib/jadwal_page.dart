@@ -132,19 +132,16 @@ class _JadwalPageState extends State<JadwalPage> {
     final pelayan = data['pelayan'] as Map<String, dynamic>? ?? {};
     final String namaKeg = data['namaKegiatan'] ?? "-";
     
-    // ==== PERBAIKAN: SEMUA PELAYAN SUDAH MASUK ====
     final List<Map<String, dynamic>> rows = [
       {'label': 'W.L', 'val': pelayan['Worship Leader']},
       {'label': 'Singer', 'val': pelayan['Singer']},
       {'label': 'Musik', 'val': pelayan['Pemain Musik']},
-      // Mendukung baca data lama ('Tamborin') maupun baru ('Pemain Tamborin')
       {'label': 'Tamborin', 'val': pelayan['Pemain Tamborin'] ?? pelayan['Tamborin']}, 
       {'label': 'Operator LCD', 'val': pelayan['Operator LCD']},
       {'label': 'Kolektan', 'val': pelayan['Kolektan']},
       {'label': 'Doa Syafaat', 'val': pelayan['Doa Syafaat']},
       {'label': 'Penerima Tamu', 'val': pelayan['Penerima Tamu']},
     ];
-    // ==============================================
 
     final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().trim().isNotEmpty).toList();
 
@@ -179,8 +176,17 @@ class _JadwalPageState extends State<JadwalPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(width: 105, child: Text(visibleRows[index]['label'], style: const TextStyle(color: Colors.grey))),
-                      Expanded(child: Text(visibleRows[index]['val'].toString().replaceAll(", ", "\n"), style: const TextStyle(fontWeight: FontWeight.bold))),
+                      // ==== PERBAIKAN DI SINI: Lebar untuk label diperbesar jadi 130 ====
+                      SizedBox(
+                        width: 130, 
+                        child: Text(visibleRows[index]['label'], style: const TextStyle(color: Colors.grey))
+                      ),
+                      Expanded(
+                        child: Text(
+                          visibleRows[index]['val'].toString().replaceAll(", ", "\n"), 
+                          style: const TextStyle(fontWeight: FontWeight.bold)
+                        )
+                      ),
                     ],
                   ),
                 );

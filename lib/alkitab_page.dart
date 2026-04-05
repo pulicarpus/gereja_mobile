@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'bible_models.dart';
 import 'notes_pages.dart';
-import 'search_page.dart'; // File baru untuk pencarian
+import 'search_page.dart';
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -20,7 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _verses = [];
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
-  Map<int, List<String>> _verseNotesMap = {}; // Update: Mendukung daftar key catatan per ayat
+  Map<int, List<String>> _verseNotesMap = {}; 
   
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
@@ -63,7 +63,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await _loadContent();
   }
 
-  Future<void> _loadContent({int? targetVerse}) async {
+  Future<void> _loadContent() async {
     if (_db == null) return;
     final data = await _db!.query('verses', 
         where: 'book_number = ? AND chapter = ?', 
@@ -77,16 +77,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _isLoading = false;
       _selectedVerses.clear();
     });
-
-    // Jika datang dari hasil pencarian, scroll ke ayat tersebut
-    if (targetVerse != null) {
-      // Logika scroll bisa ditambahkan di sini menggunakan ScrollController
-    }
   }
 
   Future<void> _syncNotes() async {
     _verseNotesMap.clear();
     final keys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+    if (_allBooks.isEmpty) return;
+    
     String currentBookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String prefix = "$currentBookName $_currentChapter:";
 
@@ -95,13 +92,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
       if (raw != null) {
         String nas = raw.split("~|~")[0];
         if (nas.startsWith(prefix)) {
-          String versesPart = nas.split(":")[1];
-          int lastVerse = int.parse(versesPart.split(RegExp(r'[-,]')).last);
-          
-          if (!_verseNotesMap.containsKey(lastVerse)) {
-            _verseNotesMap[lastVerse] = [];
+          try {
+            String versesPart = nas.split(":")[1];
+            int lastVerse = int.parse(versesPart.split(RegExp(r'[-,]')).last);
+            if (!_verseNotesMap.containsKey(lastVerse)) {
+              _verseNotesMap[lastVerse] = [];
+            }
+            _verseNotesMap[lastVerse]!.add(k);
+          } catch (e) {
+            print("Error parsing NAS: $e");
           }
-          _verseNotesMap[lastVerse]!.add(k); // Tambahkan ke list (Multiple Notes)
         }
       }
     }
@@ -109,7 +109,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
-    List<int> sorted = _selectedVerses.toList()...sort();
+    
+    // PERBAIKAN DI SINI: Gunakan .. (dua titik)
+    List<int> sorted = _selectedVerses.toList()..sort();
+    
     String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String nas = "$bookName $_currentChapter:${sorted.join(",")}";
     
@@ -141,6 +144,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             onTap: () {
               Clipboard.setData(ClipboardData(text: fullText));
               Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ayat disalin")));
               setState(() => _selectedVerses.clear());
             },
           ),
@@ -154,7 +158,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // Pop-up jika ada banyak catatan di satu ayat
   void _showMultipleNotesPicker(List<String> keys) {
     showDialog(
       context: context,
@@ -191,7 +194,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-        title: GestureDetector(onTap: () {}, child: Text("$bookName $_currentChapter")),
+        title: Text("$bookName $_currentChapter"),
         actions: [
           IconButton(
             icon: const Icon(Icons.search), 
@@ -201,7 +204,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   _currentBookNum = res['book_number'];
                   _currentChapter = res['chapter'];
                 });
-                _loadContent(targetVerse: res['verse']);
+                _loadContent();
               }
             })
           ),

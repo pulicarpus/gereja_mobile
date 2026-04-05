@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart'; // TAMBAHKAN INI untuk aksi klik teks
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,22 +37,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _initApp();
   }
 
+  // Fungsi membersihkan tag HTML standar
   String _cleanText(String text) {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
-  String _parsePerikop(String text) {
-    String cleaned = text.replaceAll("<x>", "").replaceAll("</x>", "");
+  // Helper untuk mengubah kode angka menjadi nama kitab pendek
+  String _mapBookName(String text) {
     Map<String, String> bookCodes = {
-      "470": "Mat",
-      "480": "Mrk",
-      "490": "Luk",
-      "500": "Yoh",
+      "470": "Mat", "480": "Mrk", "490": "Luk", "500": "Yoh",
+      // Tambahkan kode lainnya jika perlu
     };
+    String result = text;
     bookCodes.forEach((code, name) {
-      cleaned = cleaned.replaceAll(code, name);
+      result = result.replaceAll(code, name);
     });
-    return cleaned;
+    return result;
   }
 
   Future<void> _initApp() async {
@@ -256,6 +257,70 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
+  // LOGIKA BARU: Membuat teks paralel bisa diklik satu per satu
+  Widget _buildPerikopItem(String title) {
+    if (!title.contains("<x>")) {
+      return Text(
+        title,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: Colors.black),
+      );
+    }
+
+    // Judul yang mengandung referensi paralel
+    // Contoh title: "(<x>470 8:28-34; 490 8:26-39</x>)"
+    final contentRegex = RegExp(r'\((.*)<x>(.*)</x>(.*)\)');
+    final match = contentRegex.firstMatch(title);
+
+    if (match == null) return Text(title, style: const TextStyle(color: Colors.black));
+
+    String prefix = match.group(1) ?? "";
+    String content = match.group(2) ?? "";
+    String suffix = match.group(3) ?? "";
+
+    List<TextSpan> spans = [];
+    spans.add(TextSpan(text: "($prefix"));
+
+    // Pisahkan referensi jika ada lebih dari satu (dipisah titik koma)
+    List<String> refs = content.split(';');
+    for (int i = 0; i < refs.length; i++) {
+      String rawRef = refs[i].trim();
+      // Cari data kitab, pasal, ayat di setiap bagian
+      final refData = RegExp(r'(\d+)\s+(\d+):(\d+)').firstMatch(rawRef);
+      
+      if (refData != null) {
+        int bNum = int.parse(refData.group(1)!);
+        int chap = int.parse(refData.group(2)!);
+        int vStart = int.parse(refData.group(3)!);
+        
+        spans.add(TextSpan(
+          text: _mapBookName(rawRef),
+          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w500, decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()..onTap = () {
+            setState(() { _currentBookNum = bNum; _currentChapter = chap; });
+            _loadContent(scrollToVerse: vStart);
+          },
+        ));
+      } else {
+        spans.add(TextSpan(text: _mapBookName(rawRef)));
+      }
+
+      if (i < refs.length - 1) {
+        spans.add(const TextSpan(text: "; "));
+      }
+    }
+
+    spans.add(TextSpan(text: "$suffix)"));
+
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(
+        style: const TextStyle(fontSize: 15, color: Colors.black, fontStyle: FontStyle.italic),
+        children: spans,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
@@ -294,58 +359,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
                   child: Column(
-                    children: perikopList.map((title) {
-                      bool isRef = title.contains("<x>"); 
-                      // PERBAIKAN: Menampilkan semua baris perikop dengan warna hitam.
-                      // Menjadikan referensi paralel dapat diklik.
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 4.0),
-                        child: isRef
-                          ? InkWell(
-                              onTap: () {
-                                // Logika Regex untuk mengurai data navigasi dari teks mentah referensi paralel
-                                final regex = RegExp(r'<x>(\d+)\s+(\d+):(\d+)-?\d*</x>');
-                                final match = regex.firstMatch(title);
-                                
-                                if (match != null) {
-                                  // Ekstrak data target: kitab, pasal, ayat awal
-                                  int targetBookNum = int.parse(match.group(1)!);
-                                  int targetChapter = int.parse(match.group(2)!);
-                                  int targetVerseStart = int.parse(match.group(3)!);
-                                  
-                                  // Ubah state aplikasi
-                                  setState(() {
-                                    _currentBookNum = targetBookNum;
-                                    _currentChapter = targetChapter;
-                                  });
-                                  
-                                  // Muat konten baru dan gulir ke ayat target
-                                  _loadContent(scrollToVerse: targetVerseStart);
-                                }
-                              },
-                              child: Text(
-                                _parsePerikop(title),
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.normal, 
-                                  fontSize: 15, 
-                                  color: Colors.black, // PERUBAHAN: Warna Hitam
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            )
-                          : Text(
-                              _parsePerikop(title),
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold, 
-                                fontSize: 19, 
-                                color: Colors.black, // PERUBAHAN: Warna Hitam
-                                fontStyle: FontStyle.normal,
-                              ),
-                            ),
-                      );
-                    }).toList(),
+                    children: perikopList.map((title) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4.0),
+                      child: _buildPerikopItem(title),
+                    )).toList(),
                   ),
                 ),
               GestureDetector(

@@ -18,7 +18,7 @@ class AlkitabPage extends StatefulWidget {
 class _AlkitabPageState extends State<AlkitabPage> {
   Database? _db;
   List<Map<String, dynamic>> _verses = [];
-  Map<int, String> _perikopMap = {}; // Untuk menyimpan judul perikop per ayat
+  Map<int, String> _perikopMap = {}; 
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
   Map<int, List<String>> _verseNotesMap = {}; 
@@ -71,13 +71,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _loadContent({int? scrollToVerse}) async {
     if (_db == null) return;
 
-    // 1. Ambil Ayat
     final verseData = await _db!.query('verses', 
         where: 'book_number = ? AND chapter = ?', 
         whereArgs: [_currentBookNum, _currentChapter],
         orderBy: 'verse ASC');
         
-    // 2. Ambil Perikop (Judul dari tabel stories)
     final storyData = await _db!.query('stories',
         where: 'book_number = ? AND chapter = ?',
         whereArgs: [_currentBookNum, _currentChapter]);
@@ -116,20 +114,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
     for (var key in allKeys) {
       String? rawData = _prefs.getString(key);
       if (rawData != null) {
-        String nas = rawData.split("~|~")[0]; // Format: "Kejadian 1:1,2"
+        String nas = rawData.split("~|~")[0];
         if (nas.startsWith(prefix)) {
-          // Ambil ayat terakhir dari range (misal 1:1-4 maka diambil 4)
           try {
             String versePart = nas.split(":")[1];
             int lastVerse = int.parse(versePart.split(RegExp(r'[-,]')).last);
-            
-            if (!_verseNotesMap.containsKey(lastVerse)) {
-              _verseNotesMap[lastVerse] = [];
-            }
+            if (!_verseNotesMap.containsKey(lastVerse)) _verseNotesMap[lastVerse] = [];
             _verseNotesMap[lastVerse]!.add(key);
-          } catch (e) {
-            debugPrint("Error parsing verse for note: $e");
-          }
+          } catch (e) { print(e); }
         }
       }
     }
@@ -145,10 +137,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         allBooks: _allBooks,
         db: _db!,
         onSelectionComplete: (bookNum, chapter, verse) {
-          setState(() {
-            _currentBookNum = bookNum;
-            _currentChapter = chapter;
-          });
+          setState(() { _currentBookNum = bookNum; _currentChapter = chapter; });
           _loadContent(scrollToVerse: verse);
         },
       ),
@@ -159,20 +148,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
     String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
-    
-    // Format NAS: "Matius 1:1-4" jika berurutan atau "Matius 1:1,3" jika tidak
     String verseRange = sorted.length > 1 && (sorted.last - sorted.first == sorted.length - 1)
         ? "${sorted.first}-${sorted.last}"
         : sorted.join(",");
-        
     String nas = "$bookName $_currentChapter:$verseRange";
     
-    String fullText = "$nas\n";
-    for (var vNum in sorted) {
-      var vData = _verses.firstWhere((element) => element['verse'] == vNum);
-      fullText += "$vNum. ${_cleanText(vData['text'])}\n";
-    }
-
     showModalBottomSheet(
       context: context, 
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), 
@@ -192,6 +172,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
             leading: const Icon(Icons.copy), 
             title: const Text("Salin Ayat"), 
             onTap: () { 
+              String fullText = "$nas\n";
+              for (var vNum in sorted) {
+                var vData = _verses.firstWhere((element) => element['verse'] == vNum);
+                fullText += "$vNum. ${_cleanText(vData['text'])}\n";
+              }
               Clipboard.setData(ClipboardData(text: fullText)); 
               Navigator.pop(context); 
               setState(() => _selectedVerses.clear()); 
@@ -207,8 +192,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.indigo[900], 
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(
           onTap: _showNavigation, 
           child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -218,7 +202,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.library_books), 
+            icon: const Icon(Icons.event_note), // Icon catatan daftar besar
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())
           ),
           IconButton(
@@ -242,18 +226,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // TAMPILKAN JUDUL PERIKOP (Jika ada di ayat ini)
               if (perikop != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                  child: Text(perikop, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontStyle: FontStyle.italic, color: Colors.black87)),
+                  child: Text(perikop, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontStyle: FontStyle.italic, color: Colors.brown)),
                 ),
-              
               GestureDetector(
-                onLongPress: () { 
-                  if (!isSelected) setState(() => _selectedVerses.add(vNum)); 
-                  _showActionMenu(); 
-                },
+                onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
                 onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
                 child: Container(
                   color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent, 
@@ -266,21 +245,25 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         TextSpan(text: _cleanText(v['text'])),
                       ])),
                       
-                      // IKON CATATAN - Sekarang Bisa Diklik
                       if (noteKeys != null && noteKeys.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: 8),
                           child: Wrap(
+                            spacing: 10,
                             children: noteKeys.map((key) => InkWell(
                               onTap: () {
-                                Navigator.push(context, MaterialPageRoute(
-                                  builder: (c) => NoteEditorPage(nas: _prefs.getString(key)!.split("~|~")[0], prefs: _prefs, noteKey: key)
-                                )).then((_) => _loadContent());
+                                String? raw = _prefs.getString(key);
+                                if (raw != null) {
+                                  Navigator.push(context, MaterialPageRoute(
+                                    builder: (c) => NoteEditorPage(
+                                      nas: raw.split("~|~")[0], 
+                                      prefs: _prefs, 
+                                      existingKey: key // FIX: Pakai existingKey, bukan noteKey
+                                    )
+                                  )).then((_) => _loadContent());
+                                }
                               },
-                              child: const Padding(
-                                padding: EdgeInsets.only(right: 8),
-                                child: Text("📝", style: TextStyle(fontSize: 24)),
-                              ),
+                              child: const Text("📝", style: TextStyle(fontSize: 25)),
                             )).toList(),
                           ),
                         ),
@@ -296,7 +279,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// Widget Navigasi (NavSheet) tetap sama seperti sebelumnya tapi pastikan batas PB 470
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;

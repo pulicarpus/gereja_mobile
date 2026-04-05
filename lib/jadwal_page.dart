@@ -32,15 +32,21 @@ class _JadwalPageState extends State<JadwalPage> {
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
         title: Text(widget.filterKategorial ?? "Jadwal Ibadah"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: Colors.indigo[900], 
+        foregroundColor: Colors.white,
         elevation: 0.5,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('churches').doc(churchId).collection('jadwal')
             .orderBy('tanggal', descending: false).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          
+          if (snapshot.hasError) {
+             return const Center(child: Text("Terjadi kesalahan koneksi."));
+          }
           
           final docs = snapshot.data?.docs ?? [];
           final filteredDocs = docs.where((doc) {
@@ -52,14 +58,25 @@ class _JadwalPageState extends State<JadwalPage> {
             return kat == widget.filterKategorial;
           }).toList();
 
-          return ListView.builder(
+          return ListView(
             padding: const EdgeInsets.all(16),
-            itemCount: filteredDocs.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) return _buildPengumumanCard();
-              final doc = filteredDocs[index - 1];
-              return _buildJadwalCard(doc);
-            },
+            children: [
+              _buildPengumumanCard(),
+              const SizedBox(height: 8),
+              
+              if (filteredDocs.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 50),
+                  child: Center(
+                    child: Text(
+                      "Belum ada jadwal ibadah", 
+                      style: TextStyle(color: Colors.grey, fontSize: 16)
+                    )
+                  ),
+                )
+              else
+                ...filteredDocs.map((doc) => _buildJadwalCard(doc)),
+            ],
           );
         },
       ),
@@ -76,14 +93,34 @@ class _JadwalPageState extends State<JadwalPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).snapshots(),
       builder: (context, snapshot) {
-        String teks = snapshot.data?.get('teks') ?? "Belum ada pengumuman.";
+        String teks = snapshot.data?.get('teks') ?? "Tidak ada pengumuman khusus.";
         return GestureDetector(
           onLongPress: isAdmin ? () => _showEditPengumumanDialog(docId, teks) : null,
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: const Color(0xFFFFF9C4), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
-            child: Text(teks),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF9C4), 
+              borderRadius: BorderRadius.circular(12), 
+              border: Border.all(color: Colors.orange.shade300, width: 1.5),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+              ]
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.campaign, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Text("Pengumuman", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[800])),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(teks, style: const TextStyle(fontSize: 15)),
+              ],
+            ),
           ),
         );
       },
@@ -95,36 +132,54 @@ class _JadwalPageState extends State<JadwalPage> {
     final pelayan = data['pelayan'] as Map<String, dynamic>? ?? {};
     final String namaKeg = data['namaKegiatan'] ?? "-";
     
+    // ==== PERBAIKAN: SEMUA PELAYAN SUDAH MASUK ====
     final List<Map<String, dynamic>> rows = [
       {'label': 'W.L', 'val': pelayan['Worship Leader']},
       {'label': 'Singer', 'val': pelayan['Singer']},
       {'label': 'Musik', 'val': pelayan['Pemain Musik']},
-      {'label': 'Tamborin', 'val': pelayan['Pemain Tamborin']},
-      {'label': 'LCD', 'val': pelayan['Operator LCD']},
+      // Mendukung baca data lama ('Tamborin') maupun baru ('Pemain Tamborin')
+      {'label': 'Tamborin', 'val': pelayan['Pemain Tamborin'] ?? pelayan['Tamborin']}, 
+      {'label': 'Operator LCD', 'val': pelayan['Operator LCD']},
       {'label': 'Kolektan', 'val': pelayan['Kolektan']},
       {'label': 'Doa Syafaat', 'val': pelayan['Doa Syafaat']},
       {'label': 'Penerima Tamu', 'val': pelayan['Penerima Tamu']},
     ];
+    // ==============================================
 
-    final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().isNotEmpty).toList();
+    final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().trim().isNotEmpty).toList();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         onLongPress: isAdmin ? () => _showEditDeleteDialog(doc.id, namaKeg) : null,
         child: Container(
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.shade100)),
+          decoration: BoxDecoration(
+            color: Colors.white, 
+            borderRadius: BorderRadius.circular(12), 
+            border: Border.all(color: Colors.indigo.shade100),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))
+            ]
+          ),
           child: ExpansionTile(
-            title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text("${data['waktu'] ?? '-'} | ${data['tempat'] ?? '-'}"),
+            title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                "${data['waktu'] ?? '-'} \n📍 ${data['tempat'] ?? '-'}",
+                style: TextStyle(color: Colors.grey[700], height: 1.3),
+              ),
+            ),
             children: [
+              const Divider(height: 1),
               ...List.generate(visibleRows.length, (index) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  color: index % 2 == 0 ? Colors.white : Colors.blue.shade50.withOpacity(0.3),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  color: index % 2 == 0 ? Colors.white : Colors.indigo.shade50.withOpacity(0.3),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox(width: 110, child: Text(visibleRows[index]['label'])),
+                      SizedBox(width: 105, child: Text(visibleRows[index]['label'], style: const TextStyle(color: Colors.grey))),
                       Expanded(child: Text(visibleRows[index]['val'].toString().replaceAll(", ", "\n"), style: const TextStyle(fontWeight: FontWeight.bold))),
                     ],
                   ),
@@ -133,9 +188,14 @@ class _JadwalPageState extends State<JadwalPage> {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Firman: ${data['deskripsi'] ?? '-'}", style: const TextStyle(fontStyle: FontStyle.italic)),
-                    const SizedBox(height: 12),
+                    if (data['deskripsi'] != null && data['deskripsi'].toString().trim().isNotEmpty) ...[
+                       Text("Firman Tuhan:", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                       const SizedBox(height: 4),
+                       Text("${data['deskripsi']}", style: const TextStyle(fontStyle: FontStyle.italic)),
+                       const SizedBox(height: 16),
+                    ],
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -143,8 +203,14 @@ class _JadwalPageState extends State<JadwalPage> {
                           onPressed: () => _navigasiSusunan(doc.id, namaKeg),
                           icon: const Icon(Icons.list_alt),
                           label: const Text("Susunan Acara"),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
                         ),
-                        if (isAdmin) IconButton(onPressed: () => _navigasiTambahEdit(doc.id), icon: const Icon(Icons.edit, color: Colors.orange)),
+                        if (isAdmin) 
+                          OutlinedButton.icon(
+                            onPressed: () => _navigasiTambahEdit(doc.id), 
+                            icon: const Icon(Icons.edit, color: Colors.orange),
+                            label: const Text("Edit", style: TextStyle(color: Colors.orange)),
+                          ),
                       ],
                     )
                   ],
@@ -162,14 +228,26 @@ class _JadwalPageState extends State<JadwalPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Update Pengumuman"),
-        content: TextField(controller: controller, maxLines: 3),
+        title: const Text("Update Pengumuman", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: controller, 
+          maxLines: 4,
+          decoration: InputDecoration(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            hintText: "Ketik pengumuman di sini..."
+          ),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          ElevatedButton(onPressed: () {
-            _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': controller.text});
-            Navigator.pop(context);
-          }, child: const Text("Simpan")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+            onPressed: () {
+              _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': controller.text});
+              Navigator.pop(context);
+            }, 
+            child: const Text("Simpan")
+          ),
         ],
       ),
     );
@@ -178,14 +256,49 @@ class _JadwalPageState extends State<JadwalPage> {
   void _showEditDeleteDialog(String id, String nama) {
     showModalBottomSheet(
       context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(leading: const Icon(Icons.edit), title: Text("Edit $nama"), onTap: () { Navigator.pop(context); _navigasiTambahEdit(id); }),
-          ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus"), onTap: () {
-            _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
-            Navigator.pop(context);
-          }),
+          const SizedBox(height: 10),
+          Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text("Kelola: $nama", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo)),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.edit, color: Colors.orange), 
+            title: const Text("Edit Jadwal"), 
+            onTap: () { Navigator.pop(context); _navigasiTambahEdit(id); }
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete, color: Colors.red), 
+            title: const Text("Hapus Jadwal", style: TextStyle(color: Colors.red)), 
+            onTap: () {
+               Navigator.pop(context);
+               showDialog(
+                 context: context,
+                 builder: (c) => AlertDialog(
+                   title: const Text("Hapus Jadwal?"),
+                   content: Text("Jadwal '$nama' akan dihapus permanen."),
+                   actions: [
+                     TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
+                     ElevatedButton(
+                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                       onPressed: () {
+                         _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
+                         Navigator.pop(c);
+                       }, 
+                       child: const Text("Hapus", style: TextStyle(color: Colors.white))
+                     )
+                   ]
+                 )
+               );
+            }
+          ),
+          const SizedBox(height: 20),
         ],
       ),
     );

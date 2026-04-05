@@ -168,8 +168,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           final v = _verses[i];
           final vNum = v['verse'] as int;
           
-          // FIX: Ambil dari kolom 'content' sesuai screenshot jam 12:16
-          final vText = v['content']?.toString() ?? "Teks Kosong"; 
+          // PERBAIKAN FATAL: Pakai 'text' sesuai screenshot database bos
+          final vText = v['text']?.toString() ?? "Kolom 'text' tidak ditemukan"; 
           
           final isSelected = _selectedVerses.contains(vNum);
           

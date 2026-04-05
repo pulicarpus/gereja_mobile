@@ -27,9 +27,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Map<int, List<String>> _verseNotesMap = {}; 
   final ScrollController _scrollController = ScrollController();
   
+  // Versi default (Disimpan ke SharedPreferences nanti)
   String _currentVersion = "TB.SQLite3"; 
   
-  // Default ke 10 (Kejadian) sesuai database Anda
   int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
@@ -48,18 +48,40 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     
-    // Muat riwayat bacaan terakhir (Aman, default kembali ke 10)
+    // Muat riwayat bacaan & versi Alkitab terakhir
     _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
     _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
+    _currentVersion = _prefs.getString('LAST_VERSION') ?? "TB.SQLite3"; // <--- Mengingat versi terakhir
 
     await _loadDatabase();
   }
 
-  // Simpan riwayat bacaan
   void _saveLastPosition() {
     _prefs.setInt('LAST_BOOK_NUM', _currentBookNum);
     _prefs.setInt('LAST_CHAPTER', _currentChapter);
+    _prefs.setString('LAST_VERSION', _currentVersion);
   }
+
+  // ==== FUNGSI BARU: Ganti Versi Alkitab ====
+  Future<void> _changeVersion(String newVersion) async {
+    if (_currentVersion == newVersion) return;
+    
+    setState(() {
+      _currentVersion = newVersion;
+      _isLoading = true;
+    });
+    
+    _saveLastPosition(); // Simpan pilihan versi ke memori
+    
+    // Tutup database lama sebelum buka yang baru
+    if (_db != null) {
+      await _db!.close();
+      _db = null;
+    }
+    
+    await _loadDatabase();
+  }
+  // ==========================================
 
   Future<void> _loadDatabase() async {
     setState(() => _isLoading = true);
@@ -133,7 +155,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
     if (_allBooks.isEmpty) return;
     
-    // Amankan pengambilan nama kitab
     String currentBookName = _allBooks.firstWhere(
       (b) => b.bookNumber == _currentBookNum, 
       orElse: () => _allBooks.first
@@ -232,6 +253,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
               child: _NavSheet(
                 allBooks: _allBooks,
                 db: _db!,
+                currentVersion: _currentVersion, // Kirim versi saat ini ke NavSheet
+                onVersionChange: (newVersion) {
+                  Navigator.pop(context); // Tutup dialog saat ganti versi
+                  _changeVersion(newVersion);
+                },
                 onSelectionComplete: (bookNum, chapter, verse) {
                   setState(() { _currentBookNum = bookNum; _currentChapter = chapter; });
                   _saveLastPosition(); 
@@ -258,7 +284,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
     
-    // Aman dari crash
     String bookName = _allBooks.firstWhere(
       (b) => b.bookNumber == _currentBookNum,
       orElse: () => _allBooks.first
@@ -374,7 +399,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Memastikan tidak akan pernah error saat awal mula load database
     String bookName = _allBooks.isEmpty 
         ? "" 
         : _allBooks.firstWhere(
@@ -382,13 +406,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
             orElse: () => _allBooks.first
           ).name;
     
+    // Hilangkan ekstensi .SQLite3 untuk ditampilkan di UI (misal TB.SQLite3 jadi TB)
+    String displayNameVersion = _currentVersion.replaceAll(".SQLite3", "");
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(
           onTap: _showNavigation, 
           child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text("$bookName $_currentChapter", style: const TextStyle(fontSize: 18)),
+            Text("$bookName $_currentChapter ($displayNameVersion)", style: const TextStyle(fontSize: 18)),
             const Icon(Icons.arrow_drop_down),
           ]),
         ),
@@ -496,13 +523,23 @@ class _AlkitabPageState extends State<AlkitabPage> {
 }
 
 // =========================================================================
-// UI NAVIGATION SHEET (RESPONSIF UNTUK HP KECIL & TABLET)
+// UI NAVIGATION SHEET
 // =========================================================================
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;
+  final String currentVersion; // Tambahan untuk Versi
+  final Function(String) onVersionChange; // Fungsi dipanggil saat ganti versi
   final Function(int bookNum, int chapter, int verse) onSelectionComplete;
-  const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete});
+  
+  const _NavSheet({
+    required this.allBooks, 
+    required this.db, 
+    required this.currentVersion,
+    required this.onVersionChange,
+    required this.onSelectionComplete
+  });
+  
   @override State<_NavSheet> createState() => _NavSheetState();
 }
 
@@ -553,7 +590,44 @@ class _NavSheetState extends State<_NavSheet> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // FIX: Menggunakan Flexible, bukan Expanded
+        // ==== WIDGET PILIHAN VERSI ALKITAB ====
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          color: Colors.indigo[50], // Background sedikit kebiruan
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Versi Alkitab:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.indigo.shade200)
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: widget.currentVersion,
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.indigo),
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14),
+                    items: const [
+                      DropdownMenuItem(value: "TB.SQLite3", child: Text("Terjemahan Baru (TB)")),
+                      DropdownMenuItem(value: "TJL.SQLite3", child: Text("Terjemahan Lama (TJL)")),
+                    ],
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        widget.onVersionChange(newValue);
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ======================================
+
         Flexible(
           child: ListView(
             shrinkWrap: true,

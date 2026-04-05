@@ -1,7 +1,13 @@
 class BibleBook {
   final int bookNumber;
   final String name;
-  BibleBook({required this.bookNumber, required this.name});
+  final String shortName; // Tambahkan ini
+
+  BibleBook({
+    required this.bookNumber, 
+    required this.name, 
+    required this.shortName
+  });
 }
 
 class NoteModel {

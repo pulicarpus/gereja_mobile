@@ -18,17 +18,20 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final UserManager _userManager = UserManager();
 
-  // Controller untuk input teks
+  // Controller untuk input teks utama
   final _etNama = TextEditingController();
-  final _etWaktu = TextEditingController(); // Untuk display Tanggal & Jam
+  final _etWaktu = TextEditingController(); 
   final _etTempat = TextEditingController();
-  final _etDeskripsi = TextEditingController();
+  final _etDeskripsi = TextEditingController(); // Untuk Firman Tuhan
   
-  // Controller khusus Pelayan (Sesuai map di Kotlin Bos)
+  // Controller khusus Pelayan (Lengkap sesuai screenshot)
   final _etWl = TextEditingController();
   final _etSinger = TextEditingController();
   final _etMusik = TextEditingController();
   final _etTamborin = TextEditingController();
+  final _etLcd = TextEditingController();
+  final _etKolektan = TextEditingController();
+  final _etDoaSyafaat = TextEditingController();
   final _etPenerimaTamu = TextEditingController();
 
   DateTime _selectedDateTime = DateTime.now();
@@ -43,6 +46,25 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       _loadDataForEdit();
     }
   }
+
+  // ==== WAJIB ADA: Mencegah Memory Leak ====
+  @override
+  void dispose() {
+    _etNama.dispose();
+    _etWaktu.dispose();
+    _etTempat.dispose();
+    _etDeskripsi.dispose();
+    _etWl.dispose();
+    _etSinger.dispose();
+    _etMusik.dispose();
+    _etTamborin.dispose();
+    _etLcd.dispose();
+    _etKolektan.dispose();
+    _etDoaSyafaat.dispose();
+    _etPenerimaTamu.dispose();
+    super.dispose();
+  }
+  // ==========================================
 
   // --- LOAD DATA JIKA MODE EDIT ---
   Future<void> _loadDataForEdit() async {
@@ -63,13 +85,17 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         _etWaktu.text = DateFormat('yyyy-MM-dd HH:mm').format(_selectedDateTime);
       }
 
-      // Ambil Map Pelayan (Sama seperti logika get("WL") di Kotlin)
+      // Ambil Map Pelayan
       var p = data['pelayan'] as Map<String, dynamic>?;
       if (p != null) {
         _etWl.text = p['Worship Leader'] ?? "";
         _etSinger.text = p['Singer'] ?? "";
         _etMusik.text = p['Pemain Musik'] ?? "";
-        _etTamborin.text = p['Tamborin'] ?? "";
+        // Mendukung data lama ('Tamborin') atau data baru ('Pemain Tamborin')
+        _etTamborin.text = p['Pemain Tamborin'] ?? p['Tamborin'] ?? "";
+        _etLcd.text = p['Operator LCD'] ?? "";
+        _etKolektan.text = p['Kolektan'] ?? "";
+        _etDoaSyafaat.text = p['Doa Syafaat'] ?? "";
         _etPenerimaTamu.text = p['Penerima Tamu'] ?? "";
       }
     }
@@ -78,6 +104,8 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
 
   // --- FUNGSI PICKER TANGGAL & JAM ---
   Future<void> _pickDateTime() async {
+    FocusScope.of(context).unfocus(); // Sembunyikan keyboard
+
     DateTime? date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
@@ -86,6 +114,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     );
 
     if (date != null) {
+      if (!mounted) return;
       TimeOfDay? time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
@@ -107,24 +136,27 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     setState(() => _isLoading = true);
     String? churchId = _userManager.getChurchIdForCurrentView();
 
-    // Mapping Data Pelayan (Sesuai Struktur Kotlin Bos)
+    // Mapping Data Pelayan dengan Key yang benar
     Map<String, String> pelayanMap = {
       "Worship Leader": _etWl.text.trim(),
       "Singer": _etSinger.text.trim(),
       "Pemain Musik": _etMusik.text.trim(),
-      "Tamborin": _etTamborin.text.trim(),
+      "Pemain Tamborin": _etTamborin.text.trim(),
+      "Operator LCD": _etLcd.text.trim(),
+      "Kolektan": _etKolektan.text.trim(),
+      "Doa Syafaat": _etDoaSyafaat.text.trim(),
       "Penerima Tamu": _etPenerimaTamu.text.trim(),
     };
 
     Map<String, dynamic> jadwalData = {
       "namaKegiatan": _etNama.text.trim(),
-      "waktu": _etWaktu.text.trim(), // String format untuk display cepat
-      "deskripsi": _etDeskripsi.text.trim(),
+      "waktu": _etWaktu.text.trim(), 
+      "deskripsi": _etDeskripsi.text.trim(), // Sekarang untuk Firman Tuhan
       "tempat": _etTempat.text.trim(),
       "pelayan": pelayanMap,
-      "tanggal": Timestamp.fromDate(_selectedDateTime), // Timestamp asli untuk sorting
+      "tanggal": Timestamp.fromDate(_selectedDateTime), 
       "churchId": churchId,
-      "kategoriKegiatan": widget.filterKategorial, // Penyelamat data kategorial
+      "kategoriKegiatan": widget.filterKategorial, 
       "lastUpdate": FieldValue.serverTimestamp(),
     };
 
@@ -146,7 +178,9 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e")));
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -154,11 +188,19 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEdit ? "Edit Jadwal" : (widget.filterKategorial ?? "Jadwal Umum")),
+        title: Text(_isEdit ? "Edit Jadwal" : "Tambah Jadwal"),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0.5,
         actions: [
-          if (!_isLoading) IconButton(onPressed: _saveJadwal, icon: const Icon(Icons.check_circle, size: 30))
+          if (!_isLoading) 
+            IconButton(
+              onPressed: _saveJadwal, 
+              icon: const Icon(Icons.check, color: Colors.blue, size: 28)
+            )
         ],
       ),
+      backgroundColor: Colors.white, // Latar belakang disesuaikan screenshot
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator())
         : Form(
@@ -166,7 +208,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                _buildField(_etNama, "Nama Kegiatan", Icons.event_note, true),
+                _buildField(_etNama, "Nama Kegiatan", null, true),
                 const SizedBox(height: 15),
                 
                 // Field Waktu (Read Only, Klik untuk buka Picker)
@@ -174,75 +216,74 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
                   controller: _etWaktu,
                   readOnly: true,
                   onTap: _pickDateTime,
-                  decoration: InputDecoration(
-                    labelText: "Tanggal & Jam",
-                    prefixIcon: const Icon(Icons.calendar_month),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  decoration: const InputDecoration(
+                    labelText: "Waktu (Cth: yyyy-MM-dd HH:mm)",
+                    border: OutlineInputBorder(),
                   ),
                   validator: (v) => v!.isEmpty ? "Waktu wajib diisi" : null,
                 ),
                 
                 const SizedBox(height: 15),
-                _buildField(_etTempat, "Tempat / Lokasi", Icons.location_on, false),
+                _buildField(_etTempat, "Tempat", null, false),
                 const SizedBox(height: 15),
-                _buildField(_etDeskripsi, "Deskripsi Tambahan", Icons.description, false, maxLines: 3),
+                
+                // Ganti label menjadi Deskripsi / Firman Tuhan (Multiline)
+                _buildField(_etDeskripsi, "Deskripsi / Firman Tuhan", null, false, isMultiline: true),
                 
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Row(children: [
-                    Icon(Icons.groups, color: Colors.indigo),
-                    SizedBox(width: 10),
-                    Text("Petugas Pelayanan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ]),
+                  child: Text("Pelayan Ibadah", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
                 ),
 
-                // Group Pelayan (Dibuat lebih rapi dalam Card)
-                Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  elevation: 0,
-                  color: Colors.grey[100],
-                  child: Padding(
-                    padding: const EdgeInsets.all(15),
-                    child: Column(
-                      children: [
-                        _buildField(_etWl, "Worship Leader (WL)", Icons.mic, false),
-                        const SizedBox(height: 10),
-                        _buildField(_etSinger, "Singer", Icons.mic_external_on, false, maxLines: 2),
-                        const SizedBox(height: 10),
-                        _buildField(_etMusik, "Pemain Musik", Icons.music_note, false, maxLines: 2),
-                        const SizedBox(height: 10),
-                        _buildField(_etTamborin, "Tamborin / Penari", Icons.accessibility_new, false),
-                        const SizedBox(height: 10),
-                        _buildField(_etPenerimaTamu, "Penerima Tamu / Usher", Icons.front_hand, false),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildField(_etWl, "Worship Leader (WL)", null, false),
+                const SizedBox(height: 10),
+                _buildField(_etSinger, "Singer", null, false, isMultiline: true),
+                const SizedBox(height: 10),
+                _buildField(_etMusik, "Pemain Musik", null, false, isMultiline: true),
+                const SizedBox(height: 10),
+                _buildField(_etTamborin, "Pemain Tamborin", null, false, isMultiline: true),
+                const SizedBox(height: 10),
+                _buildField(_etLcd, "Operator LCD", null, false),
+                const SizedBox(height: 10),
+                _buildField(_etKolektan, "Kolektan", null, false, isMultiline: true),
+                const SizedBox(height: 10),
+                _buildField(_etDoaSyafaat, "Doa Syafaat", null, false, isMultiline: true),
+                const SizedBox(height: 10),
+                _buildField(_etPenerimaTamu, "Penerima Tamu", null, false, isMultiline: true),
+
                 const SizedBox(height: 30),
+                
+                // Tombol biru "Simpan Jadwal" di bawah sesuai screenshot
                 ElevatedButton(
                   onPressed: _saveJadwal,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.indigo,
+                    backgroundColor: Colors.blue[600],
                     foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 55),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
                   ),
-                  child: Text(_isEdit ? "PERBARUI JADWAL" : "SIMPAN JADWAL BARU"),
+                  child: const Text("Simpan Jadwal", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
+                const SizedBox(height: 20), 
               ],
             ),
           ),
     );
   }
 
-  Widget _buildField(TextEditingController controller, String label, IconData icon, bool mandatory, {int maxLines = 1}) {
+  // FUNGSI HELPER: isMultiline = true membuat user bisa tekan "Enter" untuk baris baru
+  Widget _buildField(TextEditingController controller, String label, IconData? icon, bool mandatory, {bool isMultiline = false}) {
     return TextFormField(
       controller: controller,
-      maxLines: maxLines,
+      // Jika isMultiline true, maxLines null agar bisa melar ke bawah. Jika false, maxLines 1.
+      maxLines: isMultiline ? null : 1, 
+      keyboardType: isMultiline ? TextInputType.multiline : TextInputType.text,
+      textInputAction: isMultiline ? TextInputAction.newline : TextInputAction.next,
+      textCapitalization: TextCapitalization.words, 
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: Icon(icon),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        prefixIcon: icon != null ? Icon(icon) : null, // Icon dihilangkan sesuai screenshot, kecuali di-pass
+        border: const OutlineInputBorder(), // Garis kotak standar
       ),
       validator: (v) => (mandatory && v!.isEmpty) ? "$label tidak boleh kosong" : null,
     );

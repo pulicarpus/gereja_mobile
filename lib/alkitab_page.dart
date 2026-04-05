@@ -21,7 +21,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
   Map<int, List<String>> _verseNotesMap = {}; 
-  final ScrollController _scrollController = ScrollController(); // Untuk scroll otomatis ke ayat
+  final ScrollController _scrollController = ScrollController();
   
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
@@ -82,11 +82,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _selectedVerses.clear();
     });
 
-    // Jika user memilih ayat tertentu dari navigasi, scroll ke sana
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        double position = (scrollToVerse - 1) * 70.0; // Estimasi tinggi item
-        _scrollController.animateTo(position, duration: const Duration(milliseconds: 500), curve: Curves.easeInOut);
+        if (_scrollController.hasClients) {
+          double position = (scrollToVerse - 1) * 85.0; 
+          _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
+        }
       });
     }
   }
@@ -116,6 +117,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
       builder: (context) => _NavSheet(
         allBooks: _allBooks,
@@ -131,7 +133,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // (Fungsi _showActionMenu dan _showMultipleNotesPicker tetap sama)
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
@@ -155,17 +156,32 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-        title: InkWell(onTap: _showNavigation, child: Text("$bookName $_currentChapter ▼", style: const TextStyle(fontSize: 18))),
+        backgroundColor: Colors.indigo[900], 
+        foregroundColor: Colors.white,
+        elevation: 2,
+        title: InkWell(
+          onTap: _showNavigation, 
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text("$bookName $_currentChapter", style: const TextStyle(fontSize: 18)),
+            const Icon(Icons.arrow_drop_down),
+          ]),
+        ),
         actions: [
           DropdownButton<String>(
-            value: _currentVersion, dropdownColor: Colors.indigo[900], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), underline: const SizedBox(),
+            value: _currentVersion, dropdownColor: Colors.indigo[900], 
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold), 
+            underline: const SizedBox(),
             items: const [DropdownMenuItem(value: "TB.SQLite3", child: Text("TB ")), DropdownMenuItem(value: "TJL.SQLite3", child: Text("TJL "))],
             onChanged: (v) { if (v != null) { _currentVersion = v; _loadDatabase(); } },
           ),
           IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
             if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(); }
           })),
+          // TOMBOL LIST CATATAN (Ikon Buku)
+          IconButton(
+            icon: const Icon(Icons.library_books), 
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs)))
+          ),
         ],
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
@@ -177,7 +193,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
             onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
             onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
             child: Container(
-              color: isSelected ? Colors.yellow.withOpacity(0.2) : Colors.transparent, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: isSelected ? Colors.yellow.withOpacity(0.2) : Colors.transparent, 
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
                 TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
                 TextSpan(text: _cleanVerseText(v['text'])),
@@ -191,7 +208,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// --- NAVIGASI TINGKATAN: KITAB -> PASAL -> AYAT ---
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;
@@ -220,41 +236,43 @@ class _NavSheetState extends State<_NavSheet> {
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
-      expand: false, initialChildSize: 0.85,
+      expand: false, initialChildSize: 0.9, maxChildSize: 0.95,
       builder: (_, controller) {
-        // TAHAP 3: PILIH AYAT
         if (selChapter != null) {
-          return _buildGridTemplate(controller, "Pilih Ayat: ${selBook!.name} $selChapter", verses, (v) {
+          return _buildGridTemplate(controller, "Ayat: ${selBook!.name} $selChapter", verses, (v) {
             widget.onSelectionComplete(selBook!.bookNumber, selChapter!, v);
             Navigator.pop(context);
           }, () => setState(() => selChapter = null));
         }
-        // TAHAP 2: PILIH PASAL
         if (selBook != null) {
-          return _buildGridTemplate(controller, "Pilih Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
+          return _buildGridTemplate(controller, "Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
         }
-        // TAHAP 1: PILIH KITAB
-        // Batas PL/PB yang benar sesuai database bos (PL = 10-660, PB = 700-960)
-        List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber <= 660).toList();
-        List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 700).toList();
+
+        // LOGIKA FILTER BERDASARKAN SS DATABASE BOS (Matius = 470)
+        List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
+        List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
+
         return ListView(controller: controller, children: [
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
+          Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
           _header("PERJANJIAN LAMA", Colors.pink),
           _kitabGrid(pl),
+          const Divider(),
           _header("PERJANJIAN BARU", Colors.blue),
           _kitabGrid(pb),
+          const SizedBox(height: 50),
         ]);
       },
     );
   }
 
   Widget _buildGridTemplate(ScrollController c, String title, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(children: [
-    AppBar(title: Text(title, style: const TextStyle(fontSize: 16)), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: onBack), backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black),
+    AppBar(title: Text(title, style: const TextStyle(fontSize: 16, color: Colors.black)), leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), backgroundColor: Colors.transparent, elevation: 0),
     Expanded(child: GridView.builder(controller: c, padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10), 
-      itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold)))))),
+      itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)))))),
   ]);
 
-  Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(16), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold)));
+  Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 14)));
   Widget _kitabGrid(List<BibleBook> books) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 12), gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 8, crossAxisSpacing: 8), 
-    itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))));
+    itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey[300]!)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)))));
 }

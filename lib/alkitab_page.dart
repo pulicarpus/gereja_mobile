@@ -443,6 +443,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
 // =========================================================================
 // UI NAVIGATION SHEET (DROP-DOWN DARI ATAS)
 // =========================================================================
+// =========================================================================
+// UI NAVIGATION SHEET (RESPONSIF UNTUK HP KECIL & TABLET)
+// =========================================================================
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks;
   final Database db;
@@ -469,7 +472,6 @@ class _NavSheetState extends State<_NavSheet> {
 
   @override 
   Widget build(BuildContext context) {
-    // SafeArea mencegah menu tertutup oleh sinyal/jam HP di bagian atas
     return SafeArea(
       bottom: false, 
       child: _buildContent(),
@@ -477,7 +479,6 @@ class _NavSheetState extends State<_NavSheet> {
   }
 
   Widget _buildContent() {
-    // Tampilan Grid Pilih Ayat
     if (selChapter != null) {
       return _buildGrid(
         "Ayat: ${selBook!.name} $selChapter", verses, 
@@ -486,7 +487,6 @@ class _NavSheetState extends State<_NavSheet> {
       );
     }
     
-    // Tampilan Grid Pilih Pasal
     if (selBook != null) {
       return _buildGrid(
         "Pasal: ${selBook!.name}", chapters, 
@@ -495,7 +495,6 @@ class _NavSheetState extends State<_NavSheet> {
       );
     }
 
-    // Tampilan Grid Daftar Kitab Utama
     List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
     List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
     
@@ -511,24 +510,23 @@ class _NavSheetState extends State<_NavSheet> {
               _kitabGrid(pl), 
               
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8.0),
-                child: Divider(color: Color(0xFFEEEEEE), thickness: 1.5),
+                padding: EdgeInsets.symmetric(vertical: 6.0),
+                child: Divider(color: Color(0xFFEEEEEE), thickness: 1.5, height: 10),
               ),
               
               _header("PERJANJIAN BARU", const Color(0xFF03A9F4)), 
               _kitabGrid(pb), 
-              const SizedBox(height: 20),
+              const SizedBox(height: 10), // Margin bawah diperkecil
             ]
           ),
         ),
-        // Handle Pill sekarang di bawah
         GestureDetector(
-          onTap: () => Navigator.pop(context), // Tutup jika garis bawah diklik
+          onTap: () => Navigator.pop(context), 
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12.0),
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
             child: Center(
               child: Container(
-                width: 40, height: 5, 
+                width: 40, height: 4, 
                 decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(10))
               )
             ),
@@ -538,7 +536,7 @@ class _NavSheetState extends State<_NavSheet> {
     );
   }
 
-  // Layout untuk Angka Pasal & Ayat
+  // Grid untuk Angka Pasal & Ayat (Kotak bisa lebih kecil)
   Widget _buildGrid(String title, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
@@ -546,14 +544,19 @@ class _NavSheetState extends State<_NavSheet> {
         title: Text(title, style: const TextStyle(fontSize: 16, color: Colors.black, fontWeight: FontWeight.bold)), 
         leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), 
         backgroundColor: Colors.transparent, 
-        elevation: 0
+        elevation: 0,
+        toolbarHeight: 48, // AppBar dibuat lebih pendek agar hemat ruang
       ),
       Flexible(
         child: GridView.builder(
           shrinkWrap: true,
-          padding: const EdgeInsets.all(16), 
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 5, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 1.2
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), 
+          // GUNAKAN MaxCrossAxisExtent AGAR OTOMATIS MENYESUAIKAN LAYAR
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 60, // Maksimal lebar tiap kotak angka (otomatis tambah kolom di Tablet)
+            childAspectRatio: 1.2,  // Proporsi kotak
+            mainAxisSpacing: 6,     // Spasi atas-bawah diperkecil
+            crossAxisSpacing: 6     // Spasi kiri-kanan diperkecil
           ), 
           itemCount: items.length, 
           itemBuilder: (ctx, i) => InkWell(
@@ -562,12 +565,12 @@ class _NavSheetState extends State<_NavSheet> {
               alignment: Alignment.center, 
               decoration: BoxDecoration(
                 color: Colors.white, 
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: Colors.grey.shade300)
               ), 
               child: Text(
                 "${items[i]}", 
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14) // Font sedikit dikecilkan
               )
             )
           )
@@ -577,34 +580,38 @@ class _NavSheetState extends State<_NavSheet> {
   );
 
   Widget _header(String t, Color c) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12), 
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8), // Padding atas bawah diperkecil
     child: Text(
       t, 
-      style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)
+      style: TextStyle(color: c, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 0.5)
     )
   );
 
   Widget _kitabGrid(List<BibleBook> books) => GridView.builder(
     shrinkWrap: true, 
     physics: const NeverScrollableScrollPhysics(), 
-    padding: const EdgeInsets.symmetric(horizontal: 16), 
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 5, childAspectRatio: 1.6, mainAxisSpacing: 10, crossAxisSpacing: 10
+    padding: const EdgeInsets.symmetric(horizontal: 12), 
+    // OTOMATIS MENYESUAIKAN HP/TABLET
+    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 68, // Maksimal lebar tiap kotak singkatan kitab
+      childAspectRatio: 1.9,  // Dibuat lebih pipih horizontal agar hemat ruang vertikal
+      mainAxisSpacing: 6,     // Spasi atas-bawah
+      crossAxisSpacing: 6     // Spasi kiri-kanan
     ), 
     itemCount: books.length, 
     itemBuilder: (ctx, i) => InkWell(
       onTap: () => _getChapters(books[i]), 
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(6),
       child: Container(
         alignment: Alignment.center, 
         decoration: BoxDecoration(
           color: Colors.white, 
-          borderRadius: BorderRadius.circular(8), 
+          borderRadius: BorderRadius.circular(6), 
           border: Border.all(color: Colors.grey.shade300, width: 1.0) 
         ), 
         child: Text(
           books[i].shortName.toUpperCase(), 
-          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Colors.black)
+          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w900, color: Colors.black) // Font dikecilkan sedikit
         )
       )
     )

@@ -110,7 +110,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (scrollToVerse != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          // Asumsi tinggi tiap ayat sekitar 110px. (Bisa disesuaikan atau gunakan scrollable_positioned_list)
+          // Asumsi tinggi tiap ayat sekitar 110px. 
           double position = (scrollToVerse - 1) * 110.0; 
           _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
         }
@@ -357,9 +357,28 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ),
         actions: [
           IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())),
-          IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
-            if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(); }
-          })),
+          
+          // ======== PERUBAHAN PENTING: MENGIRIMKAN currentBookNum ========
+          IconButton(
+            icon: const Icon(Icons.search), 
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+              builder: (c) => SearchPage(
+                db: _db!, 
+                allBooks: _allBooks,
+                currentBookNum: _currentBookNum, // Mengirimkan kitab yang sedang dibuka
+              )
+            )).then((res) {
+              if (res != null) { 
+                setState(() { 
+                  _currentBookNum = res['book_number']; 
+                  _currentChapter = res['chapter']; 
+                }); 
+                _loadContent(scrollToVerse: res['verse']); 
+              }
+            })
+          ),
+          // =================================================================
+          
         ],
       ),
       body: _isLoading 

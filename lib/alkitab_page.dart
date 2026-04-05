@@ -53,12 +53,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await File(path).writeAsBytes(bytes, flush: true);
     
     _db = await openDatabase(path);
+    
+    // AMBIL DATA DARI SQL (Termasuk short_name)
     final bookData = await _db!.query('books', orderBy: 'book_number ASC');
     
     setState(() {
       _allBooks = bookData.map((e) => BibleBook(
         bookNumber: e['book_number'] as int, 
-        name: e['long_name'].toString()
+        name: e['long_name'].toString(),
+        shortName: e['short_name'].toString() // Ambil kolom short_name dari SQL
       )).toList();
     });
     
@@ -107,7 +110,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  // --- MODAL PEMILIHAN KITAB (YANG TADI HILANG) ---
   void _showNavigation() {
     showModalBottomSheet(
       context: context,
@@ -142,7 +144,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Widget _buildGrid(List<BibleBook> books) => GridView.builder(
     shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
     padding: const EdgeInsets.symmetric(horizontal: 12),
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5, childAspectRatio: 1.8, mainAxisSpacing: 8, crossAxisSpacing: 8),
     itemCount: books.length,
     itemBuilder: (context, i) => InkWell(
       onTap: () {
@@ -152,9 +155,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
       },
       child: Container(
         alignment: Alignment.center,
-        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
-        child: Text(books[i].name.substring(0, books[i].name.length > 3 ? 3 : books[i].name.length).toUpperCase(), 
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+        // SEKARANG PAKAI NAMA PENDEK ASLI DARI SQL
+        child: Text(books[i].shortName.toUpperCase(), 
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)),
       ),
     ),
   );

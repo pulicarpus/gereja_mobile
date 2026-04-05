@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:share_plus/share_plus.dart'; // Untuk fitur kirim
+import 'package:share_plus/share_plus.dart';
 import 'bible_models.dart';
 import 'notes_pages.dart';
+import 'search_page.dart'; // File baru untuk pencarian
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -19,7 +20,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   List<Map<String, dynamic>> _verses = [];
   List<BibleBook> _allBooks = [];
   Set<int> _selectedVerses = {};
-  Map<int, String> _verseNotesMap = {}; // Menyimpan nomor ayat -> Key Catatan
+  Map<int, List<String>> _verseNotesMap = {}; // Update: Mendukung daftar key catatan per ayat
   
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
@@ -54,17 +55,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _db = await openDatabase(path);
     final bookData = await _db!.query('books', orderBy: 'book_number ASC');
     
-    setState(() {
-      _allBooks = bookData.map((e) => BibleBook(
-        bookNumber: e['book_number'] as int, 
-        name: e['long_name'].toString()
-      )).toList();
-    });
+    _allBooks = bookData.map((e) => BibleBook(
+      bookNumber: e['book_number'] as int, 
+      name: e['long_name'].toString()
+    )).toList();
     
     await _loadContent();
   }
 
-  Future<void> _loadContent() async {
+  Future<void> _loadContent({int? targetVerse}) async {
     if (_db == null) return;
     final data = await _db!.query('verses', 
         where: 'book_number = ? AND chapter = ?', 
@@ -72,15 +71,19 @@ class _AlkitabPageState extends State<AlkitabPage> {
         orderBy: 'verse ASC');
         
     _verses = data;
-    await _syncNotes(); // Cari catatan yang ada di bab ini
+    await _syncNotes(); 
     
     setState(() {
       _isLoading = false;
       _selectedVerses.clear();
     });
+
+    // Jika datang dari hasil pencarian, scroll ke ayat tersebut
+    if (targetVerse != null) {
+      // Logika scroll bisa ditambahkan di sini menggunakan ScrollController
+    }
   }
 
-  // Fungsi untuk mensinkronisasi ikon catatan di ujung ayat
   Future<void> _syncNotes() async {
     _verseNotesMap.clear();
     final keys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
@@ -90,27 +93,26 @@ class _AlkitabPageState extends State<AlkitabPage> {
     for (var k in keys) {
       String? raw = _prefs.getString(k);
       if (raw != null) {
-        String nas = raw.split("~|~")[0]; // Ambil NAS (mis: Kejadian 1:1-4)
+        String nas = raw.split("~|~")[0];
         if (nas.startsWith(prefix)) {
-          // Ambil bagian ayat (mis: 1-4 atau 1,2,3)
           String versesPart = nas.split(":")[1];
-          // Ambil ayat terakhir sebagai tempat ikon 📝
           int lastVerse = int.parse(versesPart.split(RegExp(r'[-,]')).last);
-          _verseNotesMap[lastVerse] = k;
+          
+          if (!_verseNotesMap.containsKey(lastVerse)) {
+            _verseNotesMap[lastVerse] = [];
+          }
+          _verseNotesMap[lastVerse]!.add(k); // Tambahkan ke list (Multiple Notes)
         }
       }
     }
   }
 
-  // --- MENU AKSI (LONG CLICK) ---
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
-
-    List<int> sorted = _selectedVerses.toList()..sort();
+    List<int> sorted = _selectedVerses.toList()...sort();
     String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String nas = "$bookName $_currentChapter:${sorted.join(",")}";
     
-    // Gabungkan teks ayat untuk Copy/Kirim
     String fullText = "$nas\n";
     for (var vNum in sorted) {
       var vData = _verses.firstWhere((element) => element['verse'] == vNum);
@@ -120,97 +122,67 @@ class _AlkitabPageState extends State<AlkitabPage> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(nas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.add_comment, color: Colors.green),
-              title: const Text("Catatan"),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs)))
-                    .then((_) => _loadContent()); // Refresh setelah simpan
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.copy, color: Colors.blue),
-              title: const Text("Salin Ayat"),
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: fullText));
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ayat disalin")));
-                setState(() => _selectedVerses.clear());
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share, color: Colors.orange),
-              title: const Text("Kirim Ayat"),
-              onTap: () {
-                Share.share(fullText);
-                Navigator.pop(context);
-                setState(() => _selectedVerses.clear());
-              },
-            ),
-          ],
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(padding: const EdgeInsets.all(16), child: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold))),
+          ListTile(
+            leading: const Icon(Icons.add_comment, color: Colors.blue),
+            title: const Text("Catatan Baru"),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs)))
+                  .then((_) => _loadContent());
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.copy),
+            title: const Text("Salin"),
+            onTap: () {
+              Clipboard.setData(ClipboardData(text: fullText));
+              Navigator.pop(context);
+              setState(() => _selectedVerses.clear());
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text("Kirim"),
+            onTap: () { Share.share(fullText); Navigator.pop(context); },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Pop-up jika ada banyak catatan di satu ayat
+  void _showMultipleNotesPicker(List<String> keys) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Pilih Catatan"),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: keys.length,
+            itemBuilder: (context, i) {
+              String? raw = _prefs.getString(keys[i]);
+              String title = raw?.split("~|~")[1] ?? "Tanpa Judul";
+              return ListTile(
+                leading: const Text("📝"),
+                title: Text(title),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: "", existingKey: keys[i], prefs: _prefs)))
+                      .then((_) => _loadContent());
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
-
-  // --- MODAL NAVIGASI GRID ---
-  void _showNavigation() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (context) {
-        List<BibleBook> pl = _allBooks.where((b) => b.bookNumber < 400).toList();
-        List<BibleBook> pb = _allBooks.where((b) => b.bookNumber >= 400).toList();
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.8,
-          builder: (_, controller) => ListView(
-            controller: controller,
-            children: [
-              const SizedBox(height: 20),
-              _gridHeader("PERJANJIAN LAMA", Colors.pink),
-              _buildGrid(pl),
-              _gridHeader("PERJANJIAN BARU", Colors.blue),
-              _buildGrid(pb),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _gridHeader(String t, Color c) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold)),
-  );
-
-  Widget _buildGrid(List<BibleBook> books) => GridView.builder(
-    shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-    padding: const EdgeInsets.symmetric(horizontal: 12),
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5),
-    itemCount: books.length,
-    itemBuilder: (context, i) => InkWell(
-      onTap: () {
-        setState(() { _currentBookNum = books[i].bookNumber; _currentChapter = 1; });
-        _loadContent();
-        Navigator.pop(context);
-      },
-      child: Container(
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
-        child: Text(books[i].name.substring(0, 3).toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-      ),
-    ),
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -219,51 +191,51 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-        title: GestureDetector(
-          onTap: _showNavigation,
-          child: Text("$bookName $_currentChapter ▼", style: const TextStyle(fontSize: 18)),
-        ),
+        title: GestureDetector(onTap: () {}, child: Text("$bookName $_currentChapter")),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search), 
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
+              if (res != null) {
+                setState(() {
+                  _currentBookNum = res['book_number'];
+                  _currentChapter = res['chapter'];
+                });
+                _loadContent(targetVerse: res['verse']);
+              }
+            })
+          ),
+          IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs)))),
+        ],
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
         itemCount: _verses.length,
         itemBuilder: (context, i) {
           final v = _verses[i];
           final vNum = v['verse'] as int;
-          final vText = _cleanVerseText(v['text'] ?? "");
           final isSelected = _selectedVerses.contains(vNum);
-          final noteKey = _verseNotesMap[vNum];
+          final noteKeys = _verseNotesMap[vNum];
 
           return GestureDetector(
             onLongPress: () {
               if (!isSelected) setState(() => _selectedVerses.add(vNum));
               _showActionMenu();
             },
-            onTap: () {
-              setState(() {
-                isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum);
-              });
-            },
+            onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
             child: Container(
-              color: isSelected ? Colors.yellow.withOpacity(0.3) : Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: isSelected ? Colors.blue[50] : Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: RichText(
                 text: TextSpan(
                   style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5),
                   children: [
                     TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                    TextSpan(text: vText),
-                    // IKON CATATAN DI UJUNG AYAT TERAKHIR
-                    if (noteKey != null)
+                    TextSpan(text: _cleanVerseText(v['text'])),
+                    if (noteKeys != null)
                       WidgetSpan(
                         child: GestureDetector(
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: "", existingKey: noteKey, prefs: _prefs)))
-                                .then((_) => _loadContent());
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.only(left: 8),
-                            child: Text("📝", style: TextStyle(fontSize: 20)),
-                          ),
+                          onTap: () => noteKeys.length > 1 ? _showMultipleNotesPicker(noteKeys) : Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: "", existingKey: noteKeys[0], prefs: _prefs))).then((_) => _loadContent()),
+                          child: const Padding(padding: EdgeInsets.only(left: 8), child: Text("📝", style: TextStyle(fontSize: 22))),
                         ),
                       ),
                   ],

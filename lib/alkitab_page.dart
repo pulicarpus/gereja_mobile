@@ -55,10 +55,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _db = await openDatabase(path);
     final bookData = await _db!.query('books', orderBy: 'book_number ASC');
     
-    _allBooks = bookData.map((e) => BibleBook(
-      bookNumber: e['book_number'] as int, 
-      name: e['long_name'].toString()
-    )).toList();
+    setState(() {
+      _allBooks = bookData.map((e) => BibleBook(
+        bookNumber: e['book_number'] as int, 
+        name: e['long_name'].toString()
+      )).toList();
+    });
     
     await _loadContent();
   }
@@ -99,20 +101,67 @@ class _AlkitabPageState extends State<AlkitabPage> {
               _verseNotesMap[lastVerse] = [];
             }
             _verseNotesMap[lastVerse]!.add(k);
-          } catch (e) {
-            print("Error parsing NAS: $e");
-          }
+          } catch (e) { print("Error parse: $e"); }
         }
       }
     }
   }
 
+  // --- MODAL PEMILIHAN KITAB (YANG TADI HILANG) ---
+  void _showNavigation() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (context) {
+        List<BibleBook> pl = _allBooks.where((b) => b.bookNumber < 400).toList();
+        List<BibleBook> pb = _allBooks.where((b) => b.bookNumber >= 400).toList();
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.8,
+          builder: (_, controller) => ListView(
+            controller: controller,
+            children: [
+              const SizedBox(height: 20),
+              _sectionTitle("PERJANJIAN LAMA", Colors.pink),
+              _buildGrid(pl),
+              _sectionTitle("PERJANJIAN BARU", Colors.blue),
+              _buildGrid(pb),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sectionTitle(String t, Color c) => Padding(
+    padding: const EdgeInsets.all(16),
+    child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold)),
+  );
+
+  Widget _buildGrid(List<BibleBook> books) => GridView.builder(
+    shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+    padding: const EdgeInsets.symmetric(horizontal: 12),
+    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5),
+    itemCount: books.length,
+    itemBuilder: (context, i) => InkWell(
+      onTap: () {
+        setState(() { _currentBookNum = books[i].bookNumber; _currentChapter = 1; });
+        _loadContent();
+        Navigator.pop(context);
+      },
+      child: Container(
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(5)),
+        child: Text(books[i].name.substring(0, books[i].name.length > 3 ? 3 : books[i].name.length).toUpperCase(), 
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+      ),
+    ),
+  );
+
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
-    
-    // PERBAIKAN DI SINI: Gunakan .. (dua titik)
     List<int> sorted = _selectedVerses.toList()..sort();
-    
     String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String nas = "$bookName $_currentChapter:${sorted.join(",")}";
     
@@ -129,30 +178,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(padding: const EdgeInsets.all(16), child: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold))),
-          ListTile(
-            leading: const Icon(Icons.add_comment, color: Colors.blue),
-            title: const Text("Catatan Baru"),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs)))
-                  .then((_) => _loadContent());
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.copy),
-            title: const Text("Salin"),
-            onTap: () {
-              Clipboard.setData(ClipboardData(text: fullText));
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ayat disalin")));
-              setState(() => _selectedVerses.clear());
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.share),
-            title: const Text("Kirim"),
-            onTap: () { Share.share(fullText); Navigator.pop(context); },
-          ),
+          ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Catatan Baru"), 
+            onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs))).then((_) => _loadContent()); }),
+          ListTile(leading: const Icon(Icons.copy), title: const Text("Salin"), 
+            onTap: () { Clipboard.setData(ClipboardData(text: fullText)); Navigator.pop(context); setState(() => _selectedVerses.clear()); }),
+          ListTile(leading: const Icon(Icons.share), title: const Text("Kirim"), onTap: () { Share.share(fullText); Navigator.pop(context); }),
         ],
       ),
     );
@@ -171,15 +201,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
             itemBuilder: (context, i) {
               String? raw = _prefs.getString(keys[i]);
               String title = raw?.split("~|~")[1] ?? "Tanpa Judul";
-              return ListTile(
-                leading: const Text("📝"),
-                title: Text(title),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: "", existingKey: keys[i], prefs: _prefs)))
-                      .then((_) => _loadContent());
-                },
-              );
+              return ListTile(leading: const Text("📝"), title: Text(title),
+                onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: "", existingKey: keys[i], prefs: _prefs))).then((_) => _loadContent()); });
             },
           ),
         ),
@@ -194,20 +217,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
-        title: Text("$bookName $_currentChapter"),
+        title: InkWell(onTap: _showNavigation, child: Text("$bookName $_currentChapter ▼", style: const TextStyle(fontSize: 18))),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search), 
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
-              if (res != null) {
-                setState(() {
-                  _currentBookNum = res['book_number'];
-                  _currentChapter = res['chapter'];
-                });
-                _loadContent();
-              }
-            })
+          DropdownButton<String>(
+            value: _currentVersion,
+            dropdownColor: Colors.indigo[900],
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            underline: const SizedBox(),
+            items: const [
+              DropdownMenuItem(value: "TB.SQLite3", child: Text("TB ")),
+              DropdownMenuItem(value: "TJL.SQLite3", child: Text("TJL ")),
+            ],
+            onChanged: (v) { if (v != null) { _currentVersion = v; _loadDatabase(); } },
           ),
+          IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks))).then((res) {
+            if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(); }
+          })),
           IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs)))),
         ],
       ),
@@ -220,13 +245,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
           final noteKeys = _verseNotesMap[vNum];
 
           return GestureDetector(
-            onLongPress: () {
-              if (!isSelected) setState(() => _selectedVerses.add(vNum));
-              _showActionMenu();
-            },
+            onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
             onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
             child: Container(
-              color: isSelected ? Colors.blue[50] : Colors.transparent,
+              color: isSelected ? Colors.yellow.withOpacity(0.2) : Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: RichText(
                 text: TextSpan(

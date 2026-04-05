@@ -1,91 +1,101 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:intl/intl.dart';
+import 'bible_models.dart';
 
-// Helper: Merapikan tampilan ayat (1,2,3 -> 1-3)
-String formatNasRange(String rawNas) {
-  try {
-    if (!rawNas.contains(":")) return rawNas;
-    List<String> parts = rawNas.split(":");
-    String head = parts[0];
-    List<int> verses = parts[1].split(",").map((e) => int.parse(e.trim())).toList();
-    if (verses.length <= 1) return rawNas;
-    verses.sort();
-    bool isConsecutive = true;
-    for (int i = 0; i < verses.length - 1; i++) {
-      if (verses[i + 1] != verses[i] + 1) { isConsecutive = false; break; }
-    }
-    return isConsecutive ? "$head:${verses.first}-${verses.last}" : rawNas;
-  } catch (e) { return rawNas; }
-}
-
-// --- HALAMAN DETAIL ---
-class NoteDetailsPage extends StatefulWidget {
-  final String nas;
-  final String rawNas;
-  final String? existingKey;
+class NoteListPage extends StatefulWidget {
   final SharedPreferences prefs;
-  final Database db;
-  final List<Map<String, dynamic>> allBooks;
-  final Function(String) onJumpToBible;
-
-  const NoteDetailsPage({
-    super.key, required this.nas, required this.rawNas, this.existingKey,
-    required this.prefs, required this.db, required this.allBooks, required this.onJumpToBible,
-  });
+  const NoteListPage({super.key, required this.prefs});
 
   @override
-  State<NoteDetailsPage> createState() => _NoteDetailsPageState();
+  State<NoteListPage> createState() => _NoteListPageState();
 }
 
-class _NoteDetailsPageState extends State<NoteDetailsPage> {
-  String title = "Tanpa Judul", content = "", displayNas = "";
+class _NoteListPageState extends State<NoteListPage> {
+  List<NoteModel> _allNotes = [];
+  List<NoteModel> _filteredNotes = [];
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _loadNotes();
   }
 
-  void _loadData() {
-    displayNas = widget.nas;
-    if (widget.existingKey != null) {
-      String? data = widget.prefs.getString(widget.existingKey!);
-      if (data != null && data.contains("~|~")) {
-        List<String> p = data.split("~|~");
-        displayNas = formatNasRange(p[0]);
-        title = p[1].isEmpty ? "Tanpa Judul" : p[1];
-        content = p[5];
-      }
+  void _loadNotes() {
+    final keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+    List<NoteModel> temp = [];
+    for (var k in keys) {
+      String? raw = widget.prefs.getString(k);
+      if (raw != null) temp.add(NoteModel.fromRaw(k, raw));
     }
+    // Urutkan terbaru (berdasarkan key timestamp)
+    temp.sort((a, b) => b.key.compareTo(a.key));
+    setState(() { _allNotes = temp; _filteredNotes = temp; });
+  }
+
+  void _filter(String q) {
+    setState(() {
+      _filteredNotes = _allNotes.where((n) => 
+        n.title.toLowerCase().contains(q.toLowerCase()) || 
+        n.content.toLowerCase().contains(q.toLowerCase()) ||
+        n.nas.toLowerCase().contains(q.toLowerCase())
+      ).toList();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Isi Catatan"), actions: [
-        IconButton(icon: const Icon(Icons.edit), onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(
-            nas: displayNas, existingKey: widget.existingKey, prefs: widget.prefs,
-          ))).then((_) => setState(() => _loadData()));
-        })
-      ]),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(displayNas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-          const SizedBox(height: 10),
-          Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          const Divider(),
-          const SizedBox(height: 10),
-          Text(content, style: const TextStyle(fontSize: 18, height: 1.5)),
-        ]),
+      appBar: AppBar(title: const Text("Daftar Catatan")),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: const InputDecoration(hintText: "Cari catatan...", prefixIcon: Icon(Icons.search), border: OutlineInputBorder()),
+              onChanged: _filter,
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredNotes.length,
+              itemBuilder: (context, i) {
+                final note = _filteredNotes[i];
+                return ListTile(
+                  leading: const Icon(Icons.note, color: Colors.blue),
+                  title: Text(note.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text("${note.nas} • ${note.date}"),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: note.nas, existingKey: note.key, prefs: widget.prefs))).then((_) => _loadNotes()),
+                  onLongPress: () => _confirmDelete(note.key),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  void _confirmDelete(String key) {
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: const Text("Hapus Catatan?"),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("BATAL")),
+        TextButton(onPressed: () async {
+          List<String> keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+          keys.remove(key);
+          await widget.prefs.setStringList("ALL_NOTE_KEYS", keys);
+          await widget.prefs.remove(key);
+          Navigator.pop(context);
+          _loadNotes();
+        }, child: const Text("HAPUS", style: TextStyle(color: Colors.red))),
+      ],
+    ));
+  }
 }
 
-// --- HALAMAN EDITOR ---
 class NoteEditorPage extends StatefulWidget {
   final String nas;
   final String? existingKey;
@@ -97,21 +107,18 @@ class NoteEditorPage extends StatefulWidget {
 }
 
 class _NoteEditorPageState extends State<NoteEditorPage> {
-  late TextEditingController _tCtrl, _cCtrl;
+  late TextEditingController _titleCtrl, _contentCtrl;
 
   @override
   void initState() {
     super.initState();
     String t = "", c = "";
     if (widget.existingKey != null) {
-      String? d = widget.prefs.getString(widget.existingKey!);
-      if (d != null && d.contains("~|~")) {
-        List<String> p = d.split("~|~");
-        t = p[1]; c = p[5];
-      }
+      NoteModel n = NoteModel.fromRaw(widget.existingKey!, widget.prefs.getString(widget.existingKey!)!);
+      t = n.title; c = n.content;
     }
-    _tCtrl = TextEditingController(text: t);
-    _cCtrl = TextEditingController(text: c);
+    _titleCtrl = TextEditingController(text: t);
+    _contentCtrl = TextEditingController(text: c);
   }
 
   @override
@@ -120,62 +127,29 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       appBar: AppBar(title: const Text("Tulis Catatan"), actions: [
         IconButton(icon: const Icon(Icons.save), onPressed: () async {
           String key = widget.existingKey ?? "Note_${DateTime.now().millisecondsSinceEpoch}";
-          String data = "${widget.nas}~|~${_tCtrl.text}~|~-~|~${DateTime.now().toString().substring(0, 16)}~|~-~|~${_cCtrl.text}";
+          String date = DateFormat('dd MMMM yyyy').format(DateTime.now());
+          // Format ~|~ ala Kotlin bos
+          String data = "${widget.nas}~|~${_titleCtrl.text}~|~ ~|~$date~|~ ~|~${_contentCtrl.text}";
+          
           List<String> keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-          if (!keys.contains(key)) {
-            keys.add(key);
-            await widget.prefs.setStringList("ALL_NOTE_KEYS", keys);
-          }
+          if (!keys.contains(key)) keys.add(key);
+          await widget.prefs.setStringList("ALL_NOTE_KEYS", keys);
           await widget.prefs.setString(key, data);
-          if (mounted) Navigator.pop(context);
-        })
+          Navigator.pop(context);
+        }),
       ]),
       body: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(children: [
-          TextField(controller: _tCtrl, decoration: const InputDecoration(labelText: "Judul")),
-          Expanded(child: TextField(controller: _cCtrl, maxLines: null, decoration: const InputDecoration(hintText: "Isi catatan..."))),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.nas, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+            TextField(controller: _titleCtrl, decoration: const InputDecoration(labelText: "Judul Catatan")),
+            const SizedBox(height: 10),
+            Expanded(child: TextField(controller: _contentCtrl, maxLines: null, decoration: const InputDecoration(hintText: "Isi catatan...", border: InputBorder.none))),
+          ],
+        ),
       ),
-    );
-  }
-}
-
-// --- HALAMAN DAFTAR CATATAN ---
-class NoteListPage extends StatefulWidget {
-  final SharedPreferences prefs;
-  final Database db;
-  final List<Map<String, dynamic>> allBooks;
-  final Function(String) onOpenNote;
-
-  const NoteListPage({super.key, required this.prefs, required this.db, required this.allBooks, required this.onOpenNote});
-
-  @override
-  State<NoteListPage> createState() => _NoteListPageState();
-}
-
-class _NoteListPageState extends State<NoteListPage> {
-  @override
-  Widget build(BuildContext context) {
-    List<String> keys = (widget.prefs.getStringList("ALL_NOTE_KEYS") ?? []).reversed.toList();
-    return Scaffold(
-      appBar: AppBar(title: const Text("Daftar Catatan")),
-      body: keys.isEmpty 
-        ? const Center(child: Text("Belum ada catatan"))
-        : ListView.builder(
-            itemCount: keys.length,
-            itemBuilder: (context, i) {
-              String? raw = widget.prefs.getString(keys[i]);
-              if (raw == null) return const SizedBox();
-              List<String> p = raw.split("~|~");
-              return ListTile(
-                leading: const Icon(Icons.description, color: Colors.indigo),
-                title: Text(p[1].isEmpty ? "Tanpa Judul" : p[1], style: const TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: Text("${formatNasRange(p[0])}\n${p[3]}"),
-                onTap: () => widget.onOpenNote(keys[i]),
-              );
-            },
-          ),
     );
   }
 }

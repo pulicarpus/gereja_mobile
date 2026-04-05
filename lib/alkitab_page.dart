@@ -33,6 +33,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   bool _isLoading = true;
   late SharedPreferences _prefs;
 
+  // ==== VARIABEL UNTUK PINCH TO ZOOM ====
+  double _fontSize = 18.0;
+  double _baseFontSize = 18.0;
+  // =======================================
+
   @override
   void initState() {
     super.initState();
@@ -49,6 +54,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
     _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
     _currentVersion = _prefs.getString('LAST_VERSION') ?? "TB.SQLite3"; 
+    
+    // Muat ukuran teks terakhir yang disimpan (Default 18.0)
+    _fontSize = _prefs.getDouble('LAST_FONT_SIZE') ?? 18.0;
 
     await _loadDatabase();
   }
@@ -57,6 +65,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _prefs.setInt('LAST_BOOK_NUM', _currentBookNum);
     _prefs.setInt('LAST_CHAPTER', _currentChapter);
     _prefs.setString('LAST_VERSION', _currentVersion);
+  }
+
+  // Simpan ukuran teks saat selesai mencubit layar
+  void _saveFontSize() {
+    _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
   }
 
   Future<void> _changeVersion(String newVersion) async {
@@ -77,7 +90,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await _loadDatabase();
   }
 
-  // ==== PERBAIKAN 1: Try-Catch saat Load Database ====
   Future<void> _loadDatabase() async {
     setState(() => _isLoading = true);
     try {
@@ -104,13 +116,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
       
       await _loadContent();
     } catch (e) {
-      // Jika terjadi error (misal file DB tidak terbaca), hentikan loading
       setState(() => _isLoading = false);
       debugPrint("Gagal memuat database: $e");
     }
   }
 
-  // ==== PERBAIKAN 2: Try-Catch Khusus Tabel Stories (Perikop) ====
   Future<void> _loadContent({int? scrollToVerse}) async {
     if (_db == null) return;
 
@@ -122,13 +132,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
           
       List<Map<String, dynamic>> storyData = [];
       try {
-        // Coba panggil tabel stories. Jika TJL tidak punya, akan error lalu masuk ke catch
         storyData = await _db!.query('stories',
             where: 'book_number = ? AND chapter = ?',
             whereArgs: [_currentBookNum, _currentChapter],
             orderBy: 'verse ASC, order_if_several ASC');
       } catch (e) {
-        // Abaikan error jika tabel stories tidak ada di TJL
         debugPrint("Tabel stories tidak ditemukan, abaikan perikop.");
       }
 
@@ -153,7 +161,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       if (scrollToVerse != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            double position = (scrollToVerse - 1) * 110.0; 
+            // Perkiraan tinggi item menyesuaikan ukuran font
+            double estimatedItemHeight = (_fontSize * 4) + 20; 
+            double position = (scrollToVerse - 1) * estimatedItemHeight; 
             _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
           }
         });
@@ -353,7 +363,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       return Text(
         title,
         textAlign: TextAlign.center,
-        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: Colors.black),
+        // Ukuran judul perikop menyesuaikan ukuran font ayat (+1.0)
+        style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 1.0, color: Colors.black),
       );
     }
 
@@ -405,7 +416,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return RichText(
       textAlign: TextAlign.center,
       text: TextSpan(
-        style: const TextStyle(fontSize: 15, color: Colors.black, fontStyle: FontStyle.italic),
+        // Ukuran referensi perikop menyesuaikan ukuran font ayat (-3.0)
+        style: TextStyle(fontSize: (_fontSize - 3.0).clamp(12.0, 30.0), color: Colors.black, fontStyle: FontStyle.italic),
         children: spans,
       ),
     );
@@ -479,59 +491,76 @@ class _AlkitabPageState extends State<AlkitabPage> {
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : _verses.isEmpty 
-            ? const Center(child: Text("Tidak ada ayat ditemukan.")) // Fallback jika DB kosong
-            : ListView.builder(
-                controller: _scrollController,
-                itemCount: _verses.length,
-                itemBuilder: (context, i) {
-                  final v = _verses[i]; 
-                  final vNum = v['verse'] as int; 
-                  final isSelected = _selectedVerses.contains(vNum); 
-                  final noteKeys = _verseNotesMap[vNum];
-                  final perikopList = _perikopMap[vNum];
-
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (perikopList != null)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
-                          child: Column(
-                            children: perikopList.map((title) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4.0),
-                              child: _buildPerikopItem(title),
-                            )).toList(),
-                          ),
-                        ),
-                      GestureDetector(
-                        onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
-                        onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
-                        child: Container(
-                          color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent, 
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
-                                TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                                TextSpan(text: _cleanText(v['text'])),
-                              ])),
-                              if (noteKeys != null && noteKeys.isNotEmpty)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: InkWell(
-                                    onTap: () => _showNoteSelection(noteKeys),
-                                    child: const Padding(padding: EdgeInsets.all(4.0), child: Text("📝", style: TextStyle(fontSize: 28))),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
+            ? const Center(child: Text("Tidak ada ayat ditemukan.")) 
+            // ==== BUNGKUS DENGAN GESTURE DETECTOR UNTUK PINCH TO ZOOM ====
+            : GestureDetector(
+                onScaleStart: (details) {
+                  _baseFontSize = _fontSize;
                 },
+                onScaleUpdate: (details) {
+                  setState(() {
+                    // Batasi ukuran font antara 12 (terkecil) sampai 40 (terbesar)
+                    _fontSize = (_baseFontSize * details.scale).clamp(12.0, 40.0);
+                  });
+                },
+                onScaleEnd: (details) {
+                  // Simpan ukuran font saat cubitan selesai
+                  _saveFontSize();
+                },
+                child: ListView.builder(
+                  controller: _scrollController,
+                  itemCount: _verses.length,
+                  itemBuilder: (context, i) {
+                    final v = _verses[i]; 
+                    final vNum = v['verse'] as int; 
+                    final isSelected = _selectedVerses.contains(vNum); 
+                    final noteKeys = _verseNotesMap[vNum];
+                    final perikopList = _perikopMap[vNum];
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (perikopList != null)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(20, 25, 20, 10),
+                            child: Column(
+                              children: perikopList.map((title) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4.0),
+                                child: _buildPerikopItem(title),
+                              )).toList(),
+                            ),
+                          ),
+                        GestureDetector(
+                          onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
+                          onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
+                          child: Container(
+                            color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent, 
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // TERAPKAN FONT SIZE DINAMIS DI SINI
+                                RichText(text: TextSpan(style: TextStyle(color: Colors.black, fontSize: _fontSize, height: 1.5), children: [
+                                  TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                                  TextSpan(text: _cleanText(v['text'])),
+                                ])),
+                                if (noteKeys != null && noteKeys.isNotEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: InkWell(
+                                      onTap: () => _showNoteSelection(noteKeys),
+                                      child: const Padding(padding: EdgeInsets.all(4.0), child: Text("📝", style: TextStyle(fontSize: 28))),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
     );
   }

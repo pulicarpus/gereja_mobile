@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/gestures.dart'; // TAMBAHKAN INI untuk aksi klik teks
+import 'package:flutter/gestures.dart'; 
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,19 +40,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   // Fungsi membersihkan tag HTML standar
   String _cleanText(String text) {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
-  }
-
-  // Helper untuk mengubah kode angka menjadi nama kitab pendek
-  String _mapBookName(String text) {
-    Map<String, String> bookCodes = {
-      "470": "Mat", "480": "Mrk", "490": "Luk", "500": "Yoh",
-      // Tambahkan kode lainnya jika perlu
-    };
-    String result = text;
-    bookCodes.forEach((code, name) {
-      result = result.replaceAll(code, name);
-    });
-    return result;
   }
 
   Future<void> _initApp() async {
@@ -257,8 +244,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // LOGIKA BARU: Membuat teks paralel bisa diklik satu per satu
+  // LOGIKA BARU: Parsing Perikop yang lebih sakti
   Widget _buildPerikopItem(String title) {
+    // Jika tidak ada tag referensi silang, kembalikan teks biasa (judul tebal)
     if (!title.contains("<x>")) {
       return Text(
         title,
@@ -267,50 +255,57 @@ class _AlkitabPageState extends State<AlkitabPage> {
       );
     }
 
-    // Judul yang mengandung referensi paralel
-    // Contoh title: "(<x>470 8:28-34; 490 8:26-39</x>)"
-    final contentRegex = RegExp(r'\((.*)<x>(.*)</x>(.*)\)');
-    final match = contentRegex.firstMatch(title);
+    List<InlineSpan> spans = [];
+    final regex = RegExp(r'<x>(.*?)</x>');
 
-    if (match == null) return Text(title, style: const TextStyle(color: Colors.black));
-
-    String prefix = match.group(1) ?? "";
-    String content = match.group(2) ?? "";
-    String suffix = match.group(3) ?? "";
-
-    List<TextSpan> spans = [];
-    spans.add(TextSpan(text: "($prefix"));
-
-    // Pisahkan referensi jika ada lebih dari satu (dipisah titik koma)
-    List<String> refs = content.split(';');
-    for (int i = 0; i < refs.length; i++) {
-      String rawRef = refs[i].trim();
-      // Cari data kitab, pasal, ayat di setiap bagian
-      final refData = RegExp(r'(\d+)\s+(\d+):(\d+)').firstMatch(rawRef);
-      
-      if (refData != null) {
-        int bNum = int.parse(refData.group(1)!);
-        int chap = int.parse(refData.group(2)!);
-        int vStart = int.parse(refData.group(3)!);
+    // Memecah string berdasarkan pola <x>...</x> secara otomatis
+    title.splitMapJoin(
+      regex,
+      onMatch: (Match m) {
+        String rawRef = m.group(1) ?? ""; // Contoh rawRef: "480 4:1-20"
         
-        spans.add(TextSpan(
-          text: _mapBookName(rawRef),
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w500, decoration: TextDecoration.underline),
-          recognizer: TapGestureRecognizer()..onTap = () {
-            setState(() { _currentBookNum = bNum; _currentChapter = chap; });
-            _loadContent(scrollToVerse: vStart);
-          },
-        ));
-      } else {
-        spans.add(TextSpan(text: _mapBookName(rawRef)));
-      }
+        // Coba ekstrak Kitab, Pasal, dan Ayat Awal
+        final refData = RegExp(r'(\d+)\s+(\d+):(\d+)').firstMatch(rawRef);
+        
+        if (refData != null) {
+          int bNum = int.parse(refData.group(1)!);
+          int chap = int.parse(refData.group(2)!);
+          int vStart = int.parse(refData.group(3)!);
+          
+          // Cari nama kitab otomatis dari database _allBooks
+          String bookShortName = bNum.toString();
+          try {
+            bookShortName = _allBooks.firstWhere((b) => b.bookNumber == bNum).shortName;
+          } catch (e) {
+            // Biarkan pakai angka jika gagal
+          }
+          
+          // Ganti angka kitab dengan namanya (contoh: "480 4:1-20" jadi "Mrk 4:1-20")
+          String displayText = rawRef.replaceFirst(bNum.toString(), bookShortName);
 
-      if (i < refs.length - 1) {
-        spans.add(const TextSpan(text: "; "));
-      }
-    }
-
-    spans.add(TextSpan(text: "$suffix)"));
+          spans.add(TextSpan(
+            text: displayText,
+            style: const TextStyle(
+              color: Colors.blue, // Diberi warna biru agar user tau ini bisa diklik
+              fontWeight: FontWeight.w600, 
+              decoration: TextDecoration.underline
+            ),
+            recognizer: TapGestureRecognizer()..onTap = () {
+              setState(() { _currentBookNum = bNum; _currentChapter = chap; });
+              _loadContent(scrollToVerse: vStart);
+            },
+          ));
+        } else {
+          spans.add(TextSpan(text: rawRef)); // Fallback jika format angka aneh
+        }
+        return "";
+      },
+      onNonMatch: (String text) {
+        // Teks biasa di luar tag (seperti kurung buka/tutup atau teks "Luk 8:4-15")
+        spans.add(TextSpan(text: text));
+        return "";
+      },
+    );
 
     return RichText(
       textAlign: TextAlign.center,

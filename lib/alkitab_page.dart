@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'notes_pages.dart';
+import 'notes_pages.dart'; // Import file catatan
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -43,7 +43,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     var dbPath = await getDatabasesPath();
     String path = p.join(dbPath, "TB.SQLite3");
     
-    // Paksa copy jika bos merasa file assets berubah tapi di app tidak berubah
+    // Salin database dari assets ke folder sistem (Paksa salin ulang)
     ByteData data = await rootBundle.load("assets/TB.SQLite3");
     List<int> bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
     await File(path).writeAsBytes(bytes, flush: true);
@@ -58,7 +58,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     setState(() { _isLoading = true; _errorMessage = ""; });
     
     try {
-      // Sesuai screenshot SQLite Editor: book_id, chapter
+      // Query sesuai kolom asli: book_id, chapter, content
       final verses = await _db!.query('verses', 
           where: 'book_id = ? AND chapter = ?', 
           whereArgs: [_bookId, _chapter]);
@@ -74,7 +74,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     } catch (e) {
       setState(() {
         _isLoading = false;
-        _errorMessage = "Error Query: Kolom tidak ditemukan. Coba Reinstall App.\nDetail: $e";
+        _errorMessage = "Query Gagal. Reinstall app atau cek kolom DB.\nDetail: $e";
       });
     }
   }
@@ -89,16 +89,40 @@ class _AlkitabPageState extends State<AlkitabPage> {
         prefs: _prefs, 
         db: _db!, 
         allBooks: _allBooks,
-        onJumpToBible: (n) => {}, 
+        onJumpToBible: (n) => _jumpToVerse(n), 
       )),
     );
+  }
+
+  void _jumpToVerse(String nas) {
+    try {
+      // Contoh format nas: "Kejadian 1:1"
+      String cleanRef = nas.split("-")[0].trim();
+      final regex = RegExp(r'([1-3]?\s?[A-Za-z]+)\s(\d+):(\d+)');
+      final match = regex.firstMatch(cleanRef);
+      
+      if (match != null) {
+        String kitab = match.group(1)!;
+        int pasal = int.parse(match.group(2)!);
+        
+        int bIdx = _allBooks.indexWhere((b) => b['name'].toString().toLowerCase() == kitab.toLowerCase());
+        if (bIdx != -1) {
+          setState(() { 
+            _bookId = _allBooks[bIdx]['_id']; 
+            _chapter = pasal; 
+          });
+          _loadContent();
+        }
+      }
+    } catch(e) { }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
+        backgroundColor: Colors.indigo[900], 
+        foregroundColor: Colors.white,
         title: Text("$_displayTitle $_chapter"),
         actions: [
           IconButton(
@@ -113,7 +137,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : _errorMessage.isNotEmpty 
-          ? Center(padding: const EdgeInsets.all(20), child: Text(_errorMessage, style: const TextStyle(color: Colors.red)))
+          ? Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(child: Text(_errorMessage, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center))
+            )
           : ListView.builder(
               itemCount: _verses.length,
               itemBuilder: (context, i) {
@@ -127,7 +154,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   },
                   title: RichText(text: TextSpan(style: const TextStyle(color: Colors.black, fontSize: 18, height: 1.5), children: [
                     TextSpan(text: "${v['verse']}. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                    TextSpan(text: v['content'].toString()), // Menggunakan 'content' sesuai SQLite Editor
+                    TextSpan(text: v['content'].toString()), 
                   ])),
                 );
               },

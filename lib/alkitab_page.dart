@@ -127,6 +127,64 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
+  // FUNGSI FLOATING UNTUK MEMILIH CATATAN
+  void _showNoteSelection(List<String> keys) {
+    if (keys.length == 1) {
+      _openNote(keys[0]);
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text("Pilih Catatan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ),
+          const Divider(),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: keys.length,
+              itemBuilder: (context, index) {
+                String key = keys[index];
+                String raw = _prefs.getString(key) ?? "";
+                String nas = raw.split("~|~")[0];
+                String isi = raw.split("~|~").length > 1 ? raw.split("~|~")[1] : "";
+                return ListTile(
+                  leading: const Text("📝", style: TextStyle(fontSize: 20)),
+                  title: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(isi, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openNote(key);
+                  },
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  void _openNote(String key) {
+    String? raw = _prefs.getString(key);
+    if (raw != null) {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (c) => NoteEditorPage(
+          nas: raw.split("~|~")[0], 
+          prefs: _prefs, 
+          existingKey: key
+        )
+      )).then((_) => _loadContent());
+    }
+  }
+
   void _showNavigation() {
     showModalBottomSheet(
       context: context,
@@ -202,7 +260,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.event_note), // Icon catatan daftar besar
+            icon: const Icon(Icons.event_note), 
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs))).then((_) => _loadContent())
           ),
           IconButton(
@@ -226,10 +284,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // PERBAIKAN TAMPILAN PERIKOP: TENGAH, BESAR, BOLD, BIRU MUDA
               if (perikop != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-                  child: Text(perikop, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, fontStyle: FontStyle.italic, color: Colors.brown)),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 25, 16, 12),
+                  child: Text(
+                    perikop, 
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      fontSize: 20, 
+                      color: Colors.blue[300], // Biru Muda
+                      height: 1.3
+                    ),
+                  ),
                 ),
               GestureDetector(
                 onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
@@ -245,26 +314,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         TextSpan(text: _cleanText(v['text'])),
                       ])),
                       
+                      // HANYA SATU IKON CATATAN MESKIPUN BANYAK CATATAN
                       if (noteKeys != null && noteKeys.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Wrap(
-                            spacing: 10,
-                            children: noteKeys.map((key) => InkWell(
-                              onTap: () {
-                                String? raw = _prefs.getString(key);
-                                if (raw != null) {
-                                  Navigator.push(context, MaterialPageRoute(
-                                    builder: (c) => NoteEditorPage(
-                                      nas: raw.split("~|~")[0], 
-                                      prefs: _prefs, 
-                                      existingKey: key // FIX: Pakai existingKey, bukan noteKey
-                                    )
-                                  )).then((_) => _loadContent());
-                                }
-                              },
-                              child: const Text("📝", style: TextStyle(fontSize: 25)),
-                            )).toList(),
+                          child: InkWell(
+                            onTap: () => _showNoteSelection(noteKeys),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4.0),
+                              child: Text("📝", style: TextStyle(fontSize: 28)),
+                            ),
                           ),
                         ),
                     ],

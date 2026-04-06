@@ -68,12 +68,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   String formatTimeCustom(DateTime? date) {
     if (date == null) return "";
-    final sekarang = DateTime.now();
-    final isHariIni = sekarang.year == date.year && sekarang.month == date.month && sekarang.day == date.day;
-    return isHariIni ? DateFormat('HH:mm').format(date) : DateFormat('dd MMM, HH:mm').format(date);
+    return DateFormat('HH:mm').format(date);
   }
 
-  // --- FITUR: UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
+  // --- 1. FITUR UPLOAD GAMBAR DENGAN CAPTION (UTUH) ---
   Future<void> _uploadImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
@@ -108,7 +106,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal", style: TextStyle(color: Colors.red))),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo[900], foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
             onPressed: () {
               String caption = _etCaption.text.trim();
               Navigator.pop(context);
@@ -135,12 +133,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
         _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url'], name: "img.jpg", cloudId: json['public_id']);
       }
     } catch (e) {
-      _showSnack("Gagal kirim gambar: $e");
+      _showSnack("Gagal upload gambar: $e");
     } finally {
       setState(() => _isUploading = false);
     }
   }
 
+  // --- 2. FITUR UPLOAD FILE DOKUMEN (UTUH) ---
   Future<void> _uploadFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
@@ -171,6 +170,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
+  // --- 3. FITUR VOICE NOTE (UTUH V5) ---
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
@@ -218,21 +218,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  Future<void> _bukaFile(String url, String fileName) async {
-    _showSnack("Mengunduh dokumen...");
-    try {
-      final dir = await getTemporaryDirectory();
-      final savePath = '${dir.path}/$fileName';
-      final file = File(savePath);
-      if (!await file.exists()) {
-        var response = await http.get(Uri.parse(url));
-        await file.writeAsBytes(response.bodyBytes);
-      }
-      final result = await OpenFilex.open(savePath);
-      if (result.type != ResultType.done) { _showSnack("Tidak ada aplikasi untuk membuka file ini."); }
-    } catch (e) { _showSnack("Gagal membuka dokumen: $e"); }
-  }
-
+  // --- 4. LOGIKA FIRESTORE & NOTIFIKASI (UTUH) ---
   Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId}) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
@@ -284,6 +270,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     } catch (_) {}
   }
 
+  // --- 5. UI BUILDING (WHATSAPP STYLE) ---
   void _showFullImage(String url) {
     showDialog(context: context, builder: (c) => Dialog(
       backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero,
@@ -295,9 +282,18 @@ class _ChatroomPageState extends State<ChatroomPage> {
     ));
   }
 
-  void _deleteMessage(String id) async {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId != null) await _db.collection("churches").doc(churchId).collection(_collectionPath).doc(id).delete();
+  Future<void> _bukaFile(String url, String fileName) async {
+    _showSnack("Mengunduh dokumen...");
+    try {
+      final dir = await getTemporaryDirectory();
+      final savePath = '${dir.path}/$fileName';
+      final file = File(savePath);
+      if (!await file.exists()) {
+        var response = await http.get(Uri.parse(url));
+        await file.writeAsBytes(response.bodyBytes);
+      }
+      await OpenFilex.open(savePath);
+    } catch (e) { _showSnack("Gagal membuka file."); }
   }
 
   void _showChatMenu(Map<String, dynamic> chat, String docId) {
@@ -314,7 +310,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
             }),
           if (isMe || isAdmin)
             ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () {
-              Navigator.pop(context); _deleteMessage(docId);
+              Navigator.pop(context); 
+              _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete();
             }),
         ],
       ),
@@ -322,6 +319,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   void _showSnack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
   void _showPickerOptions() {
     showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(
       mainAxisSize: MainAxisSize.min, children: [
@@ -333,15 +331,18 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   @override
   Widget build(BuildContext context) {
-    String? churchId = UserManager().activeChurchId;
     return Scaffold(
-      backgroundColor: Colors.blueGrey[50],
-      appBar: AppBar(title: Text(widget.filterKategorial ?? "Chat Jemaat"), backgroundColor: Colors.indigo[900], foregroundColor: Colors.white),
+      backgroundColor: const Color(0xFFE5DDD5), // Background WA
+      appBar: AppBar(
+        title: Text(widget.filterKategorial ?? "Chat Jemaat"), 
+        backgroundColor: const Color(0xFF075E54), 
+        foregroundColor: Colors.white,
+        actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))],
+      ),
       body: Column( children: [
-          if (_isUploading) const LinearProgressIndicator(backgroundColor: Colors.orange, color: Colors.white),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _db.collection("churches").doc(churchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
+              stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
               builder: (context, snap) {
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                 var docs = snap.data!.docs;
@@ -362,51 +363,50 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Widget _buildChatBubble(Map<String, dynamic> chat, String docId, bool isMe) {
-    String tipe = chat['tipe'] ?? 'text';
     DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
-
     return GestureDetector(
       onLongPress: () => _showChatMenu(chat, docId),
       child: Column(
         crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          if (!isMe) Padding(
-            padding: const EdgeInsets.only(left: 55, bottom: 3), 
-            child: Text(chat['pengirimNama'] ?? "Jemaat", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo[900]?.withOpacity(0.7)))
-          ),
           Row(
             mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (!isMe) Padding(
-                padding: const EdgeInsets.only(bottom: 2, left: 5),
-                child: CircleAvatar(radius: 18, backgroundColor: Colors.indigo[100], backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? Icon(Icons.person, size: 20, color: Colors.indigo[400]) : null),
-              ),
+              if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null),
               Container(
-                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-                // 👇 PERBAIKAN: Menggunakan top/bottom, bukan vertical 👇
-                margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 10 : 50, top: 5, bottom: 5),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 8 : 50, top: 4, bottom: 4),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isMe ? const Color(0xFFE2EAFC) : Colors.white,
-                  borderRadius: BorderRadius.only(topLeft: const Radius.circular(18), topRight: const Radius.circular(18), bottomLeft: Radius.circular(isMe ? 18 : 0), bottomRight: Radius.circular(isMe ? 0 : 18)),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 3, offset: const Offset(0, 1))],
-                  border: isMe ? null : Border.all(color: Colors.grey[200]!, width: 0.5),
+                  color: isMe ? const Color(0xFFDCF8C6) : Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(12), topRight: const Radius.circular(12),
+                    bottomLeft: Radius.circular(isMe ? 12 : 0), bottomRight: Radius.circular(isMe ? 0 : 12)
+                  ),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]
                 ),
                 child: Column( crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
                     if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
-                    if (tipe == 'audio') _buildAudioUI(chat, docId, isMe)
-                    else if (tipe == 'image') Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        InkWell(onTap: () => _showFullImage(chat['fileUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(12), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))),
-                        if (chat['pesan'] != "[Gambar]") Padding(padding: const EdgeInsets.only(top: 7, left: 2, right: 2), child: Text(chat['pesan'], style: TextStyle(color: isMe ? Colors.indigo[950] : Colors.black87, fontSize: 15))),
+                    
+                    if (chat['tipe'] == 'image') Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        InkWell(onTap: () => _showFullImage(chat['fileUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))),
+                        if (chat['pesan'] != "[Gambar]") Padding(padding: const EdgeInsets.only(top: 5), child: Text(chat['pesan'], style: const TextStyle(fontSize: 15))),
                     ])
-                    else if (tipe == 'file') InkWell(
+                    else if (chat['tipe'] == 'file') InkWell(
                       onTap: () => _bukaFile(chat['fileUrl'], chat['fileName'] ?? "dokumen"), 
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.insert_drive_file, color: Colors.orangeAccent, size: 35), const SizedBox(width: 10), Expanded(child: Text(chat['fileName'] ?? "File", style: TextStyle(color: isMe ? Colors.indigo[900] : Colors.indigo[700], decoration: TextDecoration.underline, fontWeight: FontWeight.w500)))])
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.insert_drive_file, color: Colors.orange, size: 30), const SizedBox(width: 8), Expanded(child: Text(chat['fileName'] ?? "File", style: const TextStyle(color: Colors.indigo, decoration: TextDecoration.underline)))])
                     )
-                    else Text(chat['pesan'] ?? "", style: TextStyle(color: isMe ? Colors.indigo[950] : Colors.black87, fontSize: 15)),
-                    const SizedBox(height: 6),
-                    Align(alignment: Alignment.bottomRight, child: Text(formatTimeCustom(waktu), style: TextStyle(fontSize: 10, color: isMe ? Colors.indigo[300] : Colors.grey[500]))),
+                    else if (chat['tipe'] == 'audio') _buildAudioUI(chat, docId, isMe)
+                    else Text(chat['pesan'] ?? "", style: const TextStyle(color: Colors.black87, fontSize: 15)),
+                    
+                    const SizedBox(height: 4),
+                    Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Spacer(),
+                      Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                      if (isMe) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.done_all, size: 14, color: Colors.blue)),
+                    ])
                   ],
                 ),
               ),
@@ -422,9 +422,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isMe ? Colors.white.withOpacity(0.15) : Colors.black.withOpacity(0.05),
+        color: Colors.black.withOpacity(0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: isMe ? Colors.orangeAccent : Colors.indigo, width: 4)),
+        border: Border(left: BorderSide(color: isMe ? Colors.green : Colors.indigo, width: 4)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,23 +433,14 @@ class _ChatroomPageState extends State<ChatroomPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  chat['replyToName'] ?? "Jemaat",
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.orangeAccent : Colors.indigo[900]),
-                ),
+                Text(chat['replyToName'] ?? "Jemaat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
                 const SizedBox(height: 2),
-                Text(
-                  chat['replyToText'] ?? "",
-                  style: TextStyle(fontSize: 11, color: isMe ? Colors.white.withOpacity(0.9) : Colors.black87),
-                ),
+                Text(chat['replyToText'] ?? "", maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.black54)),
               ],
             ),
           ),
           if (chat['replyToImage'] != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 45, height: 45, fit: BoxFit.cover)),
-            ),
+            Padding(padding: const EdgeInsets.only(left: 8), child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 40, height: 40, fit: BoxFit.cover))),
         ],
       ),
     );
@@ -458,48 +449,54 @@ class _ChatroomPageState extends State<ChatroomPage> {
   Widget _buildAudioUI(Map<String, dynamic> chat, String id, bool isMe) {
     bool isPlaying = _playingId == id;
     return Row( mainAxisSize: MainAxisSize.min, children: [
-        IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: isMe ? Colors.indigo[900] : Colors.indigo, size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)),
-        Row(children: List.generate(10, (index) => Container(width: 3, height: isPlaying ? (10.0 + (index % 3 * 5)) : 15.0, margin: const EdgeInsets.symmetric(horizontal: 1), decoration: BoxDecoration(color: isMe ? Colors.indigo[200] : Colors.black12, borderRadius: BorderRadius.circular(2))))),
+        IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)),
+        const Text("Voice Note", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black54)),
       ],
     );
   }
 
   Widget _buildInputArea() {
     return Container(
-      color: Colors.white,
+      padding: const EdgeInsets.all(8),
+      color: Colors.transparent,
       child: Column( children: [
           if (_replyMessage != null || _editingMessageId != null) Container(
-            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10), color: Colors.grey[200],
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
             child: Row( children: [
-                Icon(_editingMessageId != null ? Icons.edit : Icons.reply, color: Colors.indigo),
+                Icon(_editingMessageId != null ? Icons.edit : Icons.reply, color: const Color(0xFF075E54)),
                 const SizedBox(width: 10),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(_editingMessageId != null ? "Edit Pesan" : "Membalas ${_replyMessage?['pengirimNama']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
-                  Text(_editingMessageId != null ? "Ketik ulang pesan" : (_replyMessage?['pesan'] ?? ""), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-                ])),
-                IconButton(icon: const Icon(Icons.close, size: 20), onPressed: () => setState(() { _replyMessage = null; _editingMessageId = null; _etPesan.clear(); }))
+                Expanded(child: Text(_editingMessageId != null ? "Edit Pesan..." : (_replyMessage?['pesan'] ?? ""), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _replyMessage = null; _editingMessageId = null; _etPesan.clear(); }))
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row( children: [
-                IconButton(icon: const Icon(Icons.add_circle_outline, color: Colors.indigo, size: 28), onPressed: () => _showPickerOptions()),
-                Expanded(child: TextField(controller: _etPesan, maxLines: null, decoration: InputDecoration(hintText: "Ketik pesan...", filled: true, fillColor: Colors.grey[100], contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none)))),
-                const SizedBox(width: 5),
-                GestureDetector(
-                  onLongPressStart: (_) { if (!_isTyping) _startRecording(); },
-                  onLongPressEnd: (_) { if (!_isTyping) _stopRecording(); },
-                  child: CircleAvatar(
-                    radius: 24, backgroundColor: _isRecording ? Colors.red : Colors.indigo[900],
-                    child: IconButton(
-                      icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white),
-                      onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); },
-                    ),
+          Row( children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)),
+                  child: Row( children: [
+                      IconButton(icon: const Icon(Icons.add, color: Colors.grey), onPressed: _showPickerOptions),
+                      Expanded(child: TextField(controller: _etPesan, maxLines: null, decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 10)))),
+                      IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _uploadImage),
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 5),
+              GestureDetector(
+                onLongPressStart: (_) => _startRecording(),
+                onLongPressEnd: (_) => _stopRecording(),
+                child: CircleAvatar(
+                  radius: 24, backgroundColor: const Color(0xFF075E54),
+                  child: IconButton(
+                    icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white),
+                    onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); },
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

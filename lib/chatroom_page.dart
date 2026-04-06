@@ -221,22 +221,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
       return;
     }
 
-    await _db.collection("churches").doc(churchId).collection(_collectionPath).add({
-      "pengirimId": _auth.currentUser?.uid,
-      "pengirimNama": UserManager().userNama,
-      "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": isi,
-      "timestamp": FieldValue.serverTimestamp(),
-      "tipe": tipe,
-      "fileUrl": url,
-      "fileName": name,
-      "cloudPublicId": cloudId,
-      "isReply": _replyMessage != null,
-      "replyToName": _replyMessage?['pengirimNama'],
-      "replyToText": (_replyMessage?['tipe'] == 'image') ? '[Gambar]' : _replyMessage?['pesan'],
-      "replyToImage": (_replyMessage?['tipe'] == 'image') ? _replyMessage?['fileUrl'] : null,
-    });
-
     _kirimNotif(isi);
     setState(() { _replyMessage = null; _etPesan.clear(); });
   }

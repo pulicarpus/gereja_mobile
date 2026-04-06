@@ -49,6 +49,13 @@ jobs:
         run: flutter pub get
         working-directory: . 
 
+      # 👇 INI DIA JURUS SAKTI PENYUNTIK BRANKASNYA BOS 👇
+      - name: Create Secrets File
+        run: |
+          mkdir -p lib
+          echo "const String geminiApiKey = '${{ secrets.GEMINI_API_KEY }}';" > lib/secrets.dart
+      # 👆 ========================================= 👆
+
       - name: Build APK
         run: flutter build apk --release
         working-directory: .

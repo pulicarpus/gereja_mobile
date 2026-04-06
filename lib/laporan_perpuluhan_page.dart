@@ -9,8 +9,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
-// import 'rincian_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
-// import 'tambah_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
+import 'rincian_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
+import 'tambah_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
 
 // --- DATA CLASS (Pengganti RekapPerpuluhanJemaat.kt) ---
 class RekapPerpuluhanJemaat {

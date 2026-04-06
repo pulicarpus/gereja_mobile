@@ -64,10 +64,10 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS V.I.P: PENCARIAN SUPER (JUDUL/LIRIK + SPESIFIK PENYANYI) ====
+  // ==== JURUS SULTAN: PENCARIAN DENGAN GOOGLE SEARCH GROUNDING ====
   Future<void> _tanyaGemini() async {
     String kataKunci = _etJudul.text.trim();
-    String penyanyiTarget = _etPencipta.text.trim(); // Kita baca juga isi kolom penyanyi
+    String penyanyiTarget = _etPencipta.text.trim();
 
     if (kataKunci.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ketik judul atau potongan liriknya dulu, Bos!")));
@@ -80,50 +80,69 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     }
 
     setState(() => _isAskingGemini = true);
-    FocusScope.of(context).unfocus(); 
+    FocusScope.of(context).unfocus();
 
-    // Bikin kalimat perintah yang cerdas
-    String instruksi = "Saya memberikan kata kunci (bisa berupa judul lagu atau potongan lirik) rohani kristen berikut: '$kataKunci'. ";
+    String instruksi = "Carikan lirik lagu rohani kristen lengkap berdasarkan kata kunci: '$kataKunci'. ";
     if (penyanyiTarget.isNotEmpty) {
-      // Kalau kolom penyanyi diisi, kita suruh Gemini cari versi spesifik itu!
-      instruksi += "TOLONG CARIKAN SPESIFIK VERSI YANG DINYANYIKAN / DICIPTAKAN OLEH: '$penyanyiTarget'. ";
+      instruksi += "Utamakan versi dari penyanyi: '$penyanyiTarget'. ";
     }
+    instruksi += "CARI DI GOOGLE SEARCH jika data tidak tersedia di memori kamu. Berikan lirik yang paling akurat sesuai hasil pencarian. ";
 
     try {
+      // WAJIB pakai v1beta untuk fitur Search Grounding
       final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_geminiApiKey');
-      
+
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           "contents": [{
             "parts": [{
-              "text": "Kamu adalah asisten database gereja. $instruksi Tebak lagu apa yang paling tepat sesuai permintaan tersebut. HANYA balas dengan format baku 3 baris ini tanpa basa-basi:\n[Judul Lagu Asli]\n[Nama Pencipta/Penyanyi Populer]\n[Isi Lirik Lengkap]"
+              "text": "Kamu adalah asisten database gereja. $instruksi HANYA balas dengan format baku 3 baris ini (DILARANG MINTA MAAF): \n[Judul Lagu]\n[Nama Penyanyi/Grup]\n[Isi Lirik Lengkap]"
             }]
-          }]
+          }],
+          // 👇 INI DIA JURUS RAHASIANYA: MENGHUBUNGKAN KE GOOGLE SEARCH 👇
+          "tools": [
+            {
+              "googleSearch": {} // Format tool search terbaru untuk v1beta
+            }
+          ]
         }),
-      ).timeout(const Duration(seconds: 15)); 
+      ).timeout(const Duration(seconds: 20)); // Waktu dilonggarkan karena proses browsing butuh waktu
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
+        
+        // Ambil bagian teksnya
         String hasil = data['candidates'][0]['content']['parts'][0]['text'] ?? "";
         
         if (hasil.isNotEmpty) {
+          // Bersihkan sisa-sisa markdown bold (**) kalau Gemini iseng nambahin
+          hasil = hasil.replaceAll('**', '').trim();
           List<String> lines = hasil.split('\n');
-          if (lines.length >= 2) {
-            _etJudul.text = lines[0].replaceAll(RegExp(r'[\[\]]'), '').trim(); 
-            _etPencipta.text = lines[1].replaceAll(RegExp(r'[\[\]]'), '').trim(); 
-            lines.removeRange(0, 2); 
-            _etLirik.text = lines.join('\n').trim(); 
+          lines.removeWhere((element) => element.trim().isEmpty);
+
+          if (lines.length >= 3) {
+             // Cek apakah Gemini diam-diam minta maaf
+            if (lines[0].toLowerCase().contains("maaf") || lines[0].toLowerCase().contains("tidak dapat")) {
+               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lagu benar-benar tidak ada di internet bos!")));
+            } else {
+              _etJudul.text = lines[0].replaceAll(RegExp(r'[\[\]]'), '').trim();
+              _etPencipta.text = lines[1].replaceAll(RegExp(r'[\[\]]'), '').trim();
+              lines.removeRange(0, 2);
+              _etLirik.text = lines.join('\n').trim();
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik akurat mendarat via Google Search!")));
+            }
+          } else {
+             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Format balasan berantakan, coba lagi bos!")));
           }
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik versi spesifik sukses disedot!")));
         }
       } else {
         final errorData = jsonDecode(response.body);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: ${errorData['error']['message']}")));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Koneksi Error: Coba lagi bos!")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Koneksi lemot atau API Error, coba lagi bos!")));
     } finally {
       setState(() => _isAskingGemini = false);
     }
@@ -224,8 +243,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   ],
                 ),
                 const SizedBox(height: 15),
-                // 👇 Tulisannya saya perjelas sedikit bos 👇
-                _buildField(_etPencipta, "Pencipta / Penyanyi (Isi untuk filter versi spesifik)", false),
+                _buildField(_etPencipta, "Pencipta / Penyanyi (Isi untuk filter spesifik)", false),
                 const SizedBox(height: 15),
                 _buildField(_etLirik, "Isi Lirik", true, maxLines: 18),
                 const SizedBox(height: 30),

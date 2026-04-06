@@ -69,7 +69,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
       return;
     }
 
-    if (_geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
+    if (_geminiApiKey == "AIzaSyAeeii-hh9f3EahItxUm05pZ33-D19pSss") {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key Gemini belum diisi di dalam kode!")));
       return;
     }

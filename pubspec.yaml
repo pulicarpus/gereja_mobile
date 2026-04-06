@@ -17,7 +17,7 @@ dependencies:
   google_generative_ai: ^0.4.7
   http: ^1.2.0    # Tambahkan ini
   html: ^0.15.4   # Tambahkan ini
-  file_picker: ^8.0.0
+  file_picker: ^8.0.1
   
   # Ikon & Tampilan Modern
   cupertino_icons: ^1.0.8

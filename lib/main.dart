@@ -13,7 +13,8 @@ import 'jadwal_page.dart';
 import 'alkitab_page.dart';    
 import 'renungan_page.dart';   
 import 'lagu_page.dart';       
-import 'kelola_gereja_page.dart'; // 👇 Wajib dipanggil
+import 'kelola_gereja_page.dart';
+import 'chatroom_page.dart'; // 👈 IMPORT CHAT SUDAH MASUK BOS
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -114,8 +115,7 @@ class _MainActivityState extends State<MainActivity> {
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
-    
-    // ==== CEK KASTA USER & STATUS PANTAU ====
+    bool isAdmin = user.isAdmin();
     bool isSuperAdmin = user.isSuperAdmin();
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
@@ -161,18 +161,23 @@ class _MainActivityState extends State<MainActivity> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 1.1,
                 children: [
-                  _buildDrawerItem(Icons.people, "Jemaat", () {
+                  // ==== TOMBOL JEMAAT (Logika Admin diatur di dalam halamannya) ====
+                  _buildDrawerItem(Icons.people, isAdmin ? "Kelola Anggota" : "Data Jemaat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
                   }),
+                  
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     // TODO: Halaman Keuangan
                   }),
-                  _buildDrawerItem(Icons.chat, "Chat", () {
-                    // TODO: Halaman Chat
+                  
+                  // ==== TOMBOL CHAT AKTIF BOS! ====
+                  _buildDrawerItem(Icons.chat, "Ruang Chat", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatroomPage()));
                   }),
+                  
                   _buildDrawerItem(Icons.book, "Renungan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const RenunganPage()));
                   }),
@@ -196,21 +201,15 @@ class _MainActivityState extends State<MainActivity> {
             ),
             const Divider(),
             
-            // 👇 MENU RAHASIA: HANYA MUNCUL UNTUK SUPERADMIN 👇
             if (isSuperAdmin) ...[
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
                 title: const Text("Kelola Gereja", style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: const Text("Hak Akses Superadmin", style: TextStyle(fontSize: 12)),
                 onTap: () {
-                  Navigator.pop(context); // Tutup drawer dulu
-                  Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (context) => const KelolaGerejaPage())
-                  ).then((_) {
-                    // Refresh data saat bos kembali dari halaman Pilih Gereja
-                    setState(() { _initSession(); });
-                  });
+                  Navigator.pop(context);
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const KelolaGerejaPage()))
+                  .then((_) => setState(() { _initSession(); }));
                 },
               ),
               const Divider(),
@@ -232,7 +231,6 @@ class _MainActivityState extends State<MainActivity> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // 👇 BANNER STATUS PANTAU (MUNCUL KALAU SUPERADMIN PINDAH GEREJA) 👇
             if (isMemantau)
               Container(
                 color: Colors.orange.shade100,
@@ -241,117 +239,97 @@ class _MainActivityState extends State<MainActivity> {
                   children: [
                     const Icon(Icons.visibility, color: Colors.deepOrange),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        "Mode Pantau: ${user.activeChurchName}",
-                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13),
-                      ),
-                    ),
+                    Expanded(child: Text("Mode Pantau: ${user.activeChurchName}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13))),
                     ElevatedButton(
                       onPressed: () async {
                         await user.exitChurchContext();
                         setState(() { _initSession(); });
                       },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
-                        foregroundColor: Colors.white,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      child: const Text("KEMBALI", style: TextStyle(fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.deepOrange, foregroundColor: Colors.white, visualDensity: VisualDensity.compact),
+                      child: const Text("KEMBALI"),
                     )
                   ],
                 ),
               ),
 
             Container(
-              width: double.infinity,
-              height: 220,
+              width: double.infinity, height: 220,
               decoration: BoxDecoration(
                 color: Colors.indigo.shade50,
-                image: _fotoGerejaUrl != null 
-                  ? DecorationImage(image: NetworkImage(_fotoGerejaUrl!), fit: BoxFit.cover)
-                  : null,
+                image: _fotoGerejaUrl != null ? DecorationImage(image: NetworkImage(_fotoGerejaUrl!), fit: BoxFit.cover) : null,
               ),
-              child: _fotoGerejaUrl == null 
-                ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3))
-                : null,
+              child: _fotoGerejaUrl == null ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)) : null,
             ),
+            
             Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    user.activeChurchName ?? "GKII SILOAM",
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo),
-                  ),
+                  Text(user.activeChurchName ?? "GKII SILOAM", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
                   const SizedBox(height: 8),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on, size: 18, color: Colors.redAccent),
                       const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(_alamatGereja, style: const TextStyle(color: Colors.black87, fontSize: 14, height: 1.3)),
-                      ),
+                      Expanded(child: Text(_alamatGereja, style: const TextStyle(color: Colors.black87, fontSize: 14))),
                     ],
                   ),
                   const SizedBox(height: 25),
+                  
+                  // ==== BAGIAN AYAT EMAS ====
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.indigo.shade100),
-                    ),
+                    decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.indigo.shade100)),
                     child: Column(
                       children: [
                         const Icon(Icons.format_quote, color: Colors.indigo, size: 30),
-                        Text(
-                          "\"$_isiAyat\"",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16, height: 1.5),
-                        ),
+                        Text("\"$_isiAyat\"", textAlign: TextAlign.center, style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16, height: 1.5)),
                         const SizedBox(height: 10),
                         Text("- $_refAyat", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
                       ],
                     ),
                   ),
                   const SizedBox(height: 35),
-                  const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  
+                  const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
-                  Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: Colors.grey.shade200),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 35,
-                          backgroundColor: Colors.indigo.shade100,
-                          backgroundImage: _fotoGembalaUrl != null 
-                              ? CachedNetworkImageProvider(_fotoGembalaUrl!) 
-                              : null,
-                          child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 4),
-                              const Text("Pelayan Tuhan", style: TextStyle(color: Colors.grey)),
-                            ],
+                  
+                  // ==== CARD GEMBALA (BISA DIKLIK BOS) ====
+                  InkWell(
+                    onTap: () {
+                      // TODO: Tampilkan Dialog Detail Gembala seperti di Kotlin
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Detail Gembala segera hadir!")));
+                    },
+                    borderRadius: BorderRadius.circular(15),
+                    child: Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: Colors.white, borderRadius: BorderRadius.circular(15),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
+                      ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 35, backgroundColor: Colors.indigo.shade100,
+                            backgroundImage: _fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null,
+                            child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 20),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                const Text("Pelayan Tuhan", style: TextStyle(color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 50),
@@ -366,30 +344,20 @@ class _MainActivityState extends State<MainActivity> {
 
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
-      onTap: () {
-        Navigator.pop(context); 
-        onTap(); 
-      },
+      onTap: () { Navigator.pop(context); onTap(); },
       borderRadius: BorderRadius.circular(15),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(15),
+          color: Colors.white, borderRadius: BorderRadius.circular(15),
           border: Border.all(color: Colors.indigo.shade100),
-          boxShadow: [
-            BoxShadow(color: Colors.indigo.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
-          ]
+          boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))]
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: Colors.indigo[800], size: 32),
             const SizedBox(height: 12),
-            Text(
-              label, 
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
-            ),
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
           ],
         ),
       ),

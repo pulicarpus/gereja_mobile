@@ -10,14 +10,14 @@ import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
 import 'jadwal_page.dart';
-import 'alkitab_page.dart';    // Import halaman Alkitab
-import 'renungan_page.dart';   // Import halaman Renungan
+import 'alkitab_page.dart';    
+import 'renungan_page.dart';   
+import 'lagu_page.dart';       // <--- INI SUDAH DITAMBAHKAN BOS
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
-  // Inisialisasi OneSignal sebelum aplikasi jalan
   _initOneSignal();
   
   runApp(const MyApp());
@@ -77,7 +77,6 @@ class _MainActivityState extends State<MainActivity> {
     _initSession();
   }
 
-  // ==== PERBAIKAN LOGIKA: Semuanya dipusatkan di sini ====
   void _initSession() async {
     final userManager = UserManager();
     await userManager.loadFromPrefs();
@@ -110,7 +109,6 @@ class _MainActivityState extends State<MainActivity> {
       }
     });
   }
-  // =======================================================
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +128,7 @@ class _MainActivityState extends State<MainActivity> {
             DrawerHeader(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF1A237E), Colors.indigo], // Menggunakan warna indigo gelap
+                  colors: [Color(0xFF1A237E), Colors.indigo], 
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -171,14 +169,15 @@ class _MainActivityState extends State<MainActivity> {
                     // TODO: Halaman Chat
                   }),
                   
-                  // ==== TOMBOL RENUNGAN ====
                   _buildDrawerItem(Icons.book, "Renungan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const RenunganPage()));
                   }),
                   
+                  // ==== TOMBOL LAGU SUDAH AKTIF BOS ====
                   _buildDrawerItem(Icons.music_note, "Lagu", () {
-                    // TODO: Halaman Lagu
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const LaguPage()));
                   }),
+                  
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
                     // TODO: Halaman Gallery
                   }),
@@ -186,7 +185,6 @@ class _MainActivityState extends State<MainActivity> {
                     // TODO: Halaman Pokok Doa
                   }),
                   
-                  // ==== TOMBOL ALKITAB ====
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
                   }),
@@ -318,8 +316,8 @@ class _MainActivityState extends State<MainActivity> {
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: () {
-        Navigator.pop(context); // Tutup drawer terlebih dahulu
-        onTap(); // Baru eksekusi pindah halaman
+        Navigator.pop(context); 
+        onTap(); 
       },
       borderRadius: BorderRadius.circular(15),
       child: Container(

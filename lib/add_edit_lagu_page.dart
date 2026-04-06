@@ -3,6 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+// 👇 IMPORT BRANKAS RAHASIA KITA 👇
+import 'secrets.dart';
+
 class AddEditLaguPage extends StatefulWidget {
   final String? songId;
   final String? defaultCategory;
@@ -26,9 +29,8 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   bool _isLoading = false;
   bool _isAskingGemini = false; 
 
-  // ⚠️ MASUKKAN API KEY BOS DI SINI
-  // Pastikan TIDAK ADA SPASI kosong di awal atau di akhir hurufnya ya bos!
-  final String _geminiApiKey = "AIzaSyAeeii-hh9f3EahItxUm05pZ33-D19pSss";
+  // 👇 AMBIL KUNCI DARI BRANKAS RAHASIA 👇
+  final String _geminiApiKey = geminiApiKey;
 
   @override
   void initState() {
@@ -62,7 +64,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS V.I.P: PINTU UTAMA V1 ====
+  // ==== JURUS V.I.P: PINTU UTAMA V1 DENGAN BRANKAS RAHASIA ====
   Future<void> _tanyaGemini() async {
     String judul = _etJudul.text.trim();
     if (judul.isEmpty) {
@@ -70,8 +72,8 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
       return;
     }
 
-    if (_geminiApiKey.isEmpty || _geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key belum diisi di dalam kode!")));
+    if (_geminiApiKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key di brankas kosong!")));
       return;
     }
 
@@ -79,7 +81,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     FocusScope.of(context).unfocus(); 
 
     try {
-      // PERHATIKAN: Kita pakai jalur resmi v1 (bukan v1beta) dan mesin 1.5-flash
+      // Pakai jalur resmi v1 dan mesin 1.5-flash
       final url = Uri.parse('https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey');
       
       final response = await http.post(

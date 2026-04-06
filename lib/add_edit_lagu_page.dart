@@ -79,7 +79,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
 
     try {
       // Inisialisasi Model Gemini 1.5 Flash (Super Cepat)
-      final model = GenerativeModel(model: 'gemini-pro', apiKey: _geminiApiKey);
+      final model = GenerativeModel(model: 'gemini-1.0-pro', apiKey: _geminiApiKey);
       
       // Perintah rahasia (Prompt Engineering) agar Gemini menjawab sesuai format kita
       final prompt = """

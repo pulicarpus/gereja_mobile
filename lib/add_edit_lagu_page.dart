@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
-import 'package:html/parser.dart' as html_parser;
-import 'package:html/dom.dart' as dom;
+// ==== IMPORT GEMINI AI ====
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 class AddEditLaguPage extends StatefulWidget {
   final String? songId;
@@ -18,7 +17,6 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   final _formKey = GlobalKey<FormState>();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  final _etScraperUrl = TextEditingController();
   final _etJudul = TextEditingController();
   final _etNomor = TextEditingController();
   final _etPencipta = TextEditingController();
@@ -26,7 +24,10 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   
   String _selectedKategori = "NKI";
   bool _isLoading = false;
-  bool _isScraping = false;
+  bool _isAskingGemini = false; // Loading khusus untuk Gemini
+
+  // ⚠️ MASUKKAN API KEY BOS DI SINI NANTI
+  final String _geminiApiKey = "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI";
 
   @override
   void initState() {
@@ -39,7 +40,6 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
 
   @override
   void dispose() {
-    _etScraperUrl.dispose();
     _etJudul.dispose();
     _etNomor.dispose();
     _etPencipta.dispose();
@@ -61,48 +61,55 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS RAHASIA: WEB SCRAPER LIRIK ====
-  Future<void> _sedotLirik() async {
-    String url = _etScraperUrl.text.trim();
-    if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Masukkan link lirik dulu, Bos!")));
+  // ==== JURUS PANGGIL GEMINI AI ====
+  Future<void> _tanyaGemini() async {
+    String judul = _etJudul.text.trim();
+    if (judul.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ketik judul lagunya dulu, Bos!")));
       return;
     }
 
-    setState(() => _isScraping = true);
-    try {
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
-      if (response.statusCode == 200) {
-        dom.Document doc = html_parser.parse(response.body);
-        
-        // Logika khusus untuk liriklagukristen.id
-        if (url.contains("liriklagukristen.id")) {
-          String rawTitle = doc.querySelector("h1.entry-title")?.text ?? "";
-          // Biasanya formatnya: Lirik Lagu [Judul] - [Pencipta]
-          _etJudul.text = rawTitle.replaceAll("Lirik Lagu", "").split("-")[0].trim();
-          if (rawTitle.contains("-")) {
-            _etPencipta.text = rawTitle.split("-")[1].trim();
-          }
-          
-          // Ambil isi lirik di dalam entry-content
-          var entryContent = doc.querySelector(".entry-content");
-          entryContent?.querySelectorAll("script").forEach((s) => s.remove());
-          entryContent?.querySelectorAll("ins").forEach((i) => i.remove());
-          
-          _etLirik.text = entryContent?.text.trim() ?? "";
-        } 
-        // Logika umum (Fallback)
-        else {
-          _etJudul.text = doc.querySelector("h1")?.text.trim() ?? "";
-          _etLirik.text = doc.querySelector("article")?.text.trim() ?? doc.body?.text.trim() ?? "";
-        }
+    if (_geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key Gemini belum diisi di dalam kode!")));
+      return;
+    }
 
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lirik berhasil disedot!")));
+    setState(() => _isAskingGemini = true);
+    FocusScope.of(context).unfocus(); // Tutup keyboard
+
+    try {
+      // Inisialisasi Model Gemini 1.5 Flash (Super Cepat)
+      final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
+      
+      // Perintah rahasia (Prompt Engineering) agar Gemini menjawab sesuai format kita
+      final prompt = """
+      Kamu adalah asisten database gereja. Tolong berikan lirik lagu rohani kristen yang berjudul '$judul'.
+      HANYA balas dengan format baku di bawah ini, tanpa basa-basi, tanpa kalimat sapaan, tanpa penutup:
+      [Nama Pencipta atau Penyanyi Populer]
+      [Isi Lirik Lagu Lengkap Bait demi Bait]
+      """;
+
+      final content = [Content.text(prompt)];
+      final response = await model.generateContent(content);
+      
+      String hasil = response.text ?? "";
+      
+      if (hasil.isNotEmpty) {
+        // Memecah baris pertama (Pencipta) dan sisanya (Lirik)
+        List<String> lines = hasil.split('\n');
+        if (lines.isNotEmpty) {
+          _etPencipta.text = lines.first.replaceAll(RegExp(r'[\[\]]'), '').trim(); // Ambil baris 1
+          
+          lines.removeAt(0); // Hapus baris 1
+          _etLirik.text = lines.join('\n').trim(); // Sisanya gabungkan jadi lirik
+        }
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik berhasil disedot oleh Gemini!")));
       }
+      
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal sedot: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal memanggil Gemini: $e")));
     } finally {
-      setState(() => _isScraping = false);
+      setState(() => _isAskingGemini = false);
     }
   }
 
@@ -136,10 +143,13 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(widget.songId == null ? "Tambah Lagu" : "Edit Lagu"),
+        backgroundColor: Colors.indigo[900],
+        foregroundColor: Colors.white,
         actions: [
-          if (!_isLoading) IconButton(onPressed: _saveLagu, icon: const Icon(Icons.save))
+          if (!_isLoading) IconButton(onPressed: _saveLagu, icon: const Icon(Icons.check, size: 28))
         ],
       ),
       body: _isLoading 
@@ -149,48 +159,39 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // PANEL SCRAPER
-                Container(
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.shade200)
-                  ),
-                  child: Column(
-                    children: [
-                      const Text("Sedot Lirik dari Web", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _etScraperUrl,
-                              decoration: const InputDecoration(
-                                hintText: "Tempel link lirik di sini...",
-                                isDense: true,
-                                border: OutlineInputBorder()
-                              ),
-                            ),
+                // ==== KOLOM JUDUL & TOMBOL GEMINI ====
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: _buildField(_etJudul, "Judul Lagu", true),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 1,
+                      child: SizedBox(
+                        height: 55, // Menyamakan tinggi dengan TextField
+                        child: ElevatedButton.icon(
+                          onPressed: _isAskingGemini ? null : _tanyaGemini,
+                          icon: _isAskingGemini 
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.auto_awesome, color: Colors.amber),
+                          label: Text(_isAskingGemini ? "Loading" : "Tanya\nGemini", style: const TextStyle(fontSize: 12, height: 1.1)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.purple[700], // Warna ungu khas AI
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            padding: const EdgeInsets.symmetric(horizontal: 5)
                           ),
-                          const SizedBox(width: 10),
-                          _isScraping 
-                            ? const CircularProgressIndicator()
-                            : IconButton.filled(
-                                onPressed: _sedotLirik, 
-                                icon: const Icon(Icons.bolt),
-                                tooltip: "Sedot sekarang",
-                              )
-                        ],
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 25),
-
-                // FORM UTAMA
-                _buildField(_etJudul, "Judul Lagu", true),
                 const SizedBox(height: 15),
+                // ======================================
+
                 Row(
                   children: [
                     Expanded(child: _buildField(_etNomor, "Nomor (Opsional)", false)),
@@ -198,7 +199,10 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                     Expanded(
                       child: DropdownButtonFormField<String>(
                         value: _selectedKategori,
-                        decoration: const InputDecoration(labelText: "Kategori", border: OutlineInputBorder()),
+                        decoration: InputDecoration(
+                          labelText: "Kategori", 
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))
+                        ),
                         items: ["NKI", "KONTEMPORER"].map((k) => DropdownMenuItem(value: k, child: Text(k))).toList(),
                         onChanged: (v) => setState(() => _selectedKategori = v!),
                       ),
@@ -206,9 +210,9 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   ],
                 ),
                 const SizedBox(height: 15),
-                _buildField(_etPencipta, "Pencipta / Artis", false),
+                _buildField(_etPencipta, "Pencipta / Penyanyi", false),
                 const SizedBox(height: 15),
-                _buildField(_etLirik, "Isi Lirik", true, maxLines: 15),
+                _buildField(_etLirik, "Isi Lirik", true, maxLines: 18),
                 const SizedBox(height: 30),
                 
                 ElevatedButton(
@@ -216,9 +220,10 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50)
+                    minimumSize: const Size(double.infinity, 55),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
                   ),
-                  child: const Text("SIMPAN KE DATABASE"),
+                  child: const Text("SIMPAN KE DATABASE", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 ),
                 const SizedBox(height: 30),
               ],
@@ -231,7 +236,12 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     return TextFormField(
       controller: controller,
       maxLines: maxLines,
-      decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      textCapitalization: TextCapitalization.words,
+      decoration: InputDecoration(
+        labelText: label, 
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        alignLabelWithHint: maxLines > 1, // Agar label lirik ada di atas kiri
+      ),
       validator: (v) => (mandatory && v!.isEmpty) ? "$label wajib diisi" : null,
     );
   }

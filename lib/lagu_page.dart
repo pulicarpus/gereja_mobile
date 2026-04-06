@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
-// Note: Kita akan buat halaman Detail dan AddEdit ini nanti
-// import 'detail_lagu_page.dart';
-// import 'add_edit_lagu_page.dart'; 
+
+// ==== IMPORT HALAMAN ADD/EDIT ====
+import 'add_edit_lagu_page.dart';
 
 class LaguPage extends StatefulWidget {
   const LaguPage({super.key});
@@ -53,7 +53,6 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
     setState(() => _isLoading = true);
 
     try {
-      // Mengambil koleksi lagu secara global (bukan per gereja, agar semua gereja bisa pakai db lagu yang sama)
       final snapshot = await _db.collection("songs").get();
       
       List<Map<String, dynamic>> tempList = [];
@@ -62,9 +61,8 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
 
       for (var doc in snapshot.docs) {
         Map<String, dynamic> data = doc.data();
-        data['id'] = doc.id; // Simpan ID dokumen
+        data['id'] = doc.id; 
         
-        // Pengecekan Kategori Default "NKI" seperti di Kotlin
         if (!data.containsKey('kategori') || data['kategori'] == null) {
           batch.update(doc.reference, {'kategori': 'NKI'});
           data['kategori'] = 'NKI';
@@ -114,7 +112,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         bool matchSearch = query.isEmpty || 
             (song['judul']?.toString().toLowerCase().contains(query) ?? false) ||
             (song['nomor']?.toString().toLowerCase().contains(query) ?? false) ||
-            (song['lirik']?.toString().toLowerCase().contains(query) ?? false); // Tambahan: bisa cari dari lirik
+            (song['lirik']?.toString().toLowerCase().contains(query) ?? false); 
             
         return matchCategory && matchSearch;
       }).toList();
@@ -137,15 +135,20 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
             child: Text("Kelola: ${song['judul']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo), textAlign: TextAlign.center,),
           ),
           const Divider(),
+          
+          // ==== TOMBOL EDIT SUDAH TERSAMBUNG ====
           ListTile(
             leading: const Icon(Icons.edit, color: Colors.orange), 
             title: const Text("Edit Lagu"), 
             onTap: () { 
               Navigator.pop(context); 
-              // TODO: Navigasi ke AddEditLaguPage
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fitur Edit menyusul bos!")));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
+                songId: song['id'], 
+                defaultCategory: _currentCategory
+              ))).then((_) => _loadSongsFromFirestore()); // Refresh setelah edit
             }
           ),
+          
           ListTile(
             leading: const Icon(Icons.delete, color: Colors.red), 
             title: const Text("Hapus Lagu", style: TextStyle(color: Colors.red)), 
@@ -181,7 +184,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // Background keabuan lembut
+      backgroundColor: const Color(0xFFF5F7FA), 
       appBar: AppBar(
         title: const Text("Buku Nyanyian"),
         backgroundColor: Colors.indigo[900], 
@@ -207,7 +210,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
             padding: const EdgeInsets.fromLTRB(16, 5, 16, 15),
             child: TextField(
               controller: _searchController,
-              onChanged: (value) => _applyFilterAndSearch(), // Auto search saat ngetik
+              onChanged: (value) => _applyFilterAndSearch(), 
               style: const TextStyle(color: Colors.black87),
               decoration: InputDecoration(
                 hintText: "Cari judul, nomor, atau potongan lirik...",
@@ -264,8 +267,8 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
                             borderRadius: BorderRadius.circular(12),
                             onLongPress: _isAdmin ? () => _showEditDeleteDialog(song) : null,
                             onTap: () {
-                              // TODO: Navigasi ke Detail Lagu
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Detail lagu menyusul bos!")));
+                              // TODO: Navigasi ke Detail Lagu (Halaman baca lirik)
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Halaman Baca Lirik sedang dibuat bos!")));
                             },
                             child: Padding(
                               padding: const EdgeInsets.all(16),
@@ -314,12 +317,13 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         ],
       ),
       
-      // ==== TOMBOL TAMBAH KHUSUS ADMIN ====
+      // ==== TOMBOL TAMBAH KHUSUS ADMIN SUDAH TERSAMBUNG ====
       floatingActionButton: _isAdmin 
         ? FloatingActionButton(
             onPressed: () {
-              // TODO: Navigasi ke Add Lagu
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Form Tambah Lagu beserta Fitur Scraper kita buat setelah ini!")));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
+                defaultCategory: _currentCategory // Set kategori sesuai tab yang sedang aktif
+              ))).then((_) => _loadSongsFromFirestore()); // Refresh jika baru tambah lagu
             },
             backgroundColor: Colors.indigo,
             child: const Icon(Icons.add, color: Colors.white),

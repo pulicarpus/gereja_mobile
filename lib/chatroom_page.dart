@@ -422,9 +422,15 @@ class _ChatroomPageState extends State<ChatroomPage> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.05),
+        // 👇 Warna latar belakang balasan dipertegas sedikit agar elegan
+        color: Colors.black.withOpacity(0.06),
         borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: isMe ? Colors.green : Colors.indigo, width: 4)),
+        border: Border(
+          left: BorderSide(
+            color: isMe ? Colors.green[800]! : Colors.indigo, 
+            width: 4
+          )
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -433,14 +439,40 @@ class _ChatroomPageState extends State<ChatroomPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(chat['replyToName'] ?? "Jemaat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
-                const SizedBox(height: 2),
-                Text(chat['replyToText'] ?? "", maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                Text(
+                  chat['replyToName'] ?? "Jemaat",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 12, 
+                    color: isMe ? Colors.green[900] : Colors.indigo[900]
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  chat['replyToText'] ?? "",
+                  // 👇 KUNCI KEMENANGAN: Hapus maxLines agar tampil utuh seutuhnya!
+                  style: const TextStyle(
+                    fontSize: 12, 
+                    color: Colors.black87, // Warna teks balasan dipertegas
+                    height: 1.3
+                  ),
+                ),
               ],
             ),
           ),
           if (chat['replyToImage'] != null)
-            Padding(padding: const EdgeInsets.only(left: 8), child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 40, height: 40, fit: BoxFit.cover))),
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: CachedNetworkImage(
+                  imageUrl: chat['replyToImage'],
+                  width: 45,
+                  height: 45,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
         ],
       ),
     );

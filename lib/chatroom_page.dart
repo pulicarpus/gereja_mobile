@@ -132,7 +132,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   Future<void> _stopRecording() async {
     HapticFeedback.mediumImpact(); 
-    final rawWaveData = List<double>.from(_recorderController.waveformData);
+    
+    // 👇 INI YANG BENAR: Pakai .waveData (bukan waveformData)
+    final rawWaveData = List<double>.from(_recorderController.waveData);
+    
     List<double> compressedData = [];
     if (rawWaveData.isNotEmpty) {
       int step = (rawWaveData.length / 30).floor().clamp(1, 999);
@@ -141,9 +144,11 @@ class _ChatroomPageState extends State<ChatroomPage> {
         if (compressedData.length >= 30) break;
       }
     }
+    
     final path = await _audioRecorder.stop();
     await _recorderController.stop(); 
-    setState(() => _isRecording = false);
+    if (mounted) setState(() => _isRecording = false);
+    
     if (path != null) _uploadVN(File(path), compressedData);
   }
 

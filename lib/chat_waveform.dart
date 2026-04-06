@@ -18,12 +18,6 @@ class _ChatWaveformState extends State<ChatWaveform> {
   void initState() {
     super.initState();
     playerController = PlayerController();
-    // Memasukkan data sampel ke dalam controller
-    playerController.preparePlayer(
-      path: "", // Kosongkan saja karena kita cuma mau gambar statis
-      noOfSamples: widget.samples.length,
-    );
-    playerController.updateFrequency = UpdateFrequency.low;
   }
 
   @override
@@ -39,6 +33,7 @@ class _ChatWaveformState extends State<ChatWaveform> {
     return AudioFileWaveforms(
       size: Size(MediaQuery.of(context).size.width * 0.4, 30),
       playerController: playerController,
+      waveformData: widget.samples, // 👈 INI YANG BENAR DI VERSI 1.3.0
       waveformType: WaveformType.fitWidth,
       playerWaveStyle: PlayerWaveStyle(
         fixedWaveColor: widget.isMe ? Colors.black12 : Colors.grey[300]!,

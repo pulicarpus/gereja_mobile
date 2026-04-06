@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'user_manager.dart';
 
-// ==== IMPORT HALAMAN ADD/EDIT ====
-import 'add_edit_lagu_page.dart';
+// ==== IMPORT SEMUA HALAMAN TERKAIT ====
+import 'user_manager.dart';
+import 'detail_lagu_page.dart';    // Halaman baca lirik
+import 'add_edit_lagu_page.dart';  // Halaman asisten Gemini
 
 class LaguPage extends StatefulWidget {
   const LaguPage({super.key});
@@ -29,7 +30,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
     _isAdmin = UserManager().isAdmin();
     _tabController = TabController(length: 2, vsync: this);
     
-    // Dengarkan perubahan Tab
+    // Dengarkan perubahan Tab (NKI atau KONTEMPORER)
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
       setState(() {
@@ -63,6 +64,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         Map<String, dynamic> data = doc.data();
         data['id'] = doc.id; 
         
+        // Standarisasi kategori jika ada data kosong
         if (!data.containsKey('kategori') || data['kategori'] == null) {
           batch.update(doc.reference, {'kategori': 'NKI'});
           data['kategori'] = 'NKI';
@@ -96,11 +98,13 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memuat daftar lagu")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memuat daftar lagu")));
+      }
     }
   }
 
-  // --- LOGIKA FILTER KATEGORI & PENCARIAN ---
+  // --- LOGIKA FILTER KATEGORI & PENCARIAN REAL-TIME ---
   void _applyFilterAndSearch() {
     String query = _searchController.text.toLowerCase();
     
@@ -109,6 +113,7 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         String kategori = song['kategori']?.toString() ?? "NKI";
         bool matchCategory = kategori.toUpperCase() == _currentCategory;
         
+        // Pencarian maut: Cek Judul, Nomor, atau bahkan potongan Lirik!
         bool matchSearch = query.isEmpty || 
             (song['judul']?.toString().toLowerCase().contains(query) ?? false) ||
             (song['nomor']?.toString().toLowerCase().contains(query) ?? false) ||
@@ -119,8 +124,8 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
     });
   }
 
-  // --- DIALOG AKSI ADMIN ---
-  void _showEditDeleteDialog(Map<String, dynamic> song) {
+  // --- MENU RAHASIA ADMIN (DI TEKAN LAMA / LONG PRESS) ---
+  void _showAdminDialog(Map<String, dynamic> song) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -129,14 +134,12 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         children: [
           const SizedBox(height: 10),
           Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text("Kelola: ${song['judul']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo), textAlign: TextAlign.center,),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Text(song['judul'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.indigo), textAlign: TextAlign.center),
           ),
           const Divider(),
-          
-          // ==== TOMBOL EDIT SUDAH TERSAMBUNG ====
           ListTile(
             leading: const Icon(Icons.edit, color: Colors.orange), 
             title: const Text("Edit Lagu"), 
@@ -145,34 +148,15 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
               Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
                 songId: song['id'], 
                 defaultCategory: _currentCategory
-              ))).then((_) => _loadSongsFromFirestore()); // Refresh setelah edit
+              ))).then((_) => _loadSongsFromFirestore()); // Refresh data saat kembali
             }
           ),
-          
           ListTile(
             leading: const Icon(Icons.delete, color: Colors.red), 
             title: const Text("Hapus Lagu", style: TextStyle(color: Colors.red)), 
             onTap: () {
                Navigator.pop(context);
-               showDialog(
-                 context: context,
-                 builder: (c) => AlertDialog(
-                   title: const Text("Hapus Lagu?"),
-                   content: Text("Lagu '${song['judul']}' akan dihapus permanen untuk semua jemaat."),
-                   actions: [
-                     TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
-                     ElevatedButton(
-                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                       onPressed: () async {
-                         Navigator.pop(c);
-                         await _db.collection('songs').doc(song['id']).delete();
-                         _loadSongsFromFirestore(); // Reload data
-                       }, 
-                       child: const Text("Hapus", style: TextStyle(color: Colors.white))
-                     )
-                   ]
-                 )
-               );
+               _confirmDelete(song);
             }
           ),
           const SizedBox(height: 20),
@@ -181,12 +165,34 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
     );
   }
 
+  void _confirmDelete(Map<String, dynamic> song) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text("Hapus Lagu?"),
+        content: Text("Lagu '${song['judul']}' akan dihapus permanen dari database."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(c);
+              await _db.collection('songs').doc(song['id']).delete();
+              _loadSongsFromFirestore(); 
+            }, 
+            child: const Text("Hapus", style: TextStyle(color: Colors.white))
+          )
+        ]
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA), 
       appBar: AppBar(
-        title: const Text("Buku Nyanyian"),
+        title: const Text("Buku Nyanyian", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
         elevation: 0,
@@ -204,17 +210,17 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
       ),
       body: Column(
         children: [
-          // ==== SEARCH BAR ====
+          // ==== SEARCH BAR MODERN ====
           Container(
             color: Colors.indigo[900],
-            padding: const EdgeInsets.fromLTRB(16, 5, 16, 15),
+            padding: const EdgeInsets.fromLTRB(16, 5, 16, 20),
             child: TextField(
               controller: _searchController,
               onChanged: (value) => _applyFilterAndSearch(), 
               style: const TextStyle(color: Colors.black87),
               decoration: InputDecoration(
-                hintText: "Cari judul, nomor, atau potongan lirik...",
-                hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                hintText: "Cari judul, nomor, atau lirik...",
+                hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
                 prefixIcon: const Icon(Icons.search, color: Colors.indigo),
                 suffixIcon: _searchController.text.isNotEmpty 
                   ? IconButton(
@@ -222,7 +228,6 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
                       onPressed: () {
                         _searchController.clear();
                         _applyFilterAndSearch();
-                        FocusScope.of(context).unfocus();
                       },
                     )
                   : null,
@@ -233,82 +238,42 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
               ),
             ),
           ),
-          // ====================
 
           // ==== DAFTAR LAGU ====
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
               : _filteredList.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.music_off, size: 60, color: Colors.grey.shade400),
-                          const SizedBox(height: 16),
-                          Text("Lagu tidak ditemukan.", style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                        ],
-                      ),
-                    )
+                  ? Center(child: Text("Lagu tidak ditemukan.", style: TextStyle(color: Colors.grey.shade600)))
                   : ListView.builder(
                       padding: const EdgeInsets.all(12),
                       itemCount: _filteredList.length,
                       itemBuilder: (context, index) {
                         final song = _filteredList[index];
-                        String nomorStr = song['nomor'] != null && song['nomor'].toString().isNotEmpty 
-                            ? "${song['nomor']}. " 
-                            : "";
+                        String nomor = song['nomor'] ?? "";
+                        String displayTitle = (nomor.isNotEmpty) ? "$nomor. ${song['judul']}" : song['judul'];
 
                         return Card(
                           elevation: 1,
-                          margin: const EdgeInsets.only(bottom: 10),
+                          margin: const EdgeInsets.only(bottom: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onLongPress: _isAdmin ? () => _showEditDeleteDialog(song) : null,
-                            onTap: () {
-                              // TODO: Navigasi ke Detail Lagu (Halaman baca lirik)
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Halaman Baca Lirik sedang dibuat bos!")));
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 45,
-                                    height: 45,
-                                    decoration: BoxDecoration(
-                                      color: Colors.indigo.shade50,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.music_note, color: Colors.indigo),
-                                  ),
-                                  const SizedBox(width: 15),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          "$nomorStr${song['judul']}", 
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
-                                        ),
-                                        if (song['pencipta'] != null && song['pencipta'].toString().isNotEmpty)
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
-                                            child: Text(
-                                              song['pencipta'], 
-                                              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                  const Icon(Icons.chevron_right, color: Colors.grey),
-                                ],
-                              ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.indigo.shade50,
+                              child: const Icon(Icons.music_note, color: Colors.indigo),
                             ),
+                            title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            subtitle: Text(song['pencipta'] ?? "Pelayan Tuhan", style: const TextStyle(fontSize: 12)),
+                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                            
+                            // MASUK KE DETAIL LIRIK (JEMAAT)
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (context) => DetailLaguPage(songData: song)));
+                            },
+                            
+                            // MENU EDIT/HAPUS (ADMIN)
+                            onLongPress: _isAdmin ? () => _showAdminDialog(song) : null,
                           ),
                         );
                       },
@@ -317,13 +282,13 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
         ],
       ),
       
-      // ==== TOMBOL TAMBAH KHUSUS ADMIN SUDAH TERSAMBUNG ====
+      // ==== TOMBOL TAMBAH LAGU + GEMINI (KHUSUS ADMIN) ====
       floatingActionButton: _isAdmin 
         ? FloatingActionButton(
             onPressed: () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
-                defaultCategory: _currentCategory // Set kategori sesuai tab yang sedang aktif
-              ))).then((_) => _loadSongsFromFirestore()); // Refresh jika baru tambah lagu
+                defaultCategory: _currentCategory 
+              ))).then((_) => _loadSongsFromFirestore()); 
             },
             backgroundColor: Colors.indigo,
             child: const Icon(Icons.add, color: Colors.white),

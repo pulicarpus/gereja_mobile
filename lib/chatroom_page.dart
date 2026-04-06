@@ -358,4 +358,11 @@ class _ChatroomPageState extends State<ChatroomPage> {
       ])
     ]));
   }
-}
+
+  // --- FUNGSI SNACKBAR (PENYEBAB ERROR) ---
+  void _showSnack(String m) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+    }
+  }
+} // Tutup State

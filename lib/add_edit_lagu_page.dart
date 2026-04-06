@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-// ==== IMPORT GEMINI AI ====
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class AddEditLaguPage extends StatefulWidget {
   final String? songId;
@@ -24,9 +24,9 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   
   String _selectedKategori = "NKI";
   bool _isLoading = false;
-  bool _isAskingGemini = false; // Loading khusus untuk Gemini
+  bool _isAskingGemini = false; 
 
-  // ⚠️ MASUKKAN API KEY BOS DI SINI NANTI
+  // ⚠️ MASUKKAN API KEY BOS DI SINI
   final String _geminiApiKey = "AIzaSyAeeii-hh9f3EahItxUm05pZ33-D19pSss";
 
   @override
@@ -61,7 +61,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS PANGGIL GEMINI AI ====
+  // ==== JURUS PAMUNGKAS: JALUR TOL HTTP ====
   Future<void> _tanyaGemini() async {
     String judul = _etJudul.text.trim();
     if (judul.isEmpty) {
@@ -69,45 +69,49 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
       return;
     }
 
-    if (_geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key Gemini belum diisi di dalam kode!")));
+    if (_geminiApiKey.isEmpty || _geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key belum diisi di dalam kode!")));
       return;
     }
 
     setState(() => _isAskingGemini = true);
-    FocusScope.of(context).unfocus(); // Tutup keyboard
+    FocusScope.of(context).unfocus(); // Tutup keyboard biar lega
 
     try {
-      // Inisialisasi Model Gemini 1.5 Flash (Super Cepat)
-      final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
+      // Kita tembak langsung ke server Google pakai HTTP murni
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey');
       
-      // Perintah rahasia (Prompt Engineering) agar Gemini menjawab sesuai format kita
-      final prompt = """
-      Kamu adalah asisten database gereja. Tolong berikan lirik lagu rohani kristen yang berjudul '$judul'.
-      HANYA balas dengan format baku di bawah ini, tanpa basa-basi, tanpa kalimat sapaan, tanpa penutup:
-      [Nama Pencipta atau Penyanyi Populer]
-      [Isi Lirik Lagu Lengkap Bait demi Bait]
-      """;
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [{
+            "parts": [{
+              "text": "Kamu adalah asisten database gereja. Berikan lirik lagu rohani kristen berjudul '$judul'. HANYA balas dengan format baku ini tanpa basa-basi:\n[Nama Pencipta/Penyanyi Populer]\n[Isi Lirik Lengkap]"
+            }]
+          }]
+        }),
+      ).timeout(const Duration(seconds: 15)); // Tambah batas waktu 15 detik
 
-      final content = [Content.text(prompt)];
-      final response = await model.generateContent(content);
-      
-      String hasil = response.text ?? "";
-      
-      if (hasil.isNotEmpty) {
-        // Memecah baris pertama (Pencipta) dan sisanya (Lirik)
-        List<String> lines = hasil.split('\n');
-        if (lines.isNotEmpty) {
-          _etPencipta.text = lines.first.replaceAll(RegExp(r'[\[\]]'), '').trim(); // Ambil baris 1
-          
-          lines.removeAt(0); // Hapus baris 1
-          _etLirik.text = lines.join('\n').trim(); // Sisanya gabungkan jadi lirik
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        String hasil = data['candidates'][0]['content']['parts'][0]['text'] ?? "";
+        
+        if (hasil.isNotEmpty) {
+          List<String> lines = hasil.split('\n');
+          if (lines.isNotEmpty) {
+            _etPencipta.text = lines.first.replaceAll(RegExp(r'[\[\]]'), '').trim(); 
+            lines.removeAt(0); 
+            _etLirik.text = lines.join('\n').trim(); 
+          }
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik sukses disedot lewat Jalur Tol!")));
         }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik berhasil disedot oleh Gemini!")));
+      } else {
+        final errorData = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal dari server: ${errorData['error']['message']}")));
       }
-      
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal memanggil Gemini: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Koneksi Error: Cek internet atau coba lagi bos!")));
     } finally {
       setState(() => _isAskingGemini = false);
     }
@@ -134,7 +138,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
       }
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error menyimpan: $e")));
     } finally {
       setState(() => _isLoading = false);
     }
@@ -171,7 +175,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                     Expanded(
                       flex: 1,
                       child: SizedBox(
-                        height: 55, // Menyamakan tinggi dengan TextField
+                        height: 55, 
                         child: ElevatedButton.icon(
                           onPressed: _isAskingGemini ? null : _tanyaGemini,
                           icon: _isAskingGemini 
@@ -179,7 +183,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                             : const Icon(Icons.auto_awesome, color: Colors.amber),
                           label: Text(_isAskingGemini ? "Loading" : "Tanya\nGemini", style: const TextStyle(fontSize: 12, height: 1.1)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.purple[700], // Warna ungu khas AI
+                            backgroundColor: Colors.purple[700], 
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                             padding: const EdgeInsets.symmetric(horizontal: 5)
@@ -190,7 +194,6 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   ],
                 ),
                 const SizedBox(height: 15),
-                // ======================================
 
                 Row(
                   children: [
@@ -240,7 +243,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
       decoration: InputDecoration(
         labelText: label, 
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-        alignLabelWithHint: maxLines > 1, // Agar label lirik ada di atas kiri
+        alignLabelWithHint: maxLines > 1, 
       ),
       validator: (v) => (mandatory && v!.isEmpty) ? "$label wajib diisi" : null,
     );

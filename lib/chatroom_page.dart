@@ -18,7 +18,7 @@ import 'dart:io';
 import 'secrets.dart'; 
 import 'user_manager.dart';
 import 'recorder_visualizer.dart';
-import 'chat_waveform.dart'; // 👈 File Baru Spektrum Balon Chat
+import 'chat_waveform.dart';
 
 class ChatroomPage extends StatefulWidget {
   final String? filterKategorial;
@@ -34,18 +34,15 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
-  // Mesin Audio & Visualizer
   final _audioRecorder = AudioRecorder();
   final _audioPlayer = AudioPlayer();
   late final RecorderController _recorderController; 
   
   bool _isRecording = false;
   String? _playingId;
-
   late String _collectionPath;
   bool _isTyping = false;
   bool _isUploading = false;
-  
   Map<String, dynamic>? _replyMessage;
   String? _editingMessageId;
 
@@ -60,10 +57,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
-    
-    _audioPlayer.onPlayerComplete.listen((event) {
-      if (mounted) setState(() => _playingId = null);
-    });
+    _audioPlayer.onPlayerComplete.listen((event) { if (mounted) setState(() => _playingId = null); });
   }
 
   @override
@@ -75,49 +69,23 @@ class _ChatroomPageState extends State<ChatroomPage> {
     super.dispose();
   }
 
-  String formatTimeCustom(DateTime? date) {
-    if (date == null) return "";
-    return DateFormat('HH:mm').format(date);
-  }
+  String formatTimeCustom(DateTime? date) => date == null ? "" : DateFormat('HH:mm').format(date);
 
-  // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
   Future<void> _uploadImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
-
     final TextEditingController _etCaption = TextEditingController();
-    
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Kirim Gambar", style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(image.path), height: 150, width: double.infinity, fit: BoxFit.cover)),
-            const SizedBox(height: 15),
-            TextField(
-              controller: _etCaption,
-              decoration: InputDecoration(hintText: "Tambah keterangan...", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
-              maxLines: null,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal", style: TextStyle(color: Colors.red))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
-            onPressed: () {
-              String caption = _etCaption.text.trim();
-              Navigator.pop(context);
-              _executeImageUpload(image, caption.isEmpty ? "[Gambar]" : caption);
-            }, 
-            child: const Text("Kirim"),
-          ),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text("Kirim Gambar"),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(image.path), height: 150, fit: BoxFit.cover)),
+        TextField(controller: _etCaption, decoration: const InputDecoration(hintText: "Keterangan...")),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
+        ElevatedButton(onPressed: () { String cap = _etCaption.text; Navigator.pop(context); _executeImageUpload(image, cap.isEmpty ? "[Gambar]" : cap); }, child: const Text("Kirim")),
+      ],
+    ));
   }
 
   Future<void> _executeImageUpload(XFile image, String caption) async {
@@ -128,53 +96,43 @@ class _ChatroomPageState extends State<ChatroomPage> {
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
       var res = await request.send();
       var json = jsonDecode(await res.stream.bytesToString());
-      if (res.statusCode == 200) {
-        _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url'], name: "img.jpg", cloudId: json['public_id']);
-      }
-    } catch (e) { _showSnack("Gagal upload gambar: $e"); } finally { setState(() => _isUploading = false); }
+      if (res.statusCode == 200) _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url']);
+    } catch (e) { _showSnack("Gagal: $e"); } finally { setState(() => _isUploading = false); }
   }
 
-  // --- 2. UPLOAD FILE DOKUMEN ---
   Future<void> _uploadFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
-    File file = File(result.files.single.path!);
-    String fileName = result.files.single.name;
     setState(() => _isUploading = true);
     try {
       var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendDocument'));
       request.fields['chat_id'] = teleChatId;
-      request.files.add(await http.MultipartFile.fromPath('document', file.path));
+      request.files.add(await http.MultipartFile.fromPath('document', result.files.single.path!));
       var res = await request.send();
-      var jsonRes = jsonDecode(await res.stream.bytesToString());
       if (res.statusCode == 200) {
+        var jsonRes = jsonDecode(await res.stream.bytesToString());
         String fileId = jsonRes['result']['document']['file_id'];
         var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String filePath = jsonDecode(getFile.body)['result']['file_path'];
-        _sendToFirestore(isi: fileName, tipe: "file", url: "https://api.telegram.org/file/bot$teleBotToken/$filePath", name: fileName);
+        String path = jsonDecode(getFile.body)['result']['file_path'];
+        _sendToFirestore(isi: result.files.single.name, tipe: "file", url: "https://api.telegram.org/file/bot$teleBotToken/$path", name: result.files.single.name);
       }
-    } catch (e) { _showSnack("Gagal kirim file: $e"); } finally { setState(() => _isUploading = false); }
+    } catch (e) { _showSnack("Gagal: $e"); } finally { setState(() => _isUploading = false); }
   }
 
-  // --- 3. VOICE NOTE DEWA (GETAR + SPEKTRUM + KOMPRESI) ---
   Future<void> _startRecording() async {
-    try {
-      if (await _audioRecorder.hasPermission()) {
-        HapticFeedback.heavyImpact(); 
-        await _recorderController.record(); 
-        final dir = await getTemporaryDirectory();
-        final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        await _audioRecorder.start(const RecordConfig(), path: path); 
-        setState(() => _isRecording = true);
-      }
-    } catch (e) { _showSnack("Gagal merekam: $e"); }
+    if (await _audioRecorder.hasPermission()) {
+      HapticFeedback.heavyImpact(); 
+      await _recorderController.record(); 
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      await _audioRecorder.start(const RecordConfig(), path: path); 
+      setState(() => _isRecording = true);
+    }
   }
 
   Future<void> _stopRecording() async {
     HapticFeedback.mediumImpact(); 
-    
-    // AMBIL DATA GELOMBANG & KOMPRESI (Maksimal 30 titik)
-    final rawWaveData = await _recorderController.getWaveformData();
+    final rawWaveData = List<double>.from(_recorderController.waveformData);
     List<double> compressedData = [];
     if (rawWaveData.isNotEmpty) {
       int step = (rawWaveData.length / 30).floor().clamp(1, 999);
@@ -183,12 +141,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
         if (compressedData.length >= 30) break;
       }
     }
-
     final path = await _audioRecorder.stop();
     await _recorderController.stop(); 
     setState(() => _isRecording = false);
-    
-    if (path != null) { _uploadVN(File(path), compressedData); }
+    if (path != null) _uploadVN(File(path), compressedData);
   }
 
   Future<void> _uploadVN(File file, List<double> waveData) async {
@@ -198,16 +154,14 @@ class _ChatroomPageState extends State<ChatroomPage> {
       request.fields['chat_id'] = teleChatId;
       request.files.add(await http.MultipartFile.fromPath('audio', file.path));
       var res = await request.send();
-      var jsonRes = jsonDecode(await res.stream.bytesToString());
       if (res.statusCode == 200) {
+        var jsonRes = jsonDecode(await res.stream.bytesToString());
         String fileId = jsonRes['result']['audio']['file_id'];
         var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String filePath = jsonDecode(getFile.body)['result']['file_path'];
-        String audioUrl = "https://api.telegram.org/file/bot$teleBotToken/$filePath";
-        
-        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: audioUrl, waveData: waveData);
+        String path = jsonDecode(getFile.body)['result']['file_path'];
+        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: "https://api.telegram.org/file/bot$teleBotToken/$path", waveData: waveData);
       }
-    } catch (e) { _showSnack("Gagal kirim VN: $e"); } finally { setState(() => _isUploading = false); }
+    } catch (e) { _showSnack("Gagal: $e"); } finally { setState(() => _isUploading = false); }
   }
 
   Future<void> _playAudio(String url, String id) async {
@@ -215,8 +169,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     else { await _audioPlayer.play(UrlSource(url)); setState(() => _playingId = id); }
   }
 
-  // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
-  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
+  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, List<double>? waveData}) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
     if (_editingMessageId != null) {
@@ -225,19 +178,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
       return;
     }
     await _db.collection("churches").doc(churchId).collection(_collectionPath).add({
-      "pengirimId": _auth.currentUser?.uid,
-      "pengirimNama": UserManager().userNama,
-      "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": isi, 
-      "timestamp": FieldValue.serverTimestamp(), 
-      "tipe": tipe,
-      "fileUrl": url, 
-      "fileName": name, 
-      "cloudPublicId": cloudId,
-      "waveData": waveData, // SIMPAN SPEKTRUM KE FIRESTORE
-      "isReply": _replyMessage != null,
-      "replyToName": _replyMessage?['pengirimNama'],
-      "replyToText": _replyMessage?['pesan'],
+      "pengirimId": _auth.currentUser?.uid, "pengirimNama": UserManager().userNama, "pengirimFoto": UserManager().userFotoUrl,
+      "pesan": isi, "timestamp": FieldValue.serverTimestamp(), "tipe": tipe, "fileUrl": url, "fileName": name, "waveData": waveData,
+      "isReply": _replyMessage != null, "replyToName": _replyMessage?['pengirimNama'], "replyToText": _replyMessage?['pesan'],
       "replyToImage": (_replyMessage != null && _replyMessage!['tipe'] == 'image') ? _replyMessage!['fileUrl'] : null,
     });
     _kirimNotif(isi);
@@ -253,45 +196,18 @@ class _ChatroomPageState extends State<ChatroomPage> {
         body: jsonEncode({
           "app_id": osAppId,
           "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
-          "headings": {"en": "Chat: ${UserManager().userNama}"},
-          "contents": {"en": pesan}
+          "headings": {"en": "Chat: ${UserManager().userNama}"}, "contents": {"en": pesan}
         }),
       );
     } catch (_) {}
-  }
-
-  // --- 5. UI BUILDING ---
-  Future<void> _bukaFile(String url, String fileName) async {
-    _showSnack("Mengunduh dokumen...");
-    try {
-      final dir = await getTemporaryDirectory();
-      final savePath = '${dir.path}/$fileName';
-      final file = File(savePath);
-      if (!await file.exists()) {
-        var response = await http.get(Uri.parse(url));
-        await file.writeAsBytes(response.bodyBytes);
-      }
-      await OpenFilex.open(savePath);
-    } catch (e) { _showSnack("Gagal membuka file."); }
   }
 
   void _showChatMenu(Map<String, dynamic> chat, String docId) {
     bool isMe = chat['pengirimId'] == _auth.currentUser?.uid;
     showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       ListTile(leading: const Icon(Icons.reply), title: const Text("Balas"), onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }),
-      if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit Pesan"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _replyMessage = null; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
+      if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
       if (isMe || UserManager().isAdmin()) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus"), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
-    ])));
-  }
-
-  void _showFullImage(String url) {
-    showDialog(context: context, builder: (c) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(fit: StackFit.expand, children: [InteractiveViewer(child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)), Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 30), onPressed: () => Navigator.pop(c)))])));
-  }
-
-  void _showPickerOptions() {
-    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.image, color: Colors.blue), title: const Text("Gambar"), onTap: () { Navigator.pop(context); _uploadImage(); }),
-      ListTile(leading: const Icon(Icons.file_present, color: Colors.orange), title: const Text("Dokumen"), onTap: () { Navigator.pop(context); _uploadFile(); }),
     ])));
   }
 
@@ -299,7 +215,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE5DDD5),
-      appBar: AppBar(title: const Text("Chat Jemaat"), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))]),
+      appBar: AppBar(title: const Text("Chat Jemaat"), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
       body: Column(children: [
         Expanded(child: StreamBuilder<QuerySnapshot>(
           stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
@@ -321,29 +237,21 @@ class _ChatroomPageState extends State<ChatroomPage> {
     DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
     return GestureDetector(
       onLongPress: () => _showChatMenu(chat, docId),
-      child: Column(crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null),
-          Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
-            margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 8 : 50, top: 4, bottom: 4),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: isMe ? const Color(0xFFDCF8C6) : Colors.white, borderRadius: BorderRadius.only(topLeft: const Radius.circular(12), topRight: const Radius.circular(12), bottomLeft: Radius.circular(isMe ? 12 : 0), bottomRight: Radius.circular(isMe ? 0 : 12)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
-              if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
-              if (chat['tipe'] == 'image') Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                InkWell(onTap: () => _showFullImage(chat['fileUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))),
-                if (chat['pesan'] != "[Gambar]") Padding(padding: const EdgeInsets.only(top: 5), child: Text(chat['pesan'], style: const TextStyle(fontSize: 15))),
-              ])
-              else if (chat['tipe'] == 'file') InkWell(onTap: () => _bukaFile(chat['fileUrl'], chat['fileName'] ?? "dokumen"), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.insert_drive_file, color: Colors.orange, size: 30), const SizedBox(width: 8), Expanded(child: Text(chat['fileName'] ?? "File", style: const TextStyle(color: Colors.indigo, decoration: TextDecoration.underline)))]))
-              else if (chat['tipe'] == 'audio') _buildAudioUI(chat, docId, isMe)
-              else Text(chat['pesan'] ?? "", style: const TextStyle(color: Colors.black87, fontSize: 15)),
-              const SizedBox(height: 4),
-              Row(mainAxisSize: MainAxisSize.min, children: [const Spacer(), Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey)), if (isMe) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.done_all, size: 14, color: Colors.blue))])
-            ]),
-          ),
-        ]),
+      child: Row(mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null),
+        Container(
+          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: isMe ? const Color(0xFFDCF8C6) : Colors.white, borderRadius: BorderRadius.circular(12)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+            if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
+            if (chat['tipe'] == 'audio') _buildAudioUI(chat, docId, isMe)
+            else Text(chat['pesan'] ?? "", style: const TextStyle(fontSize: 15)),
+            Row(mainAxisSize: MainAxisSize.min, children: [const Spacer(), Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey))])
+          ]),
+        ),
       ]),
     );
   }
@@ -352,44 +260,32 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(8), border: Border(left: BorderSide(color: isMe ? Colors.green[800]! : Colors.indigo, width: 4))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(chat['replyToName'] ?? "Jemaat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
-          const SizedBox(height: 2),
-          Text(chat['replyToText'] ?? "", style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.3)),
-        ])),
-        if (chat['replyToImage'] != null) Padding(padding: const EdgeInsets.only(left: 8), child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 45, height: 45, fit: BoxFit.cover))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(chat['replyToName'] ?? "", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
+        Text(chat['replyToText'] ?? "", style: const TextStyle(fontSize: 12, color: Colors.black87)),
       ]),
     );
   }
 
   Widget _buildAudioUI(Map<String, dynamic> chat, String id, bool isMe) {
     bool isPlaying = _playingId == id;
-    List<double> samples = [];
-    if (chat['waveData'] != null) {
-      samples = List<double>.from((chat['waveData'] as List).map((e) => e.toDouble()));
-    }
-    
+    List<double> samples = chat['waveData'] != null ? List<double>.from(chat['waveData'].map((e) => e.toDouble())) : [];
     return Row(mainAxisSize: MainAxisSize.min, children: [
       IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)),
-      const SizedBox(width: 5),
-      if (samples.isNotEmpty) ChatWaveform(samples: samples, isMe: isMe) else const Text("Voice Note", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54))
+      if (samples.isNotEmpty) ChatWaveform(samples: samples, isMe: isMe) else const Text("Voice Note", style: TextStyle(fontStyle: FontStyle.italic))
     ]);
   }
 
   Widget _buildInputArea() {
-    return Container(padding: const EdgeInsets.all(8), color: Colors.transparent, child: Column(children: [
-      if (_isRecording) Padding(padding: const EdgeInsets.only(bottom: 12), child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.mic, color: Colors.red, size: 18), const SizedBox(width: 15), RecorderVisualizer(controller: _recorderController), const SizedBox(width: 15), const Text("Recording", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))]))),
-      if (_replyMessage != null || _editingMessageId != null) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Row(children: [Icon(_editingMessageId != null ? Icons.edit : Icons.reply, color: const Color(0xFF075E54)), const SizedBox(width: 10), Expanded(child: Text(_editingMessageId != null ? "Edit Pesan..." : (_replyMessage?['pesan'] ?? ""), maxLines: 1, overflow: TextOverflow.ellipsis)), IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _replyMessage = null; _editingMessageId = null; _etPesan.clear(); }))])),
+    return Container(padding: const EdgeInsets.all(8), child: Column(children: [
+      if (_isRecording) Padding(padding: const EdgeInsets.only(bottom: 12), child: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.mic, color: Colors.red), const SizedBox(width: 10), RecorderVisualizer(controller: _recorderController), const Text("Recording", style: TextStyle(color: Colors.red))]))),
       Row(children: [
-        Expanded(child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)), child: Row(children: [IconButton(icon: const Icon(Icons.add, color: Colors.grey), onPressed: _showPickerOptions), Expanded(child: TextField(controller: _etPesan, maxLines: null, decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 10)))), IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _uploadImage)]))),
+        Expanded(child: Container(decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)), child: Row(children: [IconButton(icon: const Icon(Icons.add), onPressed: () => _uploadFile()), Expanded(child: TextField(controller: _etPesan, decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none))), IconButton(icon: const Icon(Icons.camera_alt), onPressed: _uploadImage)]))),
         const SizedBox(width: 5),
-        GestureDetector(onLongPressStart: (_) => _startRecording(), onLongPressEnd: (_) => _stopRecording(), child: CircleAvatar(radius: 24, backgroundColor: _isRecording ? Colors.red : const Color(0xFF075E54), child: IconButton(icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white), onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); })))
+        GestureDetector(onLongPressStart: (_) => _startRecording(), onLongPressEnd: (_) => _stopRecording(), child: CircleAvatar(backgroundColor: const Color(0xFF075E54), child: IconButton(icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white), onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); })))
       ])
     ]));
   }
 
-  void _showSnack(String m) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
-  }
+  void _showSnack(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 }

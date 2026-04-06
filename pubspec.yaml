@@ -30,8 +30,8 @@ dependencies:
   open_filex: ^4.4.0
   audioplayers: ^5.2.1
   
-  # 👇 KITA PAKAI VERSI 5.0.4 👇
-  record: 5.0.4
+  # 👇 VERSI ANDROID MODERN 👇
+  record: ^5.1.2
 
   firebase_core: ^3.10.1
   firebase_auth: ^5.4.1
@@ -56,6 +56,6 @@ flutter:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
 
-# 👇 SEGEL MUTLAK ANTI LINUX BUG 👇
+# 👇 KUNCI KESELAMATAN SEJATI (TURUN KE 1.2.0) 👇
 dependency_overrides:
-  record_platform_interface: 1.4.0
+  record_platform_interface: 1.2.0

@@ -10,7 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
     
-  # --- UI & UTILITAS ---
   intl: ^0.19.0
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
@@ -20,12 +19,10 @@ dependencies:
   permission_handler: ^11.3.1
   share_plus: ^10.1.0
 
-  # --- NETWORK & API ---
   http: ^1.2.0
   html: ^0.15.4
   google_generative_ai: ^0.4.7
 
-  # --- MEDIA & FILE HANDLING (Chatroom) ---
   image_picker: ^1.1.2
   file_picker: ^8.0.1
   cached_network_image: ^3.4.1
@@ -33,10 +30,9 @@ dependencies:
   open_filex: ^4.4.0
   audioplayers: ^5.2.1
   
-  # 👇 KITA PAKAI VERSI 4 YANG ANTI BADAI 👇
-  record: ^4.4.4
+  # 👇 KITA PAKAI VERSI 5.0.4 👇
+  record: 5.0.4
 
-  # --- FIREBASE & ONESIGNAL ---
   firebase_core: ^3.10.1
   firebase_auth: ^5.4.1
   cloud_firestore: ^5.6.1
@@ -44,7 +40,6 @@ dependencies:
   google_sign_in: ^6.2.1
   onesignal_flutter: ^5.2.6
 
-  # --- DATABASE LOKAL (Alkitab) ---
   sqflite: ^2.3.0
   path: ^1.9.0
   path_provider: ^2.1.2
@@ -57,7 +52,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # --- PENDAFTARAN ASSETS ---
   assets:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
+
+# 👇 SEGEL MUTLAK ANTI LINUX BUG 👇
+dependency_overrides:
+  record_platform_interface: 1.4.0

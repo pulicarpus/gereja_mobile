@@ -10,7 +10,8 @@ import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
 import 'jadwal_page.dart';
-import 'alkitab_page.dart'; // Import halaman Alkitab baru Bos
+import 'alkitab_page.dart';    // Import halaman Alkitab
+import 'renungan_page.dart';   // Import halaman Renungan
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +62,7 @@ class MainActivity extends StatefulWidget {
 class _MainActivityState extends State<MainActivity> {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
+  
   String? _fotoGembalaUrl;
   String _namaGembala = "Gembala Sidang";
   String _alamatGereja = "Memuat alamat...";
@@ -73,13 +75,16 @@ class _MainActivityState extends State<MainActivity> {
   void initState() {
     super.initState();
     _initSession();
-    _loadDataGereja();
-    _setupOneSignal();
   }
 
+  // ==== PERBAIKAN LOGIKA: Semuanya dipusatkan di sini ====
   void _initSession() async {
     final userManager = UserManager();
     await userManager.loadFromPrefs();
+    
+    _setupOneSignal();
+    _loadDataGereja();
+    
     if (mounted) setState(() {}); 
   }
 
@@ -105,6 +110,7 @@ class _MainActivityState extends State<MainActivity> {
       }
     });
   }
+  // =======================================================
 
   @override
   Widget build(BuildContext context) {
@@ -112,11 +118,11 @@ class _MainActivityState extends State<MainActivity> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(user.activeChurchName ?? "GKII SILOAM"),
+        title: Text(user.activeChurchName ?? "GKII SILOAM", style: const TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.white,
-        foregroundColor: Colors.indigo,
+        foregroundColor: Colors.indigo[900],
       ),
       drawer: Drawer(
         child: Column(
@@ -124,7 +130,7 @@ class _MainActivityState extends State<MainActivity> {
             DrawerHeader(
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.indigo, Colors.blue],
+                  colors: [Color(0xFF1A237E), Colors.indigo], // Menggunakan warna indigo gelap
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -158,26 +164,43 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
-                  _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {}),
-                  _buildDrawerItem(Icons.chat, "Chat", () {}),
-                  _buildDrawerItem(Icons.book, "Renungan", () {}),
-                  _buildDrawerItem(Icons.music_note, "Lagu", () {}),
-                  _buildDrawerItem(Icons.photo_library, "Gallery", () {}),
-                  _buildDrawerItem(Icons.front_hand, "Doa", () {}),
+                  _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
+                    // TODO: Halaman Keuangan
+                  }),
+                  _buildDrawerItem(Icons.chat, "Chat", () {
+                    // TODO: Halaman Chat
+                  }),
                   
-                  // TOMBOL ALKITAB SUDAH AKTIF DISINI BOS
+                  // ==== TOMBOL RENUNGAN ====
+                  _buildDrawerItem(Icons.book, "Renungan", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const RenunganPage()));
+                  }),
+                  
+                  _buildDrawerItem(Icons.music_note, "Lagu", () {
+                    // TODO: Halaman Lagu
+                  }),
+                  _buildDrawerItem(Icons.photo_library, "Gallery", () {
+                    // TODO: Halaman Gallery
+                  }),
+                  _buildDrawerItem(Icons.front_hand, "Doa", () {
+                    // TODO: Halaman Pokok Doa
+                  }),
+                  
+                  // ==== TOMBOL ALKITAB ====
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
                   }),
                   
-                  _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {}),
+                  _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {
+                    // TODO: Halaman Pengurus
+                  }),
                 ],
               ),
             ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text("Keluar Akun", style: TextStyle(color: Colors.red)),
+              title: const Text("Keluar Akun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
               onTap: () async {
                 await _auth.signOut();
                 OneSignal.logout();
@@ -215,11 +238,12 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   const SizedBox(height: 8),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Icon(Icons.location_on, size: 18, color: Colors.redAccent),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(_alamatGereja, style: const TextStyle(color: Colors.black54, fontSize: 14)),
+                        child: Text(_alamatGereja, style: const TextStyle(color: Colors.black87, fontSize: 14, height: 1.3)),
                       ),
                     ],
                   ),
@@ -245,15 +269,16 @@ class _MainActivityState extends State<MainActivity> {
                     ),
                   ),
                   const SizedBox(height: 35),
-                  const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                   const SizedBox(height: 15),
                   Container(
                     padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.grey.shade200),
                       boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
+                        BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))
                       ],
                     ),
                     child: Row(
@@ -272,6 +297,7 @@ class _MainActivityState extends State<MainActivity> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
                               const Text("Pelayan Tuhan", style: TextStyle(color: Colors.grey)),
                             ],
                           ),
@@ -291,22 +317,29 @@ class _MainActivityState extends State<MainActivity> {
 
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        Navigator.pop(context); // Tutup drawer terlebih dahulu
+        onTap(); // Baru eksekusi pindah halaman
+      },
+      borderRadius: BorderRadius.circular(15),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.grey.shade100,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: Colors.indigo.shade100),
+          boxShadow: [
+            BoxShadow(color: Colors.indigo.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))
+          ]
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, color: Colors.indigo, size: 28),
-            const SizedBox(height: 10),
+            Icon(icon, color: Colors.indigo[800], size: 32),
+            const SizedBox(height: 12),
             Text(
               label, 
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black87),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
             ),
           ],
         ),

@@ -30,9 +30,11 @@ dependencies:
   file_picker: ^8.0.1
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
-  open_filex: ^4.4.0      # 👈 WAJIB: Untuk buka file PDF/Word/WPS
-  audioplayers: ^5.2.1    # 👈 WAJIB: Untuk fitur Voice Note
-  record: ^5.1.2
+  open_filex: ^4.4.0
+  audioplayers: ^5.2.1
+  
+  # 👇 GEMBOK MATI: Pakai versi 5.0.5 (Tanpa tanda ^) 👇
+  record: 5.0.5
 
   # --- FIREBASE & ONESIGNAL ---
   firebase_core: ^3.10.1
@@ -59,9 +61,3 @@ flutter:
   assets:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
-    # - assets/images/
-
-# 👇 INI KUNCI SAKTINYA BOS 👇
-dependency_overrides:
-  record_platform_interface: 1.4.0
-  record_linux: 0.7.2

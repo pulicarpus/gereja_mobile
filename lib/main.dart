@@ -14,7 +14,8 @@ import 'alkitab_page.dart';
 import 'renungan_page.dart';   
 import 'lagu_page.dart';       
 import 'kelola_gereja_page.dart';
-import 'chatroom_page.dart'; // 👈 IMPORT CHAT SUDAH MASUK BOS
+import 'chatroom_page.dart'; 
+import 'ayat_data.dart'; // 👈 IMPORT DATA AYAT EMAS SUDAH MASUK BOS
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,7 @@ void main() async {
 
 void _initOneSignal() {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
+  // App ID OneSignal Bos
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 }
@@ -70,12 +72,14 @@ class _MainActivityState extends State<MainActivity> {
   String _alamatGereja = "Memuat alamat...";
   String? _fotoGerejaUrl;
   
-  final String _isiAyat = "TUHAN adalah gembalaku, takkan kekurangan aku.";
-  final String _refAyat = "Mazmur 23:1";
+  // 👇 SEKARANG AYATNYA DINAMIS (BERUBAH-UBAH) 👇
+  late Map<String, String> _ayatEmas;
 
   @override
   void initState() {
     super.initState();
+    // Ambil ayat acak saat masuk ke Dashboard
+    _ayatEmas = AyatData.getAyatAcak();
     _initSession();
   }
 
@@ -161,23 +165,18 @@ class _MainActivityState extends State<MainActivity> {
                 crossAxisSpacing: 12,
                 childAspectRatio: 1.1,
                 children: [
-                  // ==== TOMBOL JEMAAT (Logika Admin diatur di dalam halamannya) ====
                   _buildDrawerItem(Icons.people, isAdmin ? "Kelola Anggota" : "Data Jemaat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DataJemaatPage()));
                   }),
-                  
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     // TODO: Halaman Keuangan
                   }),
-                  
-                  // ==== TOMBOL CHAT AKTIF BOS! ====
                   _buildDrawerItem(Icons.chat, "Ruang Chat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatroomPage()));
                   }),
-                  
                   _buildDrawerItem(Icons.book, "Renungan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const RenunganPage()));
                   }),
@@ -200,7 +199,6 @@ class _MainActivityState extends State<MainActivity> {
               ),
             ),
             const Divider(),
-            
             if (isSuperAdmin) ...[
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
@@ -214,7 +212,6 @@ class _MainActivityState extends State<MainActivity> {
               ),
               const Divider(),
             ],
-
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text("Keluar Akun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -277,17 +274,35 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   const SizedBox(height: 25),
                   
-                  // ==== BAGIAN AYAT EMAS ====
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.indigo.shade100)),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.format_quote, color: Colors.indigo, size: 30),
-                        Text("\"$_isiAyat\"", textAlign: TextAlign.center, style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16, height: 1.5)),
-                        const SizedBox(height: 10),
-                        Text("- $_refAyat", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                      ],
+                  // ==== BAGIAN AYAT EMAS (EDISI REFRESH OTOMATIS) ====
+                  GestureDetector(
+                    onTap: () {
+                      // ✨ Bonus: Klik ayatnya buat ganti ayat baru tanpa restart aplikasi
+                      setState(() { _ayatEmas = AyatData.getAyatAcak(); });
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.shade50, 
+                        borderRadius: BorderRadius.circular(20), 
+                        border: Border.all(color: Colors.indigo.shade100)
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(Icons.format_quote, color: Colors.indigo, size: 30),
+                          Text(
+                            "\"${_ayatEmas['isi']}\"", 
+                            textAlign: TextAlign.center, 
+                            style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 16, height: 1.5, color: Colors.black87)
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            "- ${_ayatEmas['ref']}", 
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 35),
@@ -295,10 +310,8 @@ class _MainActivityState extends State<MainActivity> {
                   const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 15),
                   
-                  // ==== CARD GEMBALA (BISA DIKLIK BOS) ====
                   InkWell(
                     onTap: () {
-                      // TODO: Tampilkan Dialog Detail Gembala seperti di Kotlin
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Detail Gembala segera hadir!")));
                     },
                     borderRadius: BorderRadius.circular(15),

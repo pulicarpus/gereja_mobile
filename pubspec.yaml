@@ -60,3 +60,8 @@ flutter:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
     # - assets/images/
+
+# 👇 INI KUNCI SAKTINYA BOS 👇
+dependency_overrides:
+  record_platform_interface: 1.4.0
+  record_linux: 0.7.2

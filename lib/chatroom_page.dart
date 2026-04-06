@@ -361,7 +361,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     );
   }
 
-  // --- UI KOMPONEN: BALON CHAT (EDISI KALEM) ---
   Widget _buildChatBubble(Map<String, dynamic> chat, String docId, bool isMe) {
     String tipe = chat['tipe'] ?? 'text';
     DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
@@ -385,7 +384,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
               ),
               Container(
                 constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-                margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 10 : 50, vertical: 5),
+                // 👇 PERBAIKAN: Menggunakan top/bottom, bukan vertical 👇
+                margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 10 : 50, top: 5, bottom: 5),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: isMe ? const Color(0xFFE2EAFC) : Colors.white,
@@ -417,7 +417,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     );
   }
 
-  // --- UI KOMPONEN: BALAS CHAT (REPLY) DENGAN THUMBNAIL ---
   Widget _buildReplyUI(Map<String, dynamic> chat, bool isMe) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),

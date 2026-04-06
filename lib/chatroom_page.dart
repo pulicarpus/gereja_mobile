@@ -57,7 +57,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     setState(() => _isUploading = true);
     try {
       var request = http.MultipartRequest('POST', Uri.parse('https://api.cloudinary.com/v1_1/dw1ynjbod/image/upload'));
-      request.fields['upload_preset'] = 'ml_default'; 
+      request.fields['upload_preset'] = 'preset_gereja';
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
       var res = await request.send();

@@ -27,7 +27,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   bool _isAskingGemini = false; 
 
   // ⚠️ MASUKKAN API KEY BOS DI SINI (Jangan lupa ya bos!)
-  final String _geminiApiKey = "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI";
+  final String _geminiApiKey = "AIzaSyAeeii-hh9f3EahItxUm05pZ33-D19pSss";
 
   @override
   void initState() {

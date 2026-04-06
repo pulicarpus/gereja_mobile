@@ -26,7 +26,8 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
   bool _isLoading = false;
   bool _isAskingGemini = false; 
 
-  // ⚠️ MASUKKAN API KEY BOS DI SINI (Jangan lupa ya bos!)
+  // ⚠️ MASUKKAN API KEY BOS DI SINI
+  // Pastikan TIDAK ADA SPASI kosong di awal atau di akhir hurufnya ya bos!
   final String _geminiApiKey = "AIzaSyAeeii-hh9f3EahItxUm05pZ33-D19pSss";
 
   @override
@@ -61,56 +62,57 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS DETEKTIF: SCAN DAFTAR MESIN SERVER ====
+  // ==== JURUS V.I.P: PINTU UTAMA V1 ====
   Future<void> _tanyaGemini() async {
+    String judul = _etJudul.text.trim();
+    if (judul.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ketik judul lagunya dulu, Bos!")));
+      return;
+    }
+
     if (_geminiApiKey.isEmpty || _geminiApiKey == "MASUKKAN_API_KEY_GOOGLE_STUDIO_DI_SINI") {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("API Key belum diisi di dalam kode!")));
       return;
     }
 
     setState(() => _isAskingGemini = true);
-    FocusScope.of(context).unfocus(); // Tutup keyboard
+    FocusScope.of(context).unfocus(); 
 
     try {
-      // Kita panggil titik pusat server untuk meminta daftar nama mesin
-      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$_geminiApiKey');
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      // PERHATIKAN: Kita pakai jalur resmi v1 (bukan v1beta) dan mesin 1.5-flash
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey');
+      
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [{
+            "parts": [{
+              "text": "Kamu adalah asisten database gereja. Berikan lirik lagu rohani kristen berjudul '$judul'. HANYA balas dengan format baku ini tanpa basa-basi:\n[Nama Pencipta/Penyanyi Populer]\n[Isi Lirik Lengkap]"
+            }]
+          }]
+        }),
+      ).timeout(const Duration(seconds: 15)); 
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        List models = data['models'] ?? [];
+        String hasil = data['candidates'][0]['content']['parts'][0]['text'] ?? "";
         
-        // Kumpulkan semua nama mesin yang ada tulisan "gemini"
-        String daftarMesin = "";
-        for (var m in models) {
-          String name = m['name']; // contoh hasilnya: models/gemini-pro
-          if (name.contains("gemini")) {
-             daftarMesin += "$name\n";
+        if (hasil.isNotEmpty) {
+          List<String> lines = hasil.split('\n');
+          if (lines.isNotEmpty) {
+            _etPencipta.text = lines.first.replaceAll(RegExp(r'[\[\]]'), '').trim(); 
+            lines.removeAt(0); 
+            _etLirik.text = lines.join('\n').trim(); 
           }
-        }
-
-        // Tampilkan daftarnya ke layar bos
-        if (mounted) {
-          showDialog(
-            context: context, 
-            builder: (c) => AlertDialog(
-              title: const Text("🔍 Mesin yang Tersedia:"),
-              content: SingleChildScrollView(
-                child: Text(daftarMesin.isEmpty ? "Tidak ada mesin gemini ditemukan" : daftarMesin, 
-                  style: const TextStyle(fontSize: 14)
-                )
-              ),
-              actions: [
-                TextButton(onPressed: () => Navigator.pop(c), child: const Text("OK, SIAP!"))
-              ]
-            )
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik sukses disedot!")));
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal intip server: ${response.statusCode}")));
+        final errorData = jsonDecode(response.body);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal (${response.statusCode}): ${errorData['error']['message']}")));
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: Cek internet bos!")));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Koneksi Error: Coba lagi bos!")));
     } finally {
       setState(() => _isAskingGemini = false);
     }
@@ -162,7 +164,6 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // ==== KOLOM JUDUL & TOMBOL GEMINI ====
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

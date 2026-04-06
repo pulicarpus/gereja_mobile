@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'user_manager.dart';
-// import 'tambah_perpuluhan_page.dart'; // Buka komen ini saat file Tambah Perpuluhan sudah kita buat
+import 'tambah_perpuluhan_page.dart'; // Buka komen ini saat file Tambah Perpuluhan sudah kita buat
 
 // --- DATA CLASS ---
 class PerpuluhanItem {

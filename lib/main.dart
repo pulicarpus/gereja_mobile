@@ -12,7 +12,8 @@ import 'data_jemaat_page.dart';
 import 'jadwal_page.dart';
 import 'alkitab_page.dart';    
 import 'renungan_page.dart';   
-import 'lagu_page.dart';       // <--- INI SUDAH DITAMBAHKAN BOS
+import 'lagu_page.dart';       
+import 'kelola_gereja_page.dart'; // 👇 Wajib dipanggil
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -113,6 +114,10 @@ class _MainActivityState extends State<MainActivity> {
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
+    
+    // ==== CEK KASTA USER & STATUS PANTAU ====
+    bool isSuperAdmin = user.isSuperAdmin();
+    bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
     return Scaffold(
       appBar: AppBar(
@@ -168,27 +173,21 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.chat, "Chat", () {
                     // TODO: Halaman Chat
                   }),
-                  
                   _buildDrawerItem(Icons.book, "Renungan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const RenunganPage()));
                   }),
-                  
-                  // ==== TOMBOL LAGU SUDAH AKTIF BOS ====
                   _buildDrawerItem(Icons.music_note, "Lagu", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const LaguPage()));
                   }),
-                  
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
                     // TODO: Halaman Gallery
                   }),
                   _buildDrawerItem(Icons.front_hand, "Doa", () {
                     // TODO: Halaman Pokok Doa
                   }),
-                  
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
                   }),
-                  
                   _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {
                     // TODO: Halaman Pengurus
                   }),
@@ -196,6 +195,27 @@ class _MainActivityState extends State<MainActivity> {
               ),
             ),
             const Divider(),
+            
+            // 👇 MENU RAHASIA: HANYA MUNCUL UNTUK SUPERADMIN 👇
+            if (isSuperAdmin) ...[
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
+                title: const Text("Kelola Gereja", style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text("Hak Akses Superadmin", style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context); // Tutup drawer dulu
+                  Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (context) => const KelolaGerejaPage())
+                  ).then((_) {
+                    // Refresh data saat bos kembali dari halaman Pilih Gereja
+                    setState(() { _initSession(); });
+                  });
+                },
+              ),
+              const Divider(),
+            ],
+
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
               title: const Text("Keluar Akun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -212,6 +232,37 @@ class _MainActivityState extends State<MainActivity> {
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // 👇 BANNER STATUS PANTAU (MUNCUL KALAU SUPERADMIN PINDAH GEREJA) 👇
+            if (isMemantau)
+              Container(
+                color: Colors.orange.shade100,
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                child: Row(
+                  children: [
+                    const Icon(Icons.visibility, color: Colors.deepOrange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Mode Pantau: ${user.activeChurchName}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 13),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        await user.exitChurchContext();
+                        setState(() { _initSession(); });
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepOrange,
+                        foregroundColor: Colors.white,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      child: const Text("KEMBALI", style: TextStyle(fontWeight: FontWeight.bold)),
+                    )
+                  ],
+                ),
+              ),
+
             Container(
               width: double.infinity,
               height: 220,

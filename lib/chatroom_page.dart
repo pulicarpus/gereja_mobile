@@ -13,7 +13,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'dart:convert';
 import 'dart:io';
 
-import 'secrets.dart'; // Abaikan jika merah di Acode
+import 'secrets.dart'; 
 import 'user_manager.dart';
 
 class ChatroomPage extends StatefulWidget {
@@ -30,8 +30,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
-  // 👇 MESIN VN PAKAI VERSI 4 👇
-  final _audioRecorder = Record();
+  // 👇 KEMBALI PAKAI SINTAKS VERSI 5 👇
+  final _audioRecorder = AudioRecorder();
   final _audioPlayer = AudioPlayer();
   bool _isRecording = false;
   String? _playingId;
@@ -129,14 +129,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // 👇 FUNGSI REKAM VN PAKAI SINTAKS VERSI 4 👇
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
         final dir = await getTemporaryDirectory();
         final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
         
-        await _audioRecorder.start(path: path); 
+        await _audioRecorder.start(const RecordConfig(), path: path); 
         setState(() => _isRecording = true);
       }
     } catch (e) { _showSnack("Gagal merekam: $e"); }

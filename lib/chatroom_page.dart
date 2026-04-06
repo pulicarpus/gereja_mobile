@@ -30,8 +30,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
-  // --- MESIN VN ---
-  final _audioRecorder = AudioRecorder();
+  // 👇 MESIN VN PAKAI VERSI 4 👇
+  final _audioRecorder = Record();
   final _audioPlayer = AudioPlayer();
   bool _isRecording = false;
   String? _playingId;
@@ -40,11 +40,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
   bool _isTyping = false;
   bool _isUploading = false;
   
-  // --- STATE UNTUK REPLY / EDIT ---
   Map<String, dynamic>? _replyMessage;
   String? _editingMessageId;
 
-  // --- KUNCI RAHASIA ---
   final String teleBotToken = teleBotTokenSecret;
   final String teleChatId = "-1003815632729";
   final String osRestKey = osRestKeySecret;
@@ -56,7 +54,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
     
-    // Reset player saat audio selesai diputar
     _audioPlayer.onPlayerComplete.listen((event) {
       setState(() => _playingId = null);
     });
@@ -70,7 +67,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     super.dispose();
   }
 
-  // ==== 1. FORMAT WAKTU CERDAS ====
   String formatTimeCustom(DateTime? date) {
     if (date == null) return "";
     final sekarang = DateTime.now();
@@ -78,7 +74,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return isHariIni ? DateFormat('HH:mm').format(date) : DateFormat('dd MMM, HH:mm').format(date);
   }
 
-  // ==== 2. UPLOAD GAMBAR KE CLOUDINARY ====
   Future<void> _uploadImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
@@ -86,7 +81,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     setState(() => _isUploading = true);
     try {
       var request = http.MultipartRequest('POST', Uri.parse('https://api.cloudinary.com/v1_1/dw1ynjbod/image/upload'));
-      request.fields['upload_preset'] = 'preset_gereja'; // Preset Unsigned
+      request.fields['upload_preset'] = 'preset_gereja'; 
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
       var res = await request.send();
@@ -104,7 +99,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // ==== 3. UPLOAD FILE KE TELEGRAM ====
   Future<void> _uploadFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
@@ -135,14 +129,14 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // ==== 4. LOGIKA VOICE NOTE (REKAM & UPLOAD) ====
+  // 👇 FUNGSI REKAM VN PAKAI SINTAKS VERSI 4 👇
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
         final dir = await getTemporaryDirectory();
         final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
         
-        await _audioRecorder.start(const RecordConfig(), path: path);
+        await _audioRecorder.start(path: path); 
         setState(() => _isRecording = true);
       }
     } catch (e) { _showSnack("Gagal merekam: $e"); }
@@ -188,7 +182,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // ==== 5. BUKA DOKUMEN (WPS / WORD) ====
   Future<void> _bukaFile(String url, String fileName) async {
     _showSnack("Mengunduh dokumen...");
     try {
@@ -210,7 +203,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // ==== 6. SIMPAN FIRESTORE (Kirim Baru, Edit, & Balas) ====
   Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId}) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
@@ -221,11 +213,26 @@ class _ChatroomPageState extends State<ChatroomPage> {
       return;
     }
 
+    await _db.collection("churches").doc(churchId).collection(_collectionPath).add({
+      "pengirimId": _auth.currentUser?.uid,
+      "pengirimNama": UserManager().userNama,
+      "pengirimFoto": UserManager().userFotoUrl,
+      "pesan": isi,
+      "timestamp": FieldValue.serverTimestamp(),
+      "tipe": tipe,
+      "fileUrl": url,
+      "fileName": name,
+      "cloudPublicId": cloudId,
+      "isReply": _replyMessage != null,
+      "replyToName": _replyMessage?['pengirimNama'],
+      "replyToText": (_replyMessage != null && _replyMessage!['tipe'] == 'image') ? '[Gambar]' : _replyMessage?['pesan'],
+      "replyToImage": (_replyMessage != null && _replyMessage!['tipe'] == 'image') ? _replyMessage!['fileUrl'] : null,
+    });
+
     _kirimNotif(isi);
     setState(() { _replyMessage = null; _etPesan.clear(); });
   }
 
-  // ==== 7. NOTIFIKASI ONESIGNAL ====
   Future<void> _kirimNotif(String pesan) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null || osRestKey.isEmpty) return;
@@ -247,7 +254,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     } catch (_) {}
   }
 
-  // ==== 8. UI BANTUAN ====
   void _showFullImage(String url) {
     showDialog(context: context, builder: (c) => Dialog(
       backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero,
@@ -301,7 +307,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     )));
   }
 
-  // ==== 9. WIDGET BUILDER ====
   @override
   Widget build(BuildContext context) {
     String? churchId = UserManager().activeChurchId;

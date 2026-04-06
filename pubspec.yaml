@@ -32,7 +32,7 @@ dependencies:
   url_launcher: ^6.3.1
   open_filex: ^4.4.0      # 👈 WAJIB: Untuk buka file PDF/Word/WPS
   audioplayers: ^5.2.1    # 👈 WAJIB: Untuk fitur Voice Note
-  record: ^5.1.0
+  record: ^5.1.2
 
   # --- FIREBASE & ONESIGNAL ---
   firebase_core: ^3.10.1
@@ -60,7 +60,3 @@ flutter:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
     # - assets/images/
-# 👇 UBAH BAGIAN INI DI PALING BAWAH 👇
-dependency_overrides:
-  record_linux: 0.7.2
-  record_platform_interface: 1.5.0

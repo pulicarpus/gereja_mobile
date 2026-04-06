@@ -1,8 +1,7 @@
 name: Flutter Build APK
 
-# Perubahan di sini agar tidak otomatis setiap push
 on: 
-  workflow_dispatch: # Ini akan memunculkan tombol "Run Workflow" di GitHub
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -16,10 +15,32 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
+      # 1. Cache Gradle untuk mempercepat kompilasi Android
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 2. Setup Flutter dengan cache SDK bawaan
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true # Mengaktifkan cache SDK Flutter otomatis
+
+      # 3. Cache dependensi Pub (library di pubspec.yaml)
+      - name: Cache Pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
 
       - name: Decode Keystore
         run: echo "${{ secrets.APP_KEYSTORE_BASE64 }}" | base64 --decode > android/app/gereja-app.jks
@@ -29,7 +50,6 @@ jobs:
         working-directory: . 
 
       - name: Build APK
-        # Menggunakan build release agar APK lebih ringan dan resmi
         run: flutter build apk --release
         working-directory: .
 

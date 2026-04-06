@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // Untuk Getaran (Haptic)
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -11,13 +11,14 @@ import 'package:open_filex/open_filex.dart';
 import 'package:intl/intl.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:audio_waveforms/audio_waveforms.dart'; // Spektrum Dewa
+import 'package:audio_waveforms/audio_waveforms.dart';
 import 'dart:convert';
 import 'dart:io';
 
 import 'secrets.dart'; 
 import 'user_manager.dart';
-import 'recorder_visualizer.dart'; // File visualizer terpisah
+import 'recorder_visualizer.dart';
+import 'chat_waveform.dart'; // 👈 File Baru Spektrum Balon Chat
 
 class ChatroomPage extends StatefulWidget {
   final String? filterKategorial;
@@ -33,10 +34,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
-  // Audio Mesin
+  // Mesin Audio & Visualizer
   final _audioRecorder = AudioRecorder();
   final _audioPlayer = AudioPlayer();
-  late final RecorderController _recorderController; // Kontrol Spektrum
+  late final RecorderController _recorderController; 
   
   bool _isRecording = false;
   String? _playingId;
@@ -56,12 +57,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
   @override
   void initState() {
     super.initState();
-    _recorderController = RecorderController(); // Inisialisasi Spektrum
+    _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
     
     _audioPlayer.onPlayerComplete.listen((event) {
-      setState(() => _playingId = null);
+      if (mounted) setState(() => _playingId = null);
     });
   }
 
@@ -155,12 +156,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
     } catch (e) { _showSnack("Gagal kirim file: $e"); } finally { setState(() => _isUploading = false); }
   }
 
-  // --- 3. VOICE NOTE DEWA (GETAR + SPEKTRUM) ---
+  // --- 3. VOICE NOTE DEWA (GETAR + SPEKTRUM + KOMPRESI) ---
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
-        HapticFeedback.heavyImpact(); // GETAR MULAI
-        await _recorderController.record(); // SPEKTRUM MULAI
+        HapticFeedback.heavyImpact(); 
+        await _recorderController.record(); 
         final dir = await getTemporaryDirectory();
         final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
         await _audioRecorder.start(const RecordConfig(), path: path); 
@@ -170,14 +171,27 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<void> _stopRecording() async {
-    HapticFeedback.mediumImpact(); // GETAR SELESAI
+    HapticFeedback.mediumImpact(); 
+    
+    // AMBIL DATA GELOMBANG & KOMPRESI (Maksimal 30 titik)
+    final rawWaveData = await _recorderController.getWaveformData();
+    List<double> compressedData = [];
+    if (rawWaveData.isNotEmpty) {
+      int step = (rawWaveData.length / 30).floor().clamp(1, 999);
+      for (int i = 0; i < rawWaveData.length; i += step) {
+        compressedData.add(rawWaveData[i]);
+        if (compressedData.length >= 30) break;
+      }
+    }
+
     final path = await _audioRecorder.stop();
-    await _recorderController.stop(); // SPEKTRUM STOP
+    await _recorderController.stop(); 
     setState(() => _isRecording = false);
-    if (path != null) { _uploadVN(File(path)); }
+    
+    if (path != null) { _uploadVN(File(path), compressedData); }
   }
 
-  Future<void> _uploadVN(File file) async {
+  Future<void> _uploadVN(File file, List<double> waveData) async {
     setState(() => _isUploading = true);
     try {
       var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendAudio'));
@@ -189,7 +203,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         String fileId = jsonRes['result']['audio']['file_id'];
         var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
         String filePath = jsonDecode(getFile.body)['result']['file_path'];
-        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: "https://api.telegram.org/file/bot$teleBotToken/$filePath");
+        String audioUrl = "https://api.telegram.org/file/bot$teleBotToken/$filePath";
+        
+        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: audioUrl, waveData: waveData);
       }
     } catch (e) { _showSnack("Gagal kirim VN: $e"); } finally { setState(() => _isUploading = false); }
   }
@@ -200,7 +216,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
-  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId}) async {
+  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
     if (_editingMessageId != null) {
@@ -212,8 +228,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
       "pengirimId": _auth.currentUser?.uid,
       "pengirimNama": UserManager().userNama,
       "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": isi, "timestamp": FieldValue.serverTimestamp(), "tipe": tipe,
-      "fileUrl": url, "fileName": name, "cloudPublicId": cloudId,
+      "pesan": isi, 
+      "timestamp": FieldValue.serverTimestamp(), 
+      "tipe": tipe,
+      "fileUrl": url, 
+      "fileName": name, 
+      "cloudPublicId": cloudId,
+      "waveData": waveData, // SIMPAN SPEKTRUM KE FIRESTORE
       "isReply": _replyMessage != null,
       "replyToName": _replyMessage?['pengirimNama'],
       "replyToText": _replyMessage?['pesan'],
@@ -304,7 +325,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
         Row(mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null),
           Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.80),
             margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 8 : 50, top: 4, bottom: 4),
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: isMe ? const Color(0xFFDCF8C6) : Colors.white, borderRadius: BorderRadius.only(topLeft: const Radius.circular(12), topRight: const Radius.circular(12), bottomLeft: Radius.circular(isMe ? 12 : 0), bottomRight: Radius.circular(isMe ? 0 : 12)), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]),
@@ -344,7 +365,16 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   Widget _buildAudioUI(Map<String, dynamic> chat, String id, bool isMe) {
     bool isPlaying = _playingId == id;
-    return Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)), const Text("Voice Note", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.black54))]);
+    List<double> samples = [];
+    if (chat['waveData'] != null) {
+      samples = List<double>.from((chat['waveData'] as List).map((e) => e.toDouble()));
+    }
+    
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)),
+      const SizedBox(width: 5),
+      if (samples.isNotEmpty) ChatWaveform(samples: samples, isMe: isMe) else const Text("Voice Note", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54))
+    ]);
   }
 
   Widget _buildInputArea() {
@@ -359,10 +389,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     ]));
   }
 
-  // --- FUNGSI SNACKBAR (PENYEBAB ERROR) ---
   void _showSnack(String m) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
-    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
   }
-} // Tutup State
+}

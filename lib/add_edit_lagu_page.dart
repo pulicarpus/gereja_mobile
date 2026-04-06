@@ -79,7 +79,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
 
     try {
       // Kita tembak langsung ke server Google pakai HTTP murni
-      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey');
+      final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=$_geminiApiKey');
       
       final response = await http.post(
         url,

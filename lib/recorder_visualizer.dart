@@ -11,13 +11,13 @@ class RecorderVisualizer extends StatelessWidget {
       size: Size(MediaQuery.of(context).size.width * 0.4, 30),
       recorderController: controller,
       enableGesture: false,
-      // 👇 waveformType SUDAH DIHAPUS DI VERSI BARU, JADI KITA HAPUS JUGA 👇
       waveStyle: const WaveStyle(
         waveColor: Colors.redAccent,
-        spacing: 3.0,
+        // 👇 JURUS KUNCI: Spacing harus lebih besar dari thickness (default 3.0) 👇
+        spacing: 4.0, 
+        waveThickness: 2.5, // Kita kecilkan dikit biar makin estetik
         showMiddleLine: false,
         extendWaveform: true,
-        // 👇 showVisualizerLpBar JUGA SUDAH GANTI, KITA HAPUS SAJA 👇
         waveCap: StrokeCap.round,
       ),
     );

@@ -64,11 +64,13 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isLoading = false);
   }
 
-  // ==== JURUS V.I.P: PINTU UTAMA V1 DENGAN BRANKAS RAHASIA ====
+  // ==== JURUS V.I.P: PENCARIAN SUPER (JUDUL/LIRIK + SPESIFIK PENYANYI) ====
   Future<void> _tanyaGemini() async {
-    String judul = _etJudul.text.trim();
-    if (judul.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ketik judul lagunya dulu, Bos!")));
+    String kataKunci = _etJudul.text.trim();
+    String penyanyiTarget = _etPencipta.text.trim(); // Kita baca juga isi kolom penyanyi
+
+    if (kataKunci.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ketik judul atau potongan liriknya dulu, Bos!")));
       return;
     }
 
@@ -80,8 +82,14 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     setState(() => _isAskingGemini = true);
     FocusScope.of(context).unfocus(); 
 
+    // Bikin kalimat perintah yang cerdas
+    String instruksi = "Saya memberikan kata kunci (bisa berupa judul lagu atau potongan lirik) rohani kristen berikut: '$kataKunci'. ";
+    if (penyanyiTarget.isNotEmpty) {
+      // Kalau kolom penyanyi diisi, kita suruh Gemini cari versi spesifik itu!
+      instruksi += "TOLONG CARIKAN SPESIFIK VERSI YANG DINYANYIKAN / DICIPTAKAN OLEH: '$penyanyiTarget'. ";
+    }
+
     try {
-      // Pakai jalur resmi v1 dan mesin 1.5-flash
       final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_geminiApiKey');
       
       final response = await http.post(
@@ -90,7 +98,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         body: jsonEncode({
           "contents": [{
             "parts": [{
-              "text": "Kamu adalah asisten database gereja. Berikan lirik lagu rohani kristen berjudul '$judul'. HANYA balas dengan format baku ini tanpa basa-basi:\n[Nama Pencipta/Penyanyi Populer]\n[Isi Lirik Lengkap]"
+              "text": "Kamu adalah asisten database gereja. $instruksi Tebak lagu apa yang paling tepat sesuai permintaan tersebut. HANYA balas dengan format baku 3 baris ini tanpa basa-basi:\n[Judul Lagu Asli]\n[Nama Pencipta/Penyanyi Populer]\n[Isi Lirik Lengkap]"
             }]
           }]
         }),
@@ -102,16 +110,17 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         
         if (hasil.isNotEmpty) {
           List<String> lines = hasil.split('\n');
-          if (lines.isNotEmpty) {
-            _etPencipta.text = lines.first.replaceAll(RegExp(r'[\[\]]'), '').trim(); 
-            lines.removeAt(0); 
+          if (lines.length >= 2) {
+            _etJudul.text = lines[0].replaceAll(RegExp(r'[\[\]]'), '').trim(); 
+            _etPencipta.text = lines[1].replaceAll(RegExp(r'[\[\]]'), '').trim(); 
+            lines.removeRange(0, 2); 
             _etLirik.text = lines.join('\n').trim(); 
           }
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik sukses disedot!")));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✨ Lirik versi spesifik sukses disedot!")));
         }
       } else {
         final errorData = jsonDecode(response.body);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal (${response.statusCode}): ${errorData['error']['message']}")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: ${errorData['error']['message']}")));
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Koneksi Error: Coba lagi bos!")));
@@ -171,7 +180,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   children: [
                     Expanded(
                       flex: 2,
-                      child: _buildField(_etJudul, "Judul Lagu", true),
+                      child: _buildField(_etJudul, "Judul Lagu atau Potongan Lirik", true),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -215,7 +224,8 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
                   ],
                 ),
                 const SizedBox(height: 15),
-                _buildField(_etPencipta, "Pencipta / Penyanyi", false),
+                // 👇 Tulisannya saya perjelas sedikit bos 👇
+                _buildField(_etPencipta, "Pencipta / Penyanyi (Isi untuk filter versi spesifik)", false),
                 const SizedBox(height: 15),
                 _buildField(_etLirik, "Isi Lirik", true, maxLines: 18),
                 const SizedBox(height: 30),
@@ -247,7 +257,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         alignLabelWithHint: maxLines > 1, 
       ),
-      validator: (v) => (mandatory && v!.isEmpty) ? "$label wajib diisi" : null,
+      validator: (v) => (mandatory && v!.isEmpty) ? "Kolom ini wajib diisi" : null,
     );
   }
 }

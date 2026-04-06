@@ -11,19 +11,14 @@ class RecorderVisualizer extends StatelessWidget {
       size: Size(MediaQuery.of(context).size.width * 0.4, 30),
       recorderController: controller,
       enableGesture: false,
-      waveformType: WaveformType.fitWidth,
+      // 👇 waveformType SUDAH DIHAPUS DI VERSI BARU, JADI KITA HAPUS JUGA 👇
       waveStyle: const WaveStyle(
         waveColor: Colors.redAccent,
         spacing: 3.0,
         showMiddleLine: false,
         extendWaveform: true,
-        showVisualizerLpBar: true,
+        // 👇 showVisualizerLpBar JUGA SUDAH GANTI, KITA HAPUS SAJA 👇
         waveCap: StrokeCap.round,
-        verticalLinesGradient: LinearGradient(
-          colors: [Colors.red, Colors.orange],
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-        ),
       ),
     );
   }

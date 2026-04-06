@@ -20,8 +20,8 @@ class _RenunganPageState extends State<RenunganPage> {
   bool _isLoading = false;
 
   // Variabel untuk Zoom (Pinch-to-zoom)
-  double _fontSize = 17.0;
-  double _baseFontSize = 17.0;
+  double _fontSize = 18.0; // Default sedikit diperbesar bos biar lega
+  double _baseFontSize = 18.0;
 
   @override
   void initState() {
@@ -51,12 +51,11 @@ class _RenunganPageState extends State<RenunganPage> {
     return "${hari[indexHari]}, ${n.day} ${bulan[n.month]} ${n.year}";
   }
 
-  // --- FUNGSI WEBSCRAPING (Update ke Renungan Harian) ---
+  // --- FUNGSI WEBSCRAPING ---
   Future<void> _ambilDataRenungan() async {
     setState(() => _isLoading = true);
 
     try {
-      // Mengubah URL dari 'sh' menjadi 'rh' (Renungan Harian)
       final response = await http.get(Uri.parse("https://alkitab.mobi/renungan/rh/"))
           .timeout(const Duration(seconds: 10));
 
@@ -73,12 +72,11 @@ class _RenunganPageState extends State<RenunganPage> {
           }
         }
 
-        // 2. Cari Judul Renungan (Mencari tag <b>)
+        // 2. Cari Judul Renungan
         String judulFix = "Renungan Harian";
         final bTags = doc.querySelectorAll("b");
         for (var b in bTags) {
           String t = b.text.trim();
-          // Lewati kata-kata standar SABDA agar tepat mengenai Judul
           if (t.length > 5 && 
               !t.toLowerCase().contains("renungan harian") && 
               !t.contains("Mobile") && 
@@ -92,7 +90,6 @@ class _RenunganPageState extends State<RenunganPage> {
         // 3. Cari Isi Paragraf
         List<String> listIsi = [];
         final pTags = doc.querySelectorAll("p");
-        // Blacklist kata-kata menu navigasi web SABDA
         List<String> blacklist = ["<<", ">>", "BCA", "Diskusi renungan", "facebook.com", "Ayat Alkitab:"];
 
         for (var p in pTags) {
@@ -150,12 +147,19 @@ class _RenunganPageState extends State<RenunganPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ==== PERBAIKAN WARNA LATAR: Warm Paper Style ====
+    const Color mainBgColor = Color(0xFFEFE6D6); // Latar beige hangat di luar kartu
+    const Color paperColor = Color(0xFFFCFBF4); // Putih kertas sedikit krem di dalam kartu
+    const Color headerIndigo = Color(0xFF1A237E); // Indigo tua untuk header
+    // =================================================
+
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: mainBgColor, // Terapkan latar utama
       appBar: AppBar(
         title: const Text("Renungan Harian"),
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
+        elevation: 1, // Beri sedikit elevation bos
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
@@ -170,46 +174,77 @@ class _RenunganPageState extends State<RenunganPage> {
             color: Colors.indigo,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(), 
-              padding: const EdgeInsets.all(20),
+              // Pading luar bos
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0), 
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _getTanggalIndonesia(),
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600], fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
                   
-                  Text(
-                    _judul,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                  ),
-                  const Divider(height: 30, thickness: 1),
-                  
-                  GestureDetector(
-                    onScaleStart: (details) {
-                      _baseFontSize = _fontSize;
-                    },
-                    onScaleUpdate: (details) {
-                      setState(() {
-                        _fontSize = (_baseFontSize * details.scale).clamp(14.0, 36.0);
-                      });
-                    },
-                    child: Container(
-                      color: Colors.transparent, 
-                      width: double.infinity,
-                      child: Text(
-                        _isi,
-                        style: TextStyle(
-                          fontSize: _fontSize, 
-                          height: 1.6, 
-                          color: Colors.black87
-                        ),
-                      ),
+                  // AREA TANGGAL (Di luar kartu)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: Text(
+                      _getTanggalIndonesia(),
+                      style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.bold),
                     ),
                   ),
+                  const SizedBox(height: 12),
                   
-                  const SizedBox(height: 40), 
+                  // ==== WIDGET KARTU PEMBUNGKUS KONTEN ====
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: paperColor, // Latar kertas
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: Colors.grey.shade200), // Garis tipis pembatas
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5) // Bayangan ke bawah
+                        )
+                      ]
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // JUDUL RENUNGAN (Indigo Tua)
+                        Text(
+                          _judul,
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: headerIndigo),
+                        ),
+                        const Divider(height: 35, thickness: 1.2),
+                        
+                        // ISI RENUNGAN (Off-Black dengan Pinch-to-zoom)
+                        GestureDetector(
+                          onScaleStart: (details) {
+                            _baseFontSize = _fontSize;
+                          },
+                          onScaleUpdate: (details) {
+                            setState(() {
+                              _fontSize = (_baseFontSize * details.scale).clamp(14.0, 36.0);
+                            });
+                          },
+                          child: Container(
+                            color: Colors.transparent, // Penting!
+                            width: double.infinity,
+                            child: Text(
+                              _isi,
+                              style: TextStyle(
+                                fontSize: _fontSize, 
+                                height: 1.65, // Spasi antar baris dinaikkan sedikit bos biar lega
+                                color: Colors.black87 // Off-black tidak terlalu tajam
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // ======================================
+                  
+                  const SizedBox(height: 50), // Jarak ekstra bawah
                 ],
               ),
             ),
@@ -220,7 +255,7 @@ class _RenunganPageState extends State<RenunganPage> {
               top: 0,
               left: 0,
               right: 0,
-              child: LinearProgressIndicator(),
+              child: LinearProgressIndicator(backgroundColor: paperColor, color: Colors.indigo,),
             ),
         ],
       ),

@@ -15,7 +15,8 @@ import 'renungan_page.dart';
 import 'lagu_page.dart';       
 import 'kelola_gereja_page.dart';
 import 'chatroom_page.dart'; 
-import 'ayat_data.dart'; // 👈 IMPORT DATA AYAT EMAS SUDAH MASUK BOS
+import 'ayat_data.dart';
+import 'keuangan_page.dart'; // 👈 IMPORT HALAMAN KEUANGAN SULTAN
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,13 +73,11 @@ class _MainActivityState extends State<MainActivity> {
   String _alamatGereja = "Memuat alamat...";
   String? _fotoGerejaUrl;
   
-  // 👇 SEKARANG AYATNYA DINAMIS (BERUBAH-UBAH) 👇
   late Map<String, String> _ayatEmas;
 
   @override
   void initState() {
     super.initState();
-    // Ambil ayat acak saat masuk ke Dashboard
     _ayatEmas = AyatData.getAyatAcak();
     _initSession();
   }
@@ -146,14 +145,12 @@ class _MainActivityState extends State<MainActivity> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 👇 SEKARANG JADI FOTO PROFIL USER 👇
                     Container(
-                      padding: const EdgeInsets.all(3), // Border tipis putih
+                      padding: const EdgeInsets.all(3),
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       child: CircleAvatar(
                         radius: 35,
                         backgroundColor: Colors.indigo[100],
-                        // Ambil foto dari UserManager
                         backgroundImage: user.userFotoUrl != null 
                             ? CachedNetworkImageProvider(user.userFotoUrl!) 
                             : null,
@@ -164,7 +161,7 @@ class _MainActivityState extends State<MainActivity> {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      user.userNama ?? "Jemaat", // Tampilkan Nama User
+                      user.userNama ?? "Jemaat",
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         color: Colors.white, 
@@ -198,9 +195,13 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
+                  
+                  // 👇 TOMBOL KEUANGAN SUDAH TERSAMBUNG BOS 👇
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
-                    // TODO: Halaman Keuangan
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
                   }),
+                  // 👆 -------------------------------------- 👆
+
                   _buildDrawerItem(Icons.chat, "Ruang Chat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatroomPage()));
                   }),
@@ -301,10 +302,8 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   const SizedBox(height: 25),
                   
-                  // ==== BAGIAN AYAT EMAS (EDISI REFRESH OTOMATIS) ====
                   GestureDetector(
                     onTap: () {
-                      // ✨ Bonus: Klik ayatnya buat ganti ayat baru tanpa restart aplikasi
                       setState(() { _ayatEmas = AyatData.getAyatAcak(); });
                     },
                     child: Container(

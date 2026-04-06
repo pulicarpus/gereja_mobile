@@ -34,15 +34,20 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
+  // Mesin Audio & Visualizer
   final _audioRecorder = AudioRecorder();
   final _audioPlayer = AudioPlayer();
   late final RecorderController _recorderController; 
   
   bool _isRecording = false;
   String? _playingId;
+  Duration _currentPosition = Duration.zero;
+  Duration _totalDuration = Duration.zero;
+
   late String _collectionPath;
   bool _isTyping = false;
   bool _isUploading = false;
+  
   Map<String, dynamic>? _replyMessage;
   String? _editingMessageId;
 
@@ -56,9 +61,18 @@ class _ChatroomPageState extends State<ChatroomPage> {
     super.initState();
     _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
+    
     _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
+    
+    // Listener untuk Audio Player (Spektrum Berjalan)
+    _audioPlayer.onPositionChanged.listen((pos) {
+      if (mounted) setState(() => _currentPosition = pos);
+    });
+    _audioPlayer.onDurationChanged.listen((dur) {
+      if (mounted) setState(() => _totalDuration = dur);
+    });
     _audioPlayer.onPlayerComplete.listen((event) {
-      if (mounted) setState(() => _playingId = null);
+      if (mounted) setState(() { _playingId = null; _currentPosition = Duration.zero; });
     });
   }
 
@@ -76,7 +90,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return DateFormat('HH:mm').format(date);
   }
 
-  // --- UPLOAD GAMBAR ---
+  // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
   Future<void> _uploadImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
@@ -87,33 +101,29 @@ class _ChatroomPageState extends State<ChatroomPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text("Kirim Gambar"),
+        title: const Text("Kirim Gambar", style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.file(File(image.path), height: 150, fit: BoxFit.cover),
-            ),
+            ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(image.path), height: 150, width: double.infinity, fit: BoxFit.cover)),
             const SizedBox(height: 15),
             TextField(
               controller: _etCaption,
-              decoration: const InputDecoration(hintText: "Tambah keterangan..."),
+              decoration: InputDecoration(hintText: "Tambah keterangan...", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
+              maxLines: null,
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: const Text("Batal")
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal", style: TextStyle(color: Colors.red))),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
             onPressed: () {
-              String cap = _etCaption.text.trim();
+              String caption = _etCaption.text.trim();
               Navigator.pop(context);
-              _executeImageUpload(image, cap.isEmpty ? "[Gambar]" : cap);
+              _executeImageUpload(image, caption.isEmpty ? "[Gambar]" : caption);
             }, 
-            child: const Text("Kirim")
+            child: const Text("Kirim"),
           ),
         ],
       ),
@@ -129,63 +139,61 @@ class _ChatroomPageState extends State<ChatroomPage> {
       var res = await request.send();
       var json = jsonDecode(await res.stream.bytesToString());
       if (res.statusCode == 200) {
-        _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url'], name: "img.jpg");
+        _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url'], name: "img.jpg", cloudId: json['public_id']);
       }
-    } catch (e) {
-      _showSnack("Gagal upload gambar: $e");
-    } finally {
-      setState(() => _isUploading = false);
+    } catch (e) { 
+      _showSnack("Gagal upload gambar: $e"); 
+    } finally { 
+      setState(() => _isUploading = false); 
     }
   }
 
-  // --- UPLOAD DOKUMEN ---
+  // --- 2. UPLOAD FILE DOKUMEN ---
   Future<void> _uploadFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
-    
+    File file = File(result.files.single.path!);
+    String fileName = result.files.single.name;
     setState(() => _isUploading = true);
     try {
       var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendDocument'));
       request.fields['chat_id'] = teleChatId;
-      request.files.add(await http.MultipartFile.fromPath('document', result.files.single.path!));
+      request.files.add(await http.MultipartFile.fromPath('document', file.path));
       var res = await request.send();
-      
+      var jsonRes = jsonDecode(await res.stream.bytesToString());
       if (res.statusCode == 200) {
-        var jsonRes = jsonDecode(await res.stream.bytesToString());
         String fileId = jsonRes['result']['document']['file_id'];
         var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String path = jsonDecode(getFile.body)['result']['file_path'];
-        
-        _sendToFirestore(
-          isi: result.files.single.name, 
-          tipe: "file", 
-          url: "https://api.telegram.org/file/bot$teleBotToken/$path", 
-          name: result.files.single.name
-        );
+        String filePath = jsonDecode(getFile.body)['result']['file_path'];
+        _sendToFirestore(isi: fileName, tipe: "file", url: "https://api.telegram.org/file/bot$teleBotToken/$filePath", name: fileName);
       }
-    } catch (e) {
-      _showSnack("Gagal kirim file: $e");
-    } finally {
-      setState(() => _isUploading = false);
+    } catch (e) { 
+      _showSnack("Gagal kirim file: $e"); 
+    } finally { 
+      setState(() => _isUploading = false); 
     }
   }
 
-  // --- VOICE NOTE & SPEKTRUM ---
+  // --- 3. VOICE NOTE DEWA (GETAR + SPEKTRUM + KOMPRESI) ---
   Future<void> _startRecording() async {
-    if (await _audioRecorder.hasPermission()) {
-      HapticFeedback.heavyImpact(); 
-      await _recorderController.record(); 
-      
-      final dir = await getTemporaryDirectory();
-      final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(const RecordConfig(), path: path); 
-      setState(() => _isRecording = true);
+    try {
+      if (await _audioRecorder.hasPermission()) {
+        HapticFeedback.heavyImpact(); 
+        await _recorderController.record(); 
+        final dir = await getTemporaryDirectory();
+        final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        await _audioRecorder.start(const RecordConfig(), path: path); 
+        setState(() => _isRecording = true);
+      }
+    } catch (e) { 
+      _showSnack("Gagal merekam: $e"); 
     }
   }
 
   Future<void> _stopRecording() async {
     HapticFeedback.mediumImpact(); 
     
+    // PENGAMBILAN DATA VERSI 1.3.0
     final rawWaveData = List<double>.from(_recorderController.waveData);
     List<double> compressedData = [];
     
@@ -196,13 +204,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
         if (compressedData.length >= 30) break;
       }
     }
-    
+
     final path = await _audioRecorder.stop();
     await _recorderController.stop(); 
     if (mounted) setState(() => _isRecording = false);
     
-    if (path != null) {
-      _uploadVN(File(path), compressedData);
+    if (path != null) { 
+      _uploadVN(File(path), compressedData); 
     }
   }
 
@@ -213,28 +221,29 @@ class _ChatroomPageState extends State<ChatroomPage> {
       request.fields['chat_id'] = teleChatId;
       request.files.add(await http.MultipartFile.fromPath('audio', file.path));
       var res = await request.send();
-      
+      var jsonRes = jsonDecode(await res.stream.bytesToString());
       if (res.statusCode == 200) {
-        var jsonRes = jsonDecode(await res.stream.bytesToString());
         String fileId = jsonRes['result']['audio']['file_id'];
         var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String path = jsonDecode(getFile.body)['result']['file_path'];
+        String filePath = jsonDecode(getFile.body)['result']['file_path'];
+        String audioUrl = "https://api.telegram.org/file/bot$teleBotToken/$filePath";
         
-        _sendToFirestore(
-          isi: "[Voice Note]", 
-          tipe: "audio", 
-          url: "https://api.telegram.org/file/bot$teleBotToken/$path", 
-          waveData: waveData
-        );
+        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: audioUrl, waveData: waveData);
       }
-    } catch (e) {
-      _showSnack("Gagal kirim VN: $e");
-    } finally {
-      setState(() => _isUploading = false);
+    } catch (e) { 
+      _showSnack("Gagal kirim VN: $e"); 
+    } finally { 
+      setState(() => _isUploading = false); 
     }
   }
 
   Future<void> _playAudio(String url, String id) async {
+    // Jika memainkan lagu yang berbeda, stop dulu lagu sebelumnya
+    if (_playingId != id && _playingId != null) {
+      await _audioPlayer.stop();
+      if (mounted) setState(() => _currentPosition = Duration.zero);
+    }
+
     if (_playingId == id) { 
       await _audioPlayer.pause(); 
       setState(() => _playingId = null); 
@@ -244,15 +253,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // --- DATABASE & NOTIFIKASI ---
-  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, List<double>? waveData}) async {
+  // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
+  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
     
     if (_editingMessageId != null) {
-      await _db.collection("churches").doc(churchId).collection(_collectionPath).doc(_editingMessageId).update({
-        "pesan": "$isi (diedit)"
-      });
+      await _db.collection("churches").doc(churchId).collection(_collectionPath).doc(_editingMessageId).update({"pesan": "$isi (diedit)"});
       setState(() { _editingMessageId = null; _etPesan.clear(); });
       return;
     }
@@ -261,11 +268,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
       "pengirimId": _auth.currentUser?.uid,
       "pengirimNama": UserManager().userNama,
       "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": isi,
-      "timestamp": FieldValue.serverTimestamp(),
+      "pesan": isi, 
+      "timestamp": FieldValue.serverTimestamp(), 
       "tipe": tipe,
-      "fileUrl": url,
-      "fileName": name,
+      "fileUrl": url, 
+      "fileName": name, 
+      "cloudPublicId": cloudId,
       "waveData": waveData,
       "isReply": _replyMessage != null,
       "replyToName": _replyMessage?['pengirimNama'],
@@ -281,8 +289,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null || osRestKey.isEmpty) return;
     try {
-      await http.post(
-        Uri.parse('https://onesignal.com/api/v1/notifications'),
+      await http.post(Uri.parse('https://onesignal.com/api/v1/notifications'),
         headers: {'Content-Type': 'application/json', 'Authorization': 'Basic $osRestKey'},
         body: jsonEncode({
           "app_id": osAppId,
@@ -294,56 +301,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
     } catch (_) {}
   }
 
-  // --- UI MENUS ---
-  void _showChatMenu(Map<String, dynamic> chat, String docId) {
-    bool isMe = chat['pengirimId'] == _auth.currentUser?.uid;
-    showModalBottomSheet(
-      context: context, 
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min, 
-          children: [
-            ListTile(
-              leading: const Icon(Icons.reply), 
-              title: const Text("Balas"), 
-              onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }
-            ),
-            if (isMe && chat['tipe'] == 'text') 
-              ListTile(
-                leading: const Icon(Icons.edit), 
-                title: const Text("Edit Pesan"), 
-                onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }
-              ),
-            if (isMe || UserManager().isAdmin()) 
-              ListTile(
-                leading: const Icon(Icons.delete, color: Colors.red), 
-                title: const Text("Hapus"), 
-                onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }
-              ),
-          ]
-        )
-      )
-    );
-  }
-
-  void _showFullImage(String url) {
-    showDialog(
-      context: context, 
-      builder: (c) => Dialog(
-        backgroundColor: Colors.transparent, 
-        insetPadding: EdgeInsets.zero, 
-        child: Stack(
-          fit: StackFit.expand, 
-          children: [
-            InteractiveViewer(child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)), 
-            Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 30), onPressed: () => Navigator.pop(c)))
-          ]
-        )
-      )
-    );
-  }
-
-  void _bukaFile(String url, String fileName) async {
+  // --- 5. UI BUILDING ---
+  Future<void> _bukaFile(String url, String fileName) async {
     _showSnack("Mengunduh dokumen...");
     try {
       final dir = await getTemporaryDirectory();
@@ -354,141 +313,117 @@ class _ChatroomPageState extends State<ChatroomPage> {
         await file.writeAsBytes(response.bodyBytes);
       }
       await OpenFilex.open(savePath);
-    } catch (e) {
-      _showSnack("Gagal membuka file.");
+    } catch (e) { 
+      _showSnack("Gagal membuka file."); 
     }
   }
 
-  // 👇 INI YANG TADI HILANG BOS: MENU PILIHAN UPLOAD 👇
-  void _showPickerOptions() {
-    showModalBottomSheet(
-      context: context, 
-      builder: (c) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min, 
-          children: [
-            ListTile(
-              leading: const Icon(Icons.image, color: Colors.blue), 
-              title: const Text("Kirim Gambar"), 
-              onTap: () { Navigator.pop(context); _uploadImage(); }
-            ),
-            ListTile(
-              leading: const Icon(Icons.file_present, color: Colors.orange), 
-              title: const Text("Kirim Dokumen"), 
-              onTap: () { Navigator.pop(context); _uploadFile(); }
-            ),
-          ]
-        )
-      )
-    );
+  void _showChatMenu(Map<String, dynamic> chat, String docId) {
+    bool isMe = chat['pengirimId'] == _auth.currentUser?.uid;
+    showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.reply), title: const Text("Balas"), onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }),
+      if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit Pesan"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _replyMessage = null; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
+      if (isMe || UserManager().isAdmin()) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
+    ])));
   }
 
-  // --- BUILD UTAMA ---
+  void _showFullImage(String url) {
+    showDialog(context: context, builder: (c) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(fit: StackFit.expand, children: [InteractiveViewer(child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)), Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 30), onPressed: () => Navigator.pop(c)))])));
+  }
+
+  void _showPickerOptions() {
+    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.image, color: Colors.blue), title: const Text("Kirim Gambar"), onTap: () { Navigator.pop(context); _uploadImage(); }),
+      ListTile(leading: const Icon(Icons.file_present, color: Colors.orange), title: const Text("Kirim Dokumen"), onTap: () { Navigator.pop(context); _uploadFile(); }),
+    ])));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE5DDD5),
-      appBar: AppBar(
-        title: const Text("Chat Jemaat"), 
-        backgroundColor: const Color(0xFF075E54), 
-        foregroundColor: Colors.white,
-        actions: [
-          if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-        ]
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
-              builder: (context, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                var docs = snap.data!.docs;
-                return ListView.builder(
-                  reverse: true, 
-                  padding: const EdgeInsets.all(10), 
-                  itemCount: docs.length, 
-                  itemBuilder: (context, i) {
-                    var chat = docs[i].data() as Map<String, dynamic>;
-                    return _buildChatBubble(chat, docs[i].id, chat['pengirimId'] == _auth.currentUser?.uid);
-                  }
-                );
-              },
-            )
-          ),
-          _buildInputArea(),
-        ]
-      ),
+      appBar: AppBar(title: const Text("Chat Jemaat"), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))]),
+      body: Column(children: [
+        Expanded(child: StreamBuilder<QuerySnapshot>(
+          stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            var docs = snap.data!.docs;
+            return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: docs.length, itemBuilder: (context, i) {
+              var chat = docs[i].data() as Map<String, dynamic>;
+              return _buildChatBubble(chat, docs[i].id, chat['pengirimId'] == _auth.currentUser?.uid);
+            });
+          },
+        )),
+        _buildInputArea(),
+      ]),
     );
   }
 
-  // 👇 INI JUGA TADI HILANG BOS: RENDER GAMBAR DAN DOKUMEN 👇
   Widget _buildChatBubble(Map<String, dynamic> chat, String docId, bool isMe) {
     DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
     
     return GestureDetector(
       onLongPress: () => _showChatMenu(chat, docId),
-      child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, 
-        crossAxisAlignment: CrossAxisAlignment.start, 
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start, 
         children: [
-          if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null),
-          
-          Container(
-            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-            margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isMe ? const Color(0xFFDCF8C6) : Colors.white, 
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
-                if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
-                
-                // LOGIKA RENDER YANG BENAR ADA DI SINI SEKARANG:
-                if (chat['tipe'] == 'image') 
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, 
-                    children: [
+          Row(
+            mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, 
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null),
+              
+              Container(
+                constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 8 : 50, top: 4, bottom: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isMe ? const Color(0xFFDCF8C6) : Colors.white, 
+                  borderRadius: BorderRadius.only(topLeft: const Radius.circular(12), topRight: const Radius.circular(12), bottomLeft: Radius.circular(isMe ? 12 : 0), bottomRight: Radius.circular(isMe ? 0 : 12)), 
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: [
+                    if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                    if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
+                    
+                    // RENDER GAMBAR
+                    if (chat['tipe'] == 'image') 
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, 
+                        children: [
+                          InkWell(onTap: () => _showFullImage(chat['fileUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))),
+                          if (chat['pesan'] != "[Gambar]") Padding(padding: const EdgeInsets.only(top: 5), child: Text(chat['pesan'], style: const TextStyle(fontSize: 15))),
+                        ]
+                      )
+                    // RENDER FILE
+                    else if (chat['tipe'] == 'file') 
                       InkWell(
-                        onTap: () => _showFullImage(chat['fileUrl']), 
-                        child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))
-                      ),
-                      if (chat['pesan'] != null && chat['pesan'] != "[Gambar]") 
-                        Padding(padding: const EdgeInsets.only(top: 5), child: Text(chat['pesan'], style: const TextStyle(fontSize: 15))),
-                    ]
-                  )
-                else if (chat['tipe'] == 'file') 
-                  InkWell(
-                    onTap: () => _bukaFile(chat['fileUrl'], chat['fileName'] ?? "dokumen"), 
-                    child: Row(
+                        onTap: () => _bukaFile(chat['fileUrl'], chat['fileName'] ?? "dokumen"), 
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.insert_drive_file, color: Colors.orange, size: 30), const SizedBox(width: 8), Expanded(child: Text(chat['fileName'] ?? "File", style: const TextStyle(color: Colors.indigo, decoration: TextDecoration.underline)))])
+                      )
+                    // RENDER AUDIO
+                    else if (chat['tipe'] == 'audio') 
+                      _buildAudioUI(chat, docId, isMe)
+                    // RENDER TEXT BIASA
+                    else 
+                      Text(chat['pesan'] ?? "", style: const TextStyle(color: Colors.black87, fontSize: 15)),
+                    
+                    const SizedBox(height: 4),
+                    Row(
                       mainAxisSize: MainAxisSize.min, 
                       children: [
-                        const Icon(Icons.insert_drive_file, color: Colors.orange, size: 30), 
-                        const SizedBox(width: 8), 
-                        Expanded(child: Text(chat['fileName'] ?? "File", style: const TextStyle(color: Colors.indigo, decoration: TextDecoration.underline)))
+                        const Spacer(), 
+                        Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey)), 
+                        if (isMe) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.done_all, size: 14, color: Colors.blue))
                       ]
                     )
-                  )
-                else if (chat['tipe'] == 'audio') 
-                  _buildAudioUI(chat, docId, isMe)
-                else 
-                  Text(chat['pesan'] ?? "", style: const TextStyle(fontSize: 15)),
-                
-                Row(
-                  mainAxisSize: MainAxisSize.min, 
-                  children: [
-                    const Spacer(), 
-                    Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                    if (isMe) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.done_all, size: 14, color: Colors.blue))
                   ]
-                )
-              ]
-            ),
+                ),
+              ),
+            ]
           ),
         ]
       ),
@@ -499,11 +434,20 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(color: Colors.black.withOpacity(0.06), borderRadius: BorderRadius.circular(8), border: Border(left: BorderSide(color: isMe ? Colors.green[800]! : Colors.indigo, width: 4))),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start, 
         children: [
-          Text(chat['replyToName'] ?? "", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
-          Text(chat['replyToText'] ?? "", style: const TextStyle(fontSize: 12, color: Colors.black87)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, 
+              children: [
+                Text(chat['replyToName'] ?? "Jemaat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
+                const SizedBox(height: 2),
+                Text(chat['replyToText'] ?? "", style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.3)),
+              ]
+            )
+          ),
+          if (chat['replyToImage'] != null) Padding(padding: const EdgeInsets.only(left: 8), child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 45, height: 45, fit: BoxFit.cover))),
         ]
       ),
     );
@@ -511,39 +455,57 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   Widget _buildAudioUI(Map<String, dynamic> chat, String id, bool isMe) {
     bool isPlaying = _playingId == id;
-    List<double> samples = chat['waveData'] != null ? List<double>.from(chat['waveData'].map((e) => e.toDouble())) : [];
+    List<double> samples = [];
+    if (chat['waveData'] != null) {
+      samples = List<double>.from((chat['waveData'] as List).map((e) => e.toDouble()));
+    }
+    
+    // MENGHITUNG PROGRESS UNTUK SPEKTRUM DINAMIS
+    double currentProgress = 0.0;
+    if (isPlaying && _totalDuration.inMilliseconds > 0) {
+      currentProgress = _currentPosition.inMilliseconds / _totalDuration.inMilliseconds;
+    }
+
     return Row(
       mainAxisSize: MainAxisSize.min, 
       children: [
-        IconButton(icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), onPressed: () => _playAudio(chat['fileUrl'], id)),
-        if (samples.isNotEmpty) ChatWaveform(samples: samples, isMe: isMe) else const Text("Voice Note", style: TextStyle(fontStyle: FontStyle.italic))
+        IconButton(
+          icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), 
+          onPressed: () => _playAudio(chat['fileUrl'], id)
+        ),
+        const SizedBox(width: 5),
+        if (samples.isNotEmpty) 
+          ChatWaveform(samples: samples, isMe: isMe, progress: currentProgress) 
+        else 
+          const Text("Voice Note", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54))
       ]
     );
   }
 
   Widget _buildInputArea() {
     return Container(
-      padding: const EdgeInsets.all(8), 
+      padding: const EdgeInsets.all(8), color: Colors.transparent, 
       child: Column(
         children: [
           if (_isRecording) 
             Padding(
               padding: const EdgeInsets.only(bottom: 12), 
               child: Container(
-                padding: const EdgeInsets.all(8), 
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), 
+                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), 
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]), 
                 child: Row(
                   mainAxisSize: MainAxisSize.min, 
                   children: [
-                    const Icon(Icons.mic, color: Colors.red), 
-                    const SizedBox(width: 10), 
+                    const Icon(Icons.mic, color: Colors.red, size: 18), 
+                    const SizedBox(width: 15), 
                     RecorderVisualizer(controller: _recorderController), 
-                    const Text("Recording", style: TextStyle(color: Colors.red))
+                    const SizedBox(width: 15), 
+                    const Text("Recording", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))
                   ]
                 )
               )
             ),
-          
+            
           if (_replyMessage != null || _editingMessageId != null) 
             Container(
               margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10), 
@@ -557,7 +519,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
                 ]
               )
             ),
-          
+            
           Row(
             children: [
               Expanded(
@@ -565,15 +527,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)), 
                   child: Row(
                     children: [
-                      // 👇 TOMBOL PLUS KEMBALI NORMAL, BUKA MENU GAMBAR/DOKUMEN
                       IconButton(icon: const Icon(Icons.add, color: Colors.grey), onPressed: _showPickerOptions), 
-                      Expanded(
-                        child: TextField(
-                          controller: _etPesan, 
-                          maxLines: null,
-                          decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 5))
-                        )
-                      ), 
+                      Expanded(child: TextField(controller: _etPesan, maxLines: null, decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 10)))), 
                       IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _uploadImage)
                     ]
                   )
@@ -584,12 +539,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
                 onLongPressStart: (_) => _startRecording(), 
                 onLongPressEnd: (_) => _stopRecording(), 
                 child: CircleAvatar(
-                  backgroundColor: _isRecording ? Colors.red : const Color(0xFF075E54), 
-                  radius: 24,
-                  child: IconButton(
-                    icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white), 
-                    onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); }
-                  )
+                  radius: 24, backgroundColor: _isRecording ? Colors.red : const Color(0xFF075E54), 
+                  child: IconButton(icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white), onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); })
                 )
               )
             ]
@@ -600,6 +551,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   void _showSnack(String m) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))));
   }
 }

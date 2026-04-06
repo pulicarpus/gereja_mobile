@@ -146,12 +146,39 @@ class _MainActivityState extends State<MainActivity> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.church, size: 50, color: Colors.white),
-                    const SizedBox(height: 10),
+                    // 👇 SEKARANG JADI FOTO PROFIL USER 👇
+                    Container(
+                      padding: const EdgeInsets.all(3), // Border tipis putih
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: CircleAvatar(
+                        radius: 35,
+                        backgroundColor: Colors.indigo[100],
+                        // Ambil foto dari UserManager
+                        backgroundImage: user.userFotoUrl != null 
+                            ? CachedNetworkImageProvider(user.userFotoUrl!) 
+                            : null,
+                        child: user.userFotoUrl == null 
+                            ? const Icon(Icons.person, size: 40, color: Colors.indigo) 
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
                     Text(
-                      user.activeChurchName ?? "MENU UTAMA",
+                      user.userNama ?? "Jemaat", // Tampilkan Nama User
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white, 
+                        fontSize: 16, 
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    Text(
+                      user.activeChurchName ?? "GKII SILOAM",
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7), 
+                        fontSize: 11
+                      ),
                     ),
                   ],
                 ),

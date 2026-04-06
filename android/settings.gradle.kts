@@ -18,9 +18,9 @@ pluginManagement {
 
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
-    // 👇 Kita naikkan ke standar minimal yang diminta (8.6.0)
-    id("com.android.application") version "8.6.0" apply false 
-    // 👇 Kita gas ke Kotlin 2.1.0 sesuai saran log
+    // 👇 Ganti dari 8.6.0 ke 8.9.1 sesuai permintaan error nomor 1-6
+    id("com.android.application") version "8.9.1" apply false 
+    // 👇 Kotlin tetap di 2.1.0 (ini sudah sangat aman)
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false 
     id("com.google.gms.google-services") version "4.4.1" apply false
 }

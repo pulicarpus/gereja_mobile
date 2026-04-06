@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:convert';
+import 'dart:io';
 
 import 'user_manager.dart';
 
@@ -18,11 +21,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
   final _etPesan = TextEditingController();
+  final _picker = ImagePicker();
   
   late String _collectionPath;
   bool _isTyping = false;
+  bool _isUploading = false;
 
-  // Telegram / OneSignal Config (Sesuai punya Bos)
+  // --- API CONFIG (Sesuai Data Bos) ---
   final String teleBotToken = "8632837608:AAHzQBShTgNd31OEDLScM-tTQ3i6ImR4XbE";
   final String teleChatId = "-1003815632729";
   final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
@@ -31,60 +36,115 @@ class _ChatroomPageState extends State<ChatroomPage> {
   @override
   void initState() {
     super.initState();
-    _collectionPath = widget.filterKategorial == null 
-        ? "chats" 
-        : "chats_${widget.filterKategorial}";
-    
-    // Deteksi kalau user ngetik biar icon berubah
-    _etPesan.addListener(() {
-      setState(() {
-        _isTyping = _etPesan.text.trim().isNotEmpty;
-      });
-    });
+    _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
+    _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
   }
 
-  @override
-  void dispose() {
-    _etPesan.dispose();
-    super.dispose();
+  // ==== 1. JURUS CLOUDINARY (UPLOAD GAMBAR) ====
+  Future<void> _uploadImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (image == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      var request = http.MultipartRequest('POST', Uri.parse('https://api.cloudinary.com/v1_1/dw1ynjbod/image/upload'));
+      request.fields['upload_preset'] = 'ml_default'; // Pastikan preset ini 'unsigned' di setting Cloudinary bos
+      request.files.add(await http.MultipartFile.fromPath('file', image.path));
+
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+      var json = jsonDecode(responseData);
+
+      if (response.statusCode == 200) {
+        _sendToFirestore(
+          isi: "[Gambar]",
+          tipe: "image",
+          url: json['secure_url'],
+          name: "img.jpg",
+          cloudId: json['public_id'],
+        );
+      }
+    } catch (e) {
+      _showError("Gagal upload gambar: $e");
+    } finally {
+      setState(() => _isUploading = false);
+    }
   }
 
-  // ==== FITUR KIRIM PESAN TEXT ====
-  Future<void> _sendMessage(String pesan) async {
+  // ==== 2. JURUS TELEGRAM BOT (UPLOAD DOKUMEN) ====
+  Future<void> _uploadFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result == null) return;
+
+    File file = File(result.files.single.path!);
+    String fileName = result.files.single.name;
+    setState(() => _isUploading = true);
+
+    try {
+      // Step A: Send ke Telegram
+      var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendDocument'));
+      request.fields['chat_id'] = teleChatId;
+      request.files.add(await http.MultipartFile.fromPath('document', file.path));
+      
+      var res = await request.send();
+      var resData = await res.stream.bytesToString();
+      var jsonRes = jsonDecode(resData);
+
+      if (res.statusCode == 200) {
+        String fileId = jsonRes['result']['document']['file_id'];
+        
+        // Step B: Ambil Link Download via getFile
+        var getFileRes = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
+        var jsonPath = jsonDecode(getFileRes.body);
+        String filePath = jsonPath['result']['file_path'];
+        String finalUrl = "https://api.telegram.org/file/bot$teleBotToken/$filePath";
+
+        _sendToFirestore(isi: fileName, tipe: "file", url: finalUrl, name: fileName);
+      }
+    } catch (e) {
+      _showError("Gagal upload file: $e");
+    } finally {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  // ==== 3. SIMPAN KE FIRESTORE ====
+  Future<void> _sendToFirestore({
+    required String isi,
+    required String tipe,
+    String? url,
+    String? name,
+    String? cloudId,
+  }) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
-
-    _etPesan.clear();
 
     await _db.collection("churches").doc(churchId).collection(_collectionPath).add({
       "pengirimId": _auth.currentUser?.uid,
       "pengirimNama": UserManager().userNama,
       "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": pesan,
+      "pesan": isi,
       "timestamp": FieldValue.serverTimestamp(),
-      "tipe": "text",
-      "fileUrl": null,
-      "isReply": false, 
+      "tipe": tipe,
+      "fileUrl": url,
+      "fileName": name,
+      "cloudPublicId": cloudId,
+      "isReply": false,
     });
 
-    _kirimNotifikasi(pesan);
+    _kirimNotif(isi);
+    _etPesan.clear();
   }
 
-  // ==== NOTIFIKASI ONESIGNAL (REST API) ====
-  Future<void> _kirimNotifikasi(String pesan) async {
+  // ==== 4. NOTIFIKASI ONESIGNAL ====
+  Future<void> _kirimNotif(String pesan) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
-
-    String nama = UserManager().userNama ?? "Jemaat";
-    String label = widget.filterKategorial != null ? "[${widget.filterKategorial}] " : "";
-
     try {
       await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': 'Basic $osRestKey',
-        },
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Basic $osRestKey'},
         body: jsonEncode({
           "app_id": osAppId,
           "filters": [
@@ -92,140 +152,124 @@ class _ChatroomPageState extends State<ChatroomPage> {
             {"operator": "AND"},
             {"field": "tag", "key": "kategori_aktif", "relation": "=", "value": widget.filterKategorial?.replaceAll(" ", "_") ?? "Umum"}
           ],
-          "headings": {"en": "Chat $nama"},
-          "contents": {"en": "$label$pesan"}
+          "headings": {"en": "Chat dari ${UserManager().userNama}"},
+          "contents": {"en": pesan}
         }),
       );
-    } catch (e) {
-      debugPrint("Gagal kirim notif: $e");
-    }
+    } catch (_) {}
   }
 
-  // ==== ADMIN: HAPUS SEMUA CHAT ====
-  Future<void> _hapusSemuaChat() async {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return;
-
-    var snapshots = await _db.collection("churches").doc(churchId).collection(_collectionPath).get();
-    WriteBatch batch = _db.batch();
-    for (var doc in snapshots.docs) {
-      batch.delete(doc.reference);
-    }
-    await batch.commit();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Chat bersih!")));
-  }
+  void _showError(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   @override
   Widget build(BuildContext context) {
-    bool isAdmin = UserManager().isAdmin();
     String? churchId = UserManager().activeChurchId;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.filterKategorial == null ? "Ruang Chat Jemaat" : "Chat ${widget.filterKategorial}"),
+        title: Text(widget.filterKategorial ?? "Chat Jemaat"),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
-        actions: [
-          if (isAdmin)
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'clear') _hapusSemuaChat();
-                if (value == 'unmute') {
-                  // TODO: Panggil fungsi dialog unmute
-                }
-              },
-              itemBuilder: (BuildContext context) => [
-                const PopupMenuItem(value: 'unmute', child: Text('Kelola Unmute User')),
-                const PopupMenuItem(value: 'clear', child: Text('Hapus Semua Chat', style: TextStyle(color: Colors.red))),
-              ],
-            ),
-        ],
       ),
       body: Column(
         children: [
-          // ==== AREA LIST CHAT (REALTIME) ====
+          if (_isUploading) const LinearProgressIndicator(color: Colors.amber),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _db.collection("churches").doc(churchId).collection(_collectionPath)
-                         .orderBy("timestamp", descending: true) // Flutter butuh descending untuk chat list dari bawah
-                         .snapshots(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                
-                var docs = snapshot.data!.docs;
-                if (docs.isEmpty) return const Center(child: Text("Belum ada pesan. Sapa jemaat lain!"));
-
+                         .orderBy("timestamp", descending: true).snapshots(),
+              builder: (context, snap) {
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                var docs = snap.data!.docs;
                 return ListView.builder(
-                  reverse: true, // Biar chat baru ada di bawah (seperti WA)
+                  reverse: true,
                   itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    var chat = docs[index].data() as Map<String, dynamic>;
+                  itemBuilder: (context, i) {
+                    var chat = docs[i].data() as Map<String, dynamic>;
                     bool isMe = chat['pengirimId'] == _auth.currentUser?.uid;
-
-                    // UI Bubble Chat Sederhana
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isMe ? Colors.indigo[100] : Colors.grey[200],
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                            Text(chat['pesan'] ?? ""),
-                          ],
-                        ),
-                      ),
-                    );
+                    return _buildChatBubble(chat, isMe);
                   },
                 );
               },
             ),
           ),
+          _buildInputArea(),
+        ],
+      ),
+    );
+  }
 
-          // ==== AREA BAWAH (INPUT TEXT & TOMBOL) ====
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            color: Colors.white,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.attach_file, color: Colors.blueGrey),
-                  onPressed: () {
-                    // TODO: Panggil fungsi Image Picker / File Picker
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fitur lampiran segera hadir!")));
-                  },
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: _etPesan,
-                    decoration: InputDecoration(
-                      hintText: "Ketik pesan...",
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.indigo[900],
-                  child: IconButton(
-                    icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white),
-                    onPressed: () {
-                      if (_isTyping) {
-                        _sendMessage(_etPesan.text.trim());
-                      } else {
-                        // TODO: Jalankan fitur Voice Note
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fitur mic segera hadir!")));
-                      }
-                    },
-                  ),
-                ),
-              ],
+  Widget _buildChatBubble(Map<String, dynamic> chat, bool isMe) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: isMe ? Colors.indigo[100] : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2)]
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (!isMe) Text(chat['pengirimNama'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
+            
+            // Logika Tampilan Tipe Pesan
+            if (chat['tipe'] == 'image')
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(chat['fileUrl'], width: 200, height: 200, fit: BoxFit.cover),
+              )
+            else if (chat['tipe'] == 'file')
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.description, color: Colors.orange),
+                  const SizedBox(width: 5),
+                  Text(chat['fileName'] ?? "File", style: const TextStyle(decoration: TextDecoration.underline, color: Colors.blue)),
+                ],
+              )
+            else
+              Text(chat['pesan'] ?? ""),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputArea() {
+    return Container(
+      padding: const EdgeInsets.all(8),
+      color: Colors.white,
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline, color: Colors.indigo),
+            onPressed: () {
+              showModalBottomSheet(context: context, builder: (c) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ListTile(leading: const Icon(Icons.image), title: const Text("Kirim Gambar"), onTap: () { Navigator.pop(context); _uploadImage(); }),
+                  ListTile(leading: const Icon(Icons.file_present), title: const Text("Kirim Dokumen"), onTap: () { Navigator.pop(context); _uploadFile(); }),
+                ],
+              ));
+            },
+          ),
+          Expanded(
+            child: TextField(
+              controller: _etPesan,
+              decoration: InputDecoration(hintText: "Ketik pesan...", border: OutlineInputBorder(borderRadius: BorderRadius.circular(30))),
+            ),
+          ),
+          const SizedBox(width: 5),
+          CircleAvatar(
+            backgroundColor: Colors.indigo[900],
+            child: IconButton(
+              icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white),
+              onPressed: () {
+                if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text");
+              },
             ),
           ),
         ],

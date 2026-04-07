@@ -89,7 +89,6 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     instruksi += "CARI DI GOOGLE SEARCH jika data tidak tersedia di memori kamu. Berikan lirik yang paling akurat sesuai hasil pencarian. ";
 
     try {
-      // WAJIB pakai v1beta untuk fitur Search Grounding
       final url = Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_geminiApiKey');
 
       final response = await http.post(
@@ -101,29 +100,25 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
               "text": "Kamu adalah asisten database gereja. $instruksi HANYA balas dengan format baku 3 baris ini (DILARANG MINTA MAAF): \n[Judul Lagu]\n[Nama Penyanyi/Grup]\n[Isi Lirik Lengkap]"
             }]
           }],
-          // 👇 INI DIA JURUS RAHASIANYA: MENGHUBUNGKAN KE GOOGLE SEARCH 👇
           "tools": [
             {
-              "googleSearch": {} // Format tool search terbaru untuk v1beta
+              "googleSearch": {} 
             }
           ]
         }),
-      ).timeout(const Duration(seconds: 20)); // Waktu dilonggarkan karena proses browsing butuh waktu
+      ).timeout(const Duration(seconds: 20)); 
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         
-        // Ambil bagian teksnya
         String hasil = data['candidates'][0]['content']['parts'][0]['text'] ?? "";
         
         if (hasil.isNotEmpty) {
-          // Bersihkan sisa-sisa markdown bold (**) kalau Gemini iseng nambahin
           hasil = hasil.replaceAll('**', '').trim();
           List<String> lines = hasil.split('\n');
           lines.removeWhere((element) => element.trim().isEmpty);
 
           if (lines.length >= 3) {
-             // Cek apakah Gemini diam-diam minta maaf
             if (lines[0].toLowerCase().contains("maaf") || lines[0].toLowerCase().contains("tidak dapat")) {
                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lagu benar-benar tidak ada di internet bos!")));
             } else {
@@ -148,13 +143,78 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     }
   }
 
+  // 👇 FUNGSI BANTUAN UNTUK MENAMPILKAN ALERT DUPLIKAT 👇
+  void _showDuplicateAlert(String pesan) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 30),
+            SizedBox(width: 10),
+            Text("Duplikat Data", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+          ],
+        ),
+        content: Text(
+          "$pesan\n\nSilakan cari langsung di daftar buku nyanyian, tidak perlu ditambahkan lagi agar database tetap bersih dan tidak bentrok antar gereja.",
+          style: const TextStyle(fontSize: 15, height: 1.5),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Mengerti"),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _saveLagu() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
+    String judulBaru = _etJudul.text.trim();
+    String nomorBaru = _etNomor.text.trim();
+
+    // =======================================================================
+    // 👇 SATPAM ANTI-DUPLIKAT (HANYA BERLAKU SAAT TAMBAH LAGU BARU) 👇
+    // =======================================================================
+    if (widget.songId == null) {
+      try {
+        // 1. Cek Apakah Judul Sudah Ada
+        var cekJudul = await _db.collection("songs").where("judul", isEqualTo: judulBaru).limit(1).get();
+        if (cekJudul.docs.isNotEmpty) {
+          setState(() => _isLoading = false);
+          _showDuplicateAlert("Lagu dengan judul '$judulBaru' sudah pernah ditambahkan.");
+          return; // ⛔ STOP PROSES SIMPAN!
+        }
+
+        // 2. Cek Apakah Nomor NKI Sudah Ada (Jika Kategori = NKI)
+        if (nomorBaru.isNotEmpty && _selectedKategori == "NKI") {
+          var cekNomor = await _db.collection("songs")
+              .where("nomor", isEqualTo: nomorBaru)
+              .where("kategori", isEqualTo: "NKI")
+              .limit(1).get();
+          if (cekNomor.docs.isNotEmpty) {
+            setState(() => _isLoading = false);
+            _showDuplicateAlert("Buku NKI nomor '$nomorBaru' sudah pernah ditambahkan.");
+            return; // ⛔ STOP PROSES SIMPAN!
+          }
+        }
+      } catch (e) {
+        // Jika cek gagal karena koneksi, abaikan & lanjut simpan agar fungsi tetap berjalan
+        debugPrint("Gagal cek duplikat: $e");
+      }
+    }
+    // =======================================================================
+    // 👆 SATPAM SELESAI BERTUGAS 👆
+    // =======================================================================
+
     Map<String, dynamic> songData = {
-      "judul": _etJudul.text.trim(),
-      "nomor": _etNomor.text.trim(),
+      "judul": judulBaru,
+      "nomor": nomorBaru,
       "pencipta": _etPencipta.text.trim(),
       "lirik": _etLirik.text.trim(),
       "kategori": _selectedKategori,
@@ -188,7 +248,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
         : Form(
             key: _formKey,
             child: ListView(

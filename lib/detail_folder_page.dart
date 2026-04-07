@@ -8,6 +8,7 @@ import 'dart:convert';
 
 import 'user_manager.dart';
 import 'full_image_slider_page.dart'; // Kabel navigasi disambung!
+import 'secrets.dart'; // 👈 Tambah ini
 
 class GalleryImage {
   final String docId;
@@ -37,7 +38,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
   final _db = FirebaseFirestore.instance;
   final ImagePicker _picker = ImagePicker();
 
-  final String _botToken = "8632837608:AAHzQBShTgNd31OEDLScM-tTQ3i6ImR4XbE";
+  final String _botToken = teleBotTokenSecret;
   final String _chatId = "-1003815632729"; 
 
   List<GalleryImage> _imageList = [];

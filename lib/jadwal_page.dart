@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart'; 
+import 'package:http/http.dart' as http; // 👈 IMPORT KURIR HTTP
+import 'dart:convert'; // 👈 IMPORT KONVERTER
 
 import 'user_manager.dart'; 
 import 'add_edit_jadwal_page.dart';
 import 'susunan_acara_page.dart';
+import 'secrets.dart'; // 👈 IMPORT BRANKAS RAHASIA UNTUK KUNCI ONESIGNAL
 
 class JadwalPage extends StatefulWidget {
   final String? filterKategorial;
@@ -34,6 +37,32 @@ class _JadwalPageState extends State<JadwalPage> {
       return rawDate; 
     }
   }
+
+  // 👇 --- MANTRA ONESIGNAL: TEMBAK NOTIF PENGUMUMAN LANGSUNG --- 👇
+  Future<void> _sendPengumumanNotification(String isiPengumuman) async {
+    try {
+      Map<String, dynamic> payload = {
+        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", // ID OneSignal Bos
+        "included_segments": ["All"], // Tembak ke semua jemaat
+        "headings": {"en": "📢 Pengumuman Gereja!"},
+        "contents": {"en": isiPengumuman},
+        // Tidak pakai "send_after" karena kita mau notifnya masuk DETIK INI JUGA
+      };
+
+      await http.post(
+        Uri.parse("https://onesignal.com/api/v1/notifications"),
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Authorization": "Basic $osRestKeySecret" // Pakai kunci dari GitHub Secrets
+        },
+        body: jsonEncode(payload),
+      );
+      debugPrint("Notif Pengumuman sukses ditembak!");
+    } catch (e) {
+      debugPrint("Error kirim notif pengumuman: $e");
+    }
+  }
+  // 👆 ------------------------------------------------------------- 👆
 
   @override
   Widget build(BuildContext context) {
@@ -177,7 +206,6 @@ class _JadwalPageState extends State<JadwalPage> {
             ]
           ),
           child: ExpansionTile(
-            // --- SEBELUM DIPENCET: NAMA, WAKTU, TEMPAT ---
             title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.indigo)),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -205,13 +233,12 @@ class _JadwalPageState extends State<JadwalPage> {
             children: [
               const Divider(height: 1),
 
-              // --- PERMINTAAN BOS: FIRMAN TUHAN PINDAH KE ATAS SINI, FONT BOLD & BESAR ---
               if (data['deskripsi'] != null && data['deskripsi'].toString().trim().isNotEmpty) ...[
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16), // Padding atas diperbesar sedikit
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16), 
                   decoration: BoxDecoration(
-                    color: Colors.orange.shade50.withOpacity(0.5), // Background tipis untuk membedakan dengan pelayan
+                    color: Colors.orange.shade50.withOpacity(0.5), 
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,10 +254,10 @@ class _JadwalPageState extends State<JadwalPage> {
                       Text(
                         "${data['deskripsi']}", 
                         style: const TextStyle(
-                          fontSize: 18, // FONT LEBIH BESAR DARI PELAYAN
-                          fontWeight: FontWeight.w900, // FONT SUPER BOLD
+                          fontSize: 18, 
+                          fontWeight: FontWeight.w900, 
                           color: Colors.black87,
-                          height: 1.4 // Spasi antar baris agar nyaman dibaca
+                          height: 1.4 
                         )
                       ),
                     ],
@@ -238,9 +265,7 @@ class _JadwalPageState extends State<JadwalPage> {
                 ),
                 const Divider(height: 1, thickness: 1.5),
               ],
-              // --------------------------------------------------------------------------
 
-              // --- DAFTAR PELAYAN DI BAWAH FIRMAN TUHAN ---
               ...List.generate(visibleRows.length, (index) {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -257,7 +282,7 @@ class _JadwalPageState extends State<JadwalPage> {
                       Expanded(
                         child: Text(
                           visibleRows[index]['val'].toString().replaceAll(", ", "\n"), 
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87) // Font standar (lebih kecil dari Firman)
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87) 
                         )
                       ),
                     ],
@@ -265,7 +290,6 @@ class _JadwalPageState extends State<JadwalPage> {
                 );
               }),
               
-              // --- TOMBOL AKSI DI PALING BAWAH ---
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -325,11 +349,26 @@ class _JadwalPageState extends State<JadwalPage> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-            onPressed: () {
-              _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': controller.text});
+            // 👇 UBAH JADI ASYNC AGAR BISA KIRIM NOTIF 👇
+            onPressed: () async {
+              String teksBaru = controller.text.trim();
+              
+              // 1. Tutup dialognya dulu biar aplikasinya terasa cepat
               Navigator.pop(context);
+              
+              // 2. Simpan ke database
+              await _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': teksBaru});
+              
+              // 3. Panggil kurir notif kalau teksnya tidak kosong
+              if (teksBaru.isNotEmpty) {
+                await _sendPengumumanNotification(teksBaru);
+              }
+              
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pengumuman disimpan & Notif dikirim!"), backgroundColor: Colors.green));
+              }
             }, 
-            child: const Text("Simpan")
+            child: const Text("Simpan & Kirim Notif")
           ),
         ],
       ),

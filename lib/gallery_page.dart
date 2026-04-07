@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:convert';
+import 'secrets.dart'; // 👈 Tambah ini di paling atas
 
 import 'user_manager.dart';
 import 'detail_folder_page.dart'; // Kabel navigasi disambung!
@@ -25,7 +26,8 @@ class GalleryPage extends StatefulWidget {
 
 class _GalleryPageState extends State<GalleryPage> {
   final _db = FirebaseFirestore.instance;
-  final String _botToken = "8632837608:AAHzQBShTgNd31OEDLScM-tTQ3i6ImR4XbE"; 
+  // Ganti hardcode jadi variabel dari secrets.dart
+  final String _botToken = teleBotTokenSecret;
 
   List<GalleryFolder> _folderList = [];
   bool _isLoading = false;

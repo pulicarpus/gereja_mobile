@@ -34,6 +34,8 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        // 👇 Trik biar Dialognya nggak terlalu nempel ke pinggir layar tapi tetap lebar
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24), 
         title: Row(
           children: [
             Icon(
@@ -47,21 +49,26 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
             ),
           ],
         ),
-        content: TextField(
-          controller: controller,
-          maxLines: 10,
-          decoration: InputDecoration(
-            hintText: field == 'urutanAcara' 
-                ? "Ketik satu acara per baris...\nContoh:\nDoa Pembukaan\nPuji-pujian\nFirman Tuhan" 
-                : "Ketik satu lagu per baris...\nContoh:\nKJ 1 - Haleluya\nPKJ 2...",
-            hintStyle: TextStyle(color: Colors.grey.shade400),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15), 
-              borderSide: const BorderSide(color: Colors.indigo, width: 2)
+        // 👇 BUNGKUS DENGAN SIZEDBOX AGAR MELEBAR MAKSIMAL 👇
+        content: SizedBox(
+          width: double.maxFinite, 
+          child: TextField(
+            controller: controller,
+            maxLines: 15, // 👈 Baris diperbanyak jadi 15 biar makin lega ke bawah
+            keyboardType: TextInputType.multiline,
+            decoration: InputDecoration(
+              hintText: field == 'urutanAcara' 
+                  ? "Ketik satu acara per baris...\nContoh:\nDoa Pembukaan\nPuji-pujian\nFirman Tuhan" 
+                  : "Ketik satu lagu per baris...\nContoh:\nKJ 1 - Haleluya\nPKJ 2...",
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15), 
+                borderSide: const BorderSide(color: Colors.indigo, width: 2)
+              ),
+              filled: true,
+              fillColor: Colors.grey.shade50,
             ),
-            filled: true,
-            fillColor: Colors.grey.shade50,
           ),
         ),
         actionsPadding: const EdgeInsets.only(right: 16, bottom: 16),
@@ -74,7 +81,8 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.indigo, 
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
             onPressed: () async {
               String? churchId = _userManager.getChurchIdForCurrentView();

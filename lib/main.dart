@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:intl/date_symbol_data_local.dart'; // 👈 IMPORT KAMUS BAHASA TANGGAL
+import 'package:intl/date_symbol_data_local.dart';
 
 // Import file-file pendukung Bos
 import 'user_manager.dart';
@@ -19,12 +19,12 @@ import 'chatroom_page.dart';
 import 'ayat_data.dart';
 import 'keuangan_page.dart'; 
 import 'gallery_page.dart';
+import 'kategorial_page.dart'; // 👈 IMPORT HALAMAN BARU
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   
-  // 👇 NYALAKAN MESIN FORMAT TANGGAL INDONESIA DISINI 👇
   await initializeDateFormatting('id_ID', null);
   
   _initOneSignal();
@@ -214,8 +214,9 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const GalleryPage()));
                   }),
-                  _buildDrawerItem(Icons.front_hand, "Doa", () {
-                    // TODO: Halaman Pokok Doa
+                  // 👇 TOMBOL KATEGORIAL DI DRAWER 👇
+                  _buildDrawerItem(Icons.category, "Kategorial", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const KategorialPage()));
                   }),
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
@@ -367,6 +368,31 @@ class _MainActivityState extends State<MainActivity> {
                             ),
                           ),
                           const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  // 👇 TOMBOL PELAYANAN KATEGORIAL DI HALAMAN UTAMA 👇
+                  const SizedBox(height: 25),
+                  InkWell(
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (context) => const KategorialPage()));
+                    },
+                    borderRadius: BorderRadius.circular(15),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Colors.indigo, Color(0xFF1A237E)]),
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.groups, color: Colors.white),
+                          SizedBox(width: 12),
+                          Text("KATEGORIAL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
                         ],
                       ),
                     ),

@@ -19,6 +19,8 @@ class _KeuanganPageState extends State<KeuanganPage> {
   final _db = FirebaseFirestore.instance;
   
   late int _selectedYear;
+  late int _selectedDetailMonth; // 👈 VARIABEL BARU UNTUK DROPDOWN BULAN
+  
   List<int> _availableYears = [];
 
   bool _isLoading = false;
@@ -27,14 +29,16 @@ class _KeuanganPageState extends State<KeuanganPage> {
   
   List<int> _pemasukanBulanan = List.filled(12, 0);
   List<int> _pengeluaranBulanan = List.filled(12, 0);
-  List<int> _saldoBulanan = List.filled(12, 0); // 👈 VARIABEL BARU
+  List<int> _saldoBulanan = List.filled(12, 0); 
 
-  final List<String> _months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+  final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  final List<String> _shortMonths = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
 
   @override
   void initState() {
     super.initState();
     _selectedYear = DateTime.now().year;
+    _selectedDetailMonth = DateTime.now().month - 1; // Default ke bulan saat ini
     _setupYears();
     _loadDataForYear(_selectedYear);
   }
@@ -181,12 +185,12 @@ class _KeuanganPageState extends State<KeuanganPage> {
                 const Text("Grafik Bulanan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
                 SizedBox(height: 250, child: _buildBarChart()),
-                const SizedBox(height: 30),
+                const SizedBox(height: 35),
 
-                // 4. RINCIAN SALDO PER BULAN (FITUR BARU)
-                const Text("Rincian Saldo Per Bulan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                // 4. RINCIAN SALDO PER BULAN (SEKARANG PAKAI DROPDOWN)
+                const Text("Rincian Saldo Bulanan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 15),
-                _buildMonthlyDetailsList(),
+                _buildMonthlyDetailSection(), // 👈 FUNGSI BARU DIPANGGIL DI SINI
                 const SizedBox(height: 35),
 
                 // 5. TOMBOL NAVIGASI
@@ -254,48 +258,99 @@ class _KeuanganPageState extends State<KeuanganPage> {
     );
   }
 
-  Widget _buildMonthlyDetailsList() {
-    // Hanya tampilkan bulan yang sudah lewat atau ada transaksinya
-    int currentMonthIndex = _selectedYear == DateTime.now().year ? DateTime.now().month - 1 : 11;
-    
-    return Column(
-      children: List.generate(currentMonthIndex + 1, (index) {
-        int saldo = _saldoBulanan[index];
-        bool isPositive = saldo >= 0;
+  // 👇 FUNGSI BARU: KARTU RINCIAN DENGAN DROPDOWN BULAN 👇
+  Widget _buildMonthlyDetailSection() {
+    int saldo = _saldoBulanan[_selectedDetailMonth];
+    int masuk = _pemasukanBulanan[_selectedDetailMonth];
+    int keluar = _pengeluaranBulanan[_selectedDetailMonth];
+    bool isPositive = saldo >= 0;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(15),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
-          ),
-          child: Row(
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Baris Dropdown Bulan
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(_months[index], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    isPositive ? "+${formatRupiah(saldo)}" : formatRupiah(saldo),
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold, 
-                      color: isPositive ? Colors.green : Colors.red,
-                      fontSize: 15
-                    ),
+              const Text("Pilih Bulan:", style: TextStyle(color: Colors.grey, fontSize: 14)),
+              Container(
+                height: 35,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300)
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedDetailMonth,
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+                    items: List.generate(12, (index) {
+                      return DropdownMenuItem(
+                        value: index,
+                        child: Text(_months[index], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                      );
+                    }),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _selectedDetailMonth = val);
+                      }
+                    },
                   ),
-                  Text(
-                    "Masuk: ${formatRupiah(_pemasukanBulanan[index])}",
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  )
-                ],
-              )
+                ),
+              ),
             ],
           ),
-        );
-      }).reversed.toList(), // Tampilkan dari bulan terbaru
+          
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 15),
+            child: Divider(height: 1, thickness: 1),
+          ),
+          
+          // Rincian Angka
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Pemasukan", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              Text(formatRupiah(masuk), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 15)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Pengeluaran", style: TextStyle(fontSize: 14, color: Colors.grey)),
+              Text(formatRupiah(keluar), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 15)),
+            ],
+          ),
+          const SizedBox(height: 15),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isPositive ? Colors.green.shade50 : Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8)
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Saldo Bersih", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isPositive ? Colors.green.shade800 : Colors.red.shade800)),
+                Text(
+                  isPositive ? "+${formatRupiah(saldo)}" : formatRupiah(saldo),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isPositive ? Colors.green.shade800 : Colors.red.shade800),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -345,7 +400,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
           touchTooltipData: BarTouchTooltipData(
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
               return BarTooltipItem(
-                '${_months[group.x]}\n${rodIndex == 0 ? "Masuk" : "Keluar"}: ${formatRupiah(rod.toY.toInt())}',
+                '${_shortMonths[group.x]}\n${rodIndex == 0 ? "Masuk" : "Keluar"}: ${formatRupiah(rod.toY.toInt())}',
                 const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
               );
             },
@@ -353,7 +408,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         ),
         titlesData: FlTitlesData(
           show: true,
-          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => Padding(padding: const EdgeInsets.only(top: 8), child: Text(_months[val.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey))))),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => Padding(padding: const EdgeInsets.only(top: 8), child: Text(_shortMonths[val.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey))))),
           leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), 
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),

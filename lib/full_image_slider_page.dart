@@ -3,6 +3,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:convert';
+import 'secrets.dart'; // 👈 Tambah ini
 
 class FullImageSliderPage extends StatefulWidget {
   final List<String> images; 
@@ -109,7 +110,7 @@ class FullscreenTelegramImage extends StatefulWidget {
 }
 
 class _FullscreenTelegramImageState extends State<FullscreenTelegramImage> {
-  final String _botToken = "8632837608:AAHzQBShTgNd31OEDLScM-tTQ3i6ImR4XbE";
+  final String _botToken = teleBotTokenSecret;
   File? _localFile;
   bool _isError = false;
 

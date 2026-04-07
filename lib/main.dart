@@ -6,7 +6,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-// Import file-file pendukung Bos
+// Import file-file pendukung
 import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
@@ -19,7 +19,7 @@ import 'chatroom_page.dart';
 import 'ayat_data.dart';
 import 'keuangan_page.dart'; 
 import 'gallery_page.dart';
-import 'kategorial_page.dart'; // 👈 IMPORT HALAMAN BARU
+import 'kategorial_page.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -214,7 +214,7 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const GalleryPage()));
                   }),
-                  // 👇 TOMBOL KATEGORIAL DI DRAWER 👇
+                  // Tombol Kategorial di Drawer
                   _buildDrawerItem(Icons.category, "Kategorial", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KategorialPage()));
                   }),
@@ -373,30 +373,10 @@ class _MainActivityState extends State<MainActivity> {
                     ),
                   ),
                   
-                  // 👇 TOMBOL PELAYANAN KATEGORIAL DI HALAMAN UTAMA 👇
-                  const SizedBox(height: 25),
-                  InkWell(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const KategorialPage()));
-                    },
-                    borderRadius: BorderRadius.circular(15),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(colors: [Colors.indigo, Color(0xFF1A237E)]),
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                      ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.groups, color: Colors.white),
-                          SizedBox(width: 12),
-                          Text("KATEGORIAL", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1)),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 30),
+                  
+                  // TODO: Tempat untuk menampung widget Jemaat Berulang Tahun
+                  
                   const SizedBox(height: 50),
                 ],
               ),

@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/date_symbol_data_local.dart'; // 👈 IMPORT KAMUS BAHASA TANGGAL
 
 // Import file-file pendukung Bos
 import 'user_manager.dart';
@@ -16,11 +17,14 @@ import 'lagu_page.dart';
 import 'kelola_gereja_page.dart';
 import 'chatroom_page.dart'; 
 import 'ayat_data.dart';
-import 'keuangan_page.dart'; // 👈 IMPORT HALAMAN KEUANGAN SULTAN
+import 'keuangan_page.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // 👇 NYALAKAN MESIN FORMAT TANGGAL INDONESIA DISINI 👇
+  await initializeDateFormatting('id_ID', null);
   
   _initOneSignal();
   
@@ -29,7 +33,6 @@ void main() async {
 
 void _initOneSignal() {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-  // App ID OneSignal Bos
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 }
@@ -195,13 +198,9 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.calendar_month, "Jadwal", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const JadwalPage()));
                   }),
-                  
-                  // 👇 TOMBOL KEUANGAN SUDAH TERSAMBUNG BOS 👇
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
                   }),
-                  // 👆 -------------------------------------- 👆
-
                   _buildDrawerItem(Icons.chat, "Ruang Chat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatroomPage()));
                   }),

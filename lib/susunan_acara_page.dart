@@ -23,26 +23,67 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   void _showEditDialog(String field, List<String> currentData) {
     if (!_userManager.isAdmin()) return;
 
-    final controller = TextEditingController(text: currentData.join("\n"));
+    // Bersihkan teks "Belum diatur." jika mau diedit pertama kali
+    String initialText = currentData.length == 1 && currentData[0] == "Belum diatur." 
+        ? "" 
+        : currentData.join("\n");
+        
+    final controller = TextEditingController(text: initialText);
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Edit ${field == 'urutanAcara' ? 'Urutan Acara' : 'Daftar Lagu'}"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              field == 'urutanAcara' ? Icons.format_list_numbered : Icons.music_note, 
+              color: Colors.indigo
+            ),
+            const SizedBox(width: 10),
+            Text(
+              field == 'urutanAcara' ? 'Edit Urutan' : 'Edit Lagu', 
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+            ),
+          ],
+        ),
         content: TextField(
           controller: controller,
           maxLines: 10,
-          decoration: const InputDecoration(
-            hintText: "Gunakan baris baru untuk setiap poin...",
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            hintText: field == 'urutanAcara' 
+                ? "Ketik satu acara per baris...\nContoh:\nDoa Pembukaan\nPuji-pujian\nFirman Tuhan" 
+                : "Ketik satu lagu per baris...\nContoh:\nKJ 1 - Haleluya\nPKJ 2...",
+            hintStyle: TextStyle(color: Colors.grey.shade400),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(15), 
+              borderSide: const BorderSide(color: Colors.indigo, width: 2)
+            ),
+            filled: true,
+            fillColor: Colors.grey.shade50,
           ),
         ),
+        actionsPadding: const EdgeInsets.only(right: 16, bottom: 16),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Batal", style: TextStyle(color: Colors.grey))
+          ),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo, 
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+            ),
             onPressed: () async {
               String? churchId = _userManager.getChurchIdForCurrentView();
               List<String> newData = controller.text.split("\n").where((s) => s.trim().isNotEmpty).toList();
+
+              // Jika kosong setelah diedit, kembalikan ke default
+              if (newData.isEmpty) {
+                newData = ["Belum diatur."];
+              }
 
               await _db.collection("churches").doc(churchId)
                   .collection("jadwal").doc(widget.jadwalId).update({
@@ -51,7 +92,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
 
               if (mounted) Navigator.pop(context);
             },
-            child: const Text("Simpan"),
+            child: const Text("Simpan", style: TextStyle(fontWeight: FontWeight.bold)),
           )
         ],
       ),
@@ -65,32 +106,48 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA), // Latar abu-abu agar card putih menonjol
         appBar: AppBar(
-          title: Text(widget.namaKegiatan),
+          title: Text(widget.namaKegiatan, style: const TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.indigo[900],
+          foregroundColor: Colors.white,
+          elevation: 0,
           bottom: const TabBar(
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.orange, // Garis bawah warna orange
+            indicatorWeight: 4,
             tabs: [
-              Tab(icon: Icon(Icons.format_list_numbered), text: "Urutan Acara"),
-              Tab(icon: Icon(Icons.music_note), text: "Daftar Lagu"),
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [Icon(Icons.format_list_numbered), SizedBox(width: 8), Text("Acara")],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [Icon(Icons.music_note), SizedBox(width: 8), Text("Lagu")],
+                ),
+              ),
             ],
-            indicatorColor: Colors.white,
           ),
         ),
         body: StreamBuilder<DocumentSnapshot>(
           stream: _db.collection("churches").doc(churchId)
               .collection("jadwal").doc(widget.jadwalId).snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.indigo));
             
             var data = snapshot.data!.data() as Map<String, dynamic>?;
             
-            // Update variabel state agar FAB bisa baca data terbaru
             _currentUrutan = List<String>.from(data?['urutanAcara'] ?? ["Belum diatur."]);
             _currentLagu = List<String>.from(data?['daftarLagu'] ?? ["Belum diatur."]);
 
             return TabBarView(
               children: [
-                _buildListView(_currentUrutan),
-                _buildListView(_currentLagu),
+                _buildListView(_currentUrutan, Icons.event_note),
+                _buildListView(_currentLagu, Icons.queue_music),
               ],
             );
           },
@@ -98,6 +155,9 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
         floatingActionButton: _userManager.isAdmin() 
           ? Builder(
               builder: (context) => FloatingActionButton.extended(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                elevation: 4,
                 onPressed: () {
                   final index = DefaultTabController.of(context).index;
                   if (index == 0) {
@@ -106,7 +166,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                     _showEditDialog("daftarLagu", _currentLagu);
                   }
                 },
-                label: const Text("Edit Acara"),
+                label: const Text("Edit", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
                 icon: const Icon(Icons.edit),
               ),
             )
@@ -115,30 +175,75 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
     );
   }
 
-  Widget _buildListView(List<String> items) {
-    return ListView.separated(
-      padding: const EdgeInsets.all(20),
+  // WIDGET HELPER: Untuk merender daftar acara / lagu
+  Widget _buildListView(List<String> items, IconData emptyIcon) {
+    // --- SMART EMPTY STATE ---
+    if (items.length == 1 && items[0] == "Belum diatur.") {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(emptyIcon, size: 80, color: Colors.indigo.withOpacity(0.2)),
+            const SizedBox(height: 16),
+            Text(
+              "Belum Ada Data",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Admin belum menambahkan daftar ini.",
+              style: TextStyle(color: Colors.grey.shade500),
+            )
+          ],
+        ),
+      );
+    }
+
+    // --- DAFTAR KARTU MODERN ---
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 80), // Bottom padding agar tidak ketutup FAB
       itemCount: items.length,
-      separatorBuilder: (context, index) => const Divider(),
       itemBuilder: (context, index) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.indigo.shade50),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03), 
+                blurRadius: 8, 
+                offset: const Offset(0, 3)
+              )
+            ],
+          ),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // Lingkaran Angka Modern
               Container(
-                width: 28,
-                height: 28,
-                decoration: const BoxDecoration(color: Colors.indigo, shape: BoxShape.circle),
+                width: 35,
+                height: 35,
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50, 
+                  shape: BoxShape.circle
+                ),
                 child: Center(
-                  child: Text("${index + 1}", 
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    "${index + 1}", 
+                    style: TextStyle(color: Colors.indigo.shade800, fontSize: 14, fontWeight: FontWeight.bold)
+                  ),
                 ),
               ),
               const SizedBox(width: 15),
+              // Teks Acara / Lagu
               Expanded(
-                child: Text(items[index], 
-                  style: const TextStyle(fontSize: 16, height: 1.4)),
+                child: Text(
+                  items[index], 
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87, height: 1.4)
+                ),
               ),
             ],
           ),

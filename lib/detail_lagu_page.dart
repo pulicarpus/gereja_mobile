@@ -62,7 +62,7 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                 ]
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center, // Lirik biasanya rata tengah bos
+                crossAxisAlignment: CrossAxisAlignment.center, // Judul tetap rata tengah
                 children: [
                   // JUDUL & NOMOR
                   Text(
@@ -97,7 +97,7 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                       width: double.infinity,
                       child: Text(
                         lirik,
-                        textAlign: TextAlign.center, // Rata tengah biar kayak buku lagu sungguhan
+                        textAlign: TextAlign.left, // 👇 DIUBAH JADI RATA KIRI SULTAN
                         style: TextStyle(
                           fontSize: _fontSize,
                           height: 1.6, // Spasi baris agar tidak tumpang tindih

@@ -18,6 +18,7 @@ import 'kelola_gereja_page.dart';
 import 'chatroom_page.dart'; 
 import 'ayat_data.dart';
 import 'keuangan_page.dart'; 
+import 'gallery_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -211,7 +212,7 @@ class _MainActivityState extends State<MainActivity> {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const LaguPage()));
                   }),
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
-                    // TODO: Halaman Gallery
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const GalleryPage()));
                   }),
                   _buildDrawerItem(Icons.front_hand, "Doa", () {
                     // TODO: Halaman Pokok Doa

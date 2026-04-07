@@ -9,8 +9,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
-// import 'tambah_transaksi_page.dart'; // Buka komen ini jika file sudah dibuat
-// import 'tambah_perpuluhan_page.dart'; // Buka komen ini jika file sudah dibuat
+// 👇 KABEL NAVIGASI SUDAH TERSAMBUNG 👇
+import 'tambah_transaksi_page.dart'; 
+import 'tambah_perpuluhan_page.dart'; 
 
 // --- DATA CLASS TRANSAKSI GABUNGAN ---
 class TransaksiItem {
@@ -69,7 +70,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   void initState() {
     super.initState();
     DateTime now = DateTime.now();
-    _selectedMonth = now.month - 1; // 0-based
+    _selectedMonth = now.month - 1; 
     _selectedYear = now.year;
     
     _tahunArray = List.generate(now.year - 2020 + 1, (index) => now.year - index);
@@ -77,7 +78,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     _loadData();
   }
 
-  // --- LOGIKA QUERY SUPER & FILTER KETAT ---
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
@@ -96,7 +96,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     try {
       var churchRef = _db.collection("churches").doc(churchId);
 
-      // 1. Siapkan Query Transaksi
       var trxQuery = churchRef.collection("transaksi")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
           .where("tanggal", isLessThanOrEqualTo: endDate);
@@ -105,10 +104,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         trxQuery = trxQuery.where("jenis", isEqualTo: widget.tipeFilter);
       }
 
-      // 2. Eksekusi Query secara Paralel (Future.wait)
       List<Future<QuerySnapshot<Map<String, dynamic>>>> tasksToRun = [trxQuery.get()];
 
-      // Tarik juga data perpuluhan jika ini mode UMUM dan filternya Pemasukan
       bool fetchPerpuluhan = isModeUmum && (widget.tipeFilter == "Pemasukan" || widget.tipeFilter == null);
       if (fetchPerpuluhan) {
         var perpQuery = churchRef.collection("perpuluhan")
@@ -123,12 +120,11 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       int tempMasuk = 0;
       int tempKeluar = 0;
 
-      // --- PROSES HASIL TRANSAKSI ---
+      // PROSES TRANSAKSI
       for (var doc in results[0].docs) {
         var data = doc.data();
         String kat = (data['kategori'] as String?)?.trim() ?? "";
         
-        // Logika Filter Ketat (Anti-Bocor)
         if (isModeUmum) {
           if (kat.isNotEmpty && kat.toLowerCase() != "umum") continue;
         } else {
@@ -150,7 +146,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         else tempKeluar += trx.jumlah;
       }
 
-      // --- PROSES HASIL PERPULUHAN (Jika Ada) ---
+      // PROSES PERPULUHAN (Jika Ada)
       if (fetchPerpuluhan && results.length > 1) {
         for (var doc in results[1].docs) {
           var data = doc.data();
@@ -169,7 +165,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         }
       }
 
-      // Urutkan berdasarkan tanggal terbaru
       combinedList.sort((a, b) => b.tanggal.compareTo(a.tanggal));
 
       setState(() {
@@ -197,7 +192,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // --- MENU KLIK (Khusus Admin) ---
   void _showOptionsDialog(TransaksiItem trx) {
     showModalBottomSheet(
       context: context,
@@ -232,18 +226,29 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     );
   }
 
+  // 👇 NAVIGASI EDIT SUDAH DIBUKA & DATA KATEGORI DIKIRIM 👇
   void _navigateToEdit(TransaksiItem trx) {
-    // Arahkan ke halaman yang tepat berdasarkan "Sumber" tabelnya
     if (trx.sumber == "perpuluhan") {
-      /* Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage(
-        // perpuluhanEdit: konversi trx ke PerpuluhanEditData
-      ))).then((_) => _loadData()); */
-      _showSnack("Navigasi ke Edit Perpuluhan");
+      Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage(
+        perpuluhanEdit: PerpuluhanEditData(
+          id: trx.id, 
+          jumlah: trx.jumlah, 
+          namaJemaat: trx.keterangan.replaceAll("Perpuluhan: ", ""), // Bersihkan prefix
+          tanggal: trx.tanggal
+        )
+      ))).then((_) => _loadData());
     } else {
-      /* Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(
-        // transaksiEditId: trx.id
-      ))).then((_) => _loadData()); */
-      _showSnack("Navigasi ke Edit Transaksi");
+      Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(
+        transaksiEdit: TransaksiEditData(
+          id: trx.id, 
+          keterangan: trx.keterangan, 
+          jumlah: trx.jumlah, 
+          jenis: trx.jenis, 
+          tanggal: trx.tanggal,
+          kategori: trx.kategori, // Kategori dikirim agar tidak bocor
+        ), 
+        filterKategorial: widget.filterKategorial,
+      ))).then((_) => _loadData());
     }
   }
 
@@ -282,7 +287,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     }
   }
 
-  // --- EXPORT PDF ---
   Future<void> _exportToPdf() async {
     if (_transaksiList.isEmpty) return _showSnack("Data kosong");
     _showSnack("Membuat PDF...");
@@ -334,7 +338,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     OpenFilex.open(file.path);
   }
 
-  // --- EXPORT CSV ---
   Future<void> _exportToCsv() async {
     if (_transaksiList.isEmpty) return _showSnack("Data kosong");
     
@@ -351,7 +354,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     OpenFilex.open(file.path);
   }
 
-  // --- UI BUILDING ---
   @override
   Widget build(BuildContext context) {
     bool isAdmin = UserManager().isAdmin();
@@ -380,7 +382,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       ),
       body: Column(
         children: [
-          // SPINNER / DROPDOWN FILTER
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -407,7 +408,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
             ),
           ),
           
-          // KARTU REKAPITULASI
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -439,7 +439,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           ),
           const SizedBox(height: 10),
 
-          // LIST VIEW TRANSAKSI (Pengganti Adapter)
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
@@ -495,16 +494,15 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         ],
       ),
       
-      // FLOATING ACTION BUTTON (Khusus Admin)
+      // 👇 NAVIGASI TAMBAH TRANSAKSI DIBUKA 👇
       floatingActionButton: !isAdmin ? null : FloatingActionButton(
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
         onPressed: () {
-          // Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(
-          //   filterKategorial: widget.filterKategorial,
-          // ))).then((_) => _loadData());
-          _showSnack("Navigasi ke Tambah Transaksi");
+          Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(
+            filterKategorial: widget.filterKategorial,
+          ))).then((_) => _loadData());
         },
       ),
     );

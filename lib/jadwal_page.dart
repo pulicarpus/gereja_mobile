@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart'; 
+
 import 'user_manager.dart'; 
 import 'add_edit_jadwal_page.dart';
 import 'susunan_acara_page.dart';
@@ -24,6 +26,15 @@ class _JadwalPageState extends State<JadwalPage> {
     isAdmin = UserManager().isAdmin();
   }
 
+  String _formatTanggalSultan(String rawDate) {
+    try {
+      DateTime dt = DateFormat("yyyy-MM-dd HH:mm").parse(rawDate);
+      return DateFormat("EEEE, d MMMM yyyy • HH:mm", "id_ID").format(dt);
+    } catch (e) {
+      return rawDate; 
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (churchId == null) return const Scaffold(body: Center(child: Text("ID Gereja Kosong")));
@@ -31,17 +42,17 @@ class _JadwalPageState extends State<JadwalPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(widget.filterKategorial ?? "Jadwal Ibadah"),
+        title: Text(widget.filterKategorial ?? "Jadwal Ibadah", style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
-        elevation: 0.5,
+        elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('churches').doc(churchId).collection('jadwal')
             .orderBy('tanggal', descending: false).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator(color: Colors.indigo));
           }
           
           if (snapshot.hasError) {
@@ -68,9 +79,15 @@ class _JadwalPageState extends State<JadwalPage> {
                 const Padding(
                   padding: EdgeInsets.only(top: 50),
                   child: Center(
-                    child: Text(
-                      "Belum ada jadwal ibadah", 
-                      style: TextStyle(color: Colors.grey, fontSize: 16)
+                    child: Column(
+                      children: [
+                        Icon(Icons.event_busy, size: 60, color: Colors.grey),
+                        SizedBox(height: 10),
+                        Text(
+                          "Belum ada jadwal ibadah", 
+                          style: TextStyle(color: Colors.grey, fontSize: 16)
+                        ),
+                      ],
                     )
                   ),
                 )
@@ -83,7 +100,8 @@ class _JadwalPageState extends State<JadwalPage> {
       floatingActionButton: isAdmin ? FloatingActionButton(
         onPressed: () => _navigasiTambahEdit(null),
         backgroundColor: Colors.indigo,
-        child: const Icon(Icons.add, color: Colors.white),
+        elevation: 4,
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
       ) : null,
     );
   }
@@ -101,10 +119,10 @@ class _JadwalPageState extends State<JadwalPage> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: const Color(0xFFFFF9C4), 
-              borderRadius: BorderRadius.circular(12), 
+              borderRadius: BorderRadius.circular(15), 
               border: Border.all(color: Colors.orange.shade300, width: 1.5),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                BoxShadow(color: Colors.orange.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 5))
               ]
             ),
             child: Column(
@@ -114,11 +132,11 @@ class _JadwalPageState extends State<JadwalPage> {
                   children: [
                     const Icon(Icons.campaign, color: Colors.orange),
                     const SizedBox(width: 8),
-                    Text("Pengumuman", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[800])),
+                    Text("Pengumuman", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange[800], fontSize: 16)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(teks, style: const TextStyle(fontSize: 15)),
+                Text(teks, style: const TextStyle(fontSize: 14, height: 1.4)),
               ],
             ),
           ),
@@ -133,92 +151,151 @@ class _JadwalPageState extends State<JadwalPage> {
     final String namaKeg = data['namaKegiatan'] ?? "-";
     
     final List<Map<String, dynamic>> rows = [
-      {'label': 'W.L', 'val': pelayan['Worship Leader']},
-      {'label': 'Singer', 'val': pelayan['Singer']},
-      {'label': 'Musik', 'val': pelayan['Pemain Musik']},
-      {'label': 'Tamborin', 'val': pelayan['Pemain Tamborin'] ?? pelayan['Tamborin']}, 
-      {'label': 'Operator LCD', 'val': pelayan['Operator LCD']},
-      {'label': 'Kolektan', 'val': pelayan['Kolektan']},
-      {'label': 'Doa Syafaat', 'val': pelayan['Doa Syafaat']},
-      {'label': 'Penerima Tamu', 'val': pelayan['Penerima Tamu']},
+      {'label': 'W.L', 'val': pelayan['Worship Leader'], 'icon': Icons.mic_external_on},
+      {'label': 'Singer', 'val': pelayan['Singer'], 'icon': Icons.queue_music},
+      {'label': 'Musik', 'val': pelayan['Pemain Musik'], 'icon': Icons.piano},
+      {'label': 'Tamborin', 'val': pelayan['Pemain Tamborin'] ?? pelayan['Tamborin'], 'icon': Icons.celebration}, 
+      {'label': 'Operator LCD', 'val': pelayan['Operator LCD'], 'icon': Icons.desktop_mac},
+      {'label': 'Kolektan', 'val': pelayan['Kolektan'], 'icon': Icons.volunteer_activism},
+      {'label': 'Doa Syafaat', 'val': pelayan['Doa Syafaat'], 'icon': Icons.front_hand},
+      {'label': 'Penerima Tamu', 'val': pelayan['Penerima Tamu'], 'icon': Icons.waving_hand},
     ];
 
     final visibleRows = rows.where((r) => r['val'] != null && r['val'].toString().trim().isNotEmpty).toList();
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 15),
       child: InkWell(
         onLongPress: isAdmin ? () => _showEditDeleteDialog(doc.id, namaKeg) : null,
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white, 
-            borderRadius: BorderRadius.circular(12), 
-            border: Border.all(color: Colors.indigo.shade100),
+            borderRadius: BorderRadius.circular(15), 
+            border: Border.all(color: Colors.indigo.shade100, width: 1.5),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))
+              BoxShadow(color: Colors.indigo.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
             ]
           ),
           child: ExpansionTile(
-            title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            // --- SEBELUM DIPENCET: NAMA, WAKTU, TEMPAT ---
+            title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.indigo)),
             subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                "${data['waktu'] ?? '-'} \n📍 ${data['tempat'] ?? '-'}",
-                style: TextStyle(color: Colors.grey[700], height: 1.3),
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time_filled, size: 14, color: Colors.grey),
+                      const SizedBox(width: 6),
+                      Text(_formatTanggalSultan(data['waktu'] ?? '-'), style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
+                      const SizedBox(width: 6),
+                      Text(data['tempat'] ?? '-', style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ],
               ),
             ),
             children: [
               const Divider(height: 1),
+
+              // --- PERMINTAAN BOS: FIRMAN TUHAN PINDAH KE ATAS SINI, FONT BOLD & BESAR ---
+              if (data['deskripsi'] != null && data['deskripsi'].toString().trim().isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16), // Padding atas diperbesar sedikit
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50.withOpacity(0.5), // Background tipis untuk membedakan dengan pelayan
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.menu_book, size: 16, color: Colors.orange.shade800),
+                          const SizedBox(width: 8),
+                          Text("Firman Tuhan / Tema:", style: TextStyle(color: Colors.orange.shade800, fontSize: 13, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        "${data['deskripsi']}", 
+                        style: const TextStyle(
+                          fontSize: 18, // FONT LEBIH BESAR DARI PELAYAN
+                          fontWeight: FontWeight.w900, // FONT SUPER BOLD
+                          color: Colors.black87,
+                          height: 1.4 // Spasi antar baris agar nyaman dibaca
+                        )
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, thickness: 1.5),
+              ],
+              // --------------------------------------------------------------------------
+
+              // --- DAFTAR PELAYAN DI BAWAH FIRMAN TUHAN ---
               ...List.generate(visibleRows.length, (index) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   color: index % 2 == 0 ? Colors.white : Colors.indigo.shade50.withOpacity(0.3),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ==== PERBAIKAN DI SINI: Lebar untuk label diperbesar jadi 130 ====
+                      Icon(visibleRows[index]['icon'], size: 20, color: Colors.indigo.shade300),
+                      const SizedBox(width: 12),
                       SizedBox(
-                        width: 130, 
-                        child: Text(visibleRows[index]['label'], style: const TextStyle(color: Colors.grey))
+                        width: 100, 
+                        child: Text(visibleRows[index]['label'], style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500))
                       ),
                       Expanded(
                         child: Text(
                           visibleRows[index]['val'].toString().replaceAll(", ", "\n"), 
-                          style: const TextStyle(fontWeight: FontWeight.bold)
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87) // Font standar (lebih kecil dari Firman)
                         )
                       ),
                     ],
                   ),
                 );
               }),
+              
+              // --- TOMBOL AKSI DI PALING BAWAH ---
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    if (data['deskripsi'] != null && data['deskripsi'].toString().trim().isNotEmpty) ...[
-                       Text("Firman Tuhan:", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                       const SizedBox(height: 4),
-                       Text("${data['deskripsi']}", style: const TextStyle(fontStyle: FontStyle.italic)),
-                       const SizedBox(height: 16),
-                    ],
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () => _navigasiSusunan(doc.id, namaKeg),
-                          icon: const Icon(Icons.list_alt),
-                          label: const Text("Susunan Acara"),
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _navigasiSusunan(doc.id, namaKeg),
+                        icon: const Icon(Icons.list_alt),
+                        label: const Text("Susunan Acara", style: TextStyle(fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo, 
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                         ),
-                        if (isAdmin) 
-                          OutlinedButton.icon(
-                            onPressed: () => _navigasiTambahEdit(doc.id), 
-                            icon: const Icon(Icons.edit, color: Colors.orange),
-                            label: const Text("Edit", style: TextStyle(color: Colors.orange)),
-                          ),
-                      ],
-                    )
+                      ),
+                    ),
+                    if (isAdmin) ...[
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _navigasiTambahEdit(doc.id), 
+                        icon: const Icon(Icons.edit, color: Colors.orange),
+                        label: const Text("Edit", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          side: const BorderSide(color: Colors.orange, width: 1.5),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+                        ),
+                      ),
+                    ]
                   ],
                 ),
               ),

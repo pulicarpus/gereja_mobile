@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'user_manager.dart';
-// 👇 IMPORT KEDUA HALAMAN INI SEKARANG SUDAH AKTIF 👇
 import 'laporan_transaksi_page.dart';
 import 'laporan_perpuluhan_page.dart';
 
@@ -28,6 +27,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
   
   List<int> _pemasukanBulanan = List.filled(12, 0);
   List<int> _pengeluaranBulanan = List.filled(12, 0);
+  List<int> _saldoBulanan = List.filled(12, 0); // 👈 VARIABEL BARU
 
   final List<String> _months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
 
@@ -60,6 +60,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
     int tempPengeluaran = 0;
     List<int> tempPemBulanan = List.filled(12, 0);
     List<int> tempPengBulanan = List.filled(12, 0);
+    List<int> tempSaldoBulanan = List.filled(12, 0);
 
     try {
       var churchRef = _db.collection("churches").doc(churchId);
@@ -95,7 +96,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         }
       }
 
-      // 2. QUERY PERPULUHAN
+      // 2. QUERY PERPULUHAN (Jika Umum)
       if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
         var perpQuery = await churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDate)
@@ -115,16 +116,22 @@ class _KeuanganPageState extends State<KeuanganPage> {
         }
       }
 
+      // HITUNG SALDO PER BULAN
+      for (int i = 0; i < 12; i++) {
+        tempSaldoBulanan[i] = tempPemBulanan[i] - tempPengBulanan[i];
+      }
+
       if (mounted) {
         setState(() {
           _totalPemasukan = tempPemasukan;
           _totalPengeluaran = tempPengeluaran;
           _pemasukanBulanan = tempPemBulanan;
           _pengeluaranBulanan = tempPengBulanan;
+          _saldoBulanan = tempSaldoBulanan;
         });
       }
     } catch (e) {
-      print("Error mengambil data keuangan: $e");
+      debugPrint("Error mengambil data keuangan: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -134,39 +141,21 @@ class _KeuanganPageState extends State<KeuanganPage> {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
 
-  // 👇 FUNGSI NAVIGASI YANG SUDAH DIAKTIFKAN BOS 👇
   void _openLaporan(String tipe) {
-    Navigator.push(
-      context, 
-      MaterialPageRoute(
-        builder: (_) => LaporanTransaksiPage(
-          tipeFilter: tipe,
-          filterKategorial: widget.filterKategorial,
-        )
-      )
-    ).then((_) {
-      // Refresh data saat kembali ke halaman ini (jika ada data yang baru ditambah/dihapus)
-      _loadDataForYear(_selectedYear); 
-    });
+    Navigator.push(context, MaterialPageRoute(builder: (_) => LaporanTransaksiPage(tipeFilter: tipe, filterKategorial: widget.filterKategorial,))).then((_) => _loadDataForYear(_selectedYear));
   }
 
   void _openPerpuluhan() {
-    Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (_) => const LaporanPerpuluhanPage())
-    ).then((_) {
-      // Refresh data juga
-      _loadDataForYear(_selectedYear);
-    });
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const LaporanPerpuluhanPage())).then((_) => _loadDataForYear(_selectedYear));
   }
 
   @override
   Widget build(BuildContext context) {
     bool isKategorial = widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty;
-    int saldo = _totalPemasukan - _totalPengeluaran;
+    int saldoTotal = _totalPemasukan - _totalPengeluaran;
 
     return Scaffold(
-      backgroundColor: Colors.grey[50], // Background sedikit abu-abu agar card lebih menonjol
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
         title: Text(isKategorial ? "Keuangan ${widget.filterKategorial}" : "Laporan Keuangan Gereja", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         backgroundColor: const Color(0xFF075E54),
@@ -180,132 +169,162 @@ class _KeuanganPageState extends State<KeuanganPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // 1. SPINNER TAHUN (Dropdown)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Pilih Tahun:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300)
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _selectedYear,
-                          items: _availableYears.map((year) {
-                            return DropdownMenuItem(value: year, child: Text(year.toString(), style: const TextStyle(fontWeight: FontWeight.bold)));
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              setState(() => _selectedYear = val);
-                              _loadDataForYear(val);
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                // 1. FILTER TAHUN
+                _buildYearFilter(),
                 const SizedBox(height: 20),
 
-                // 2. KARTU SALDO & SUMMARY
-                Card(
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        const Text("Total Saldo", style: TextStyle(color: Colors.grey, fontSize: 14)),
-                        const SizedBox(height: 5),
-                        Text(formatRupiah(saldo), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue)),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 15),
-                          child: Divider(height: 1, thickness: 1),
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text("Pemasukan", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                const SizedBox(height: 4),
-                                Text(formatRupiah(_totalPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                const Text("Pengeluaran", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                const SizedBox(height: 4),
-                                Text(formatRupiah(_totalPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
-                          ],
-                        )
-                      ],
-                    ),
-                  ),
-                ),
+                // 2. KARTU SALDO UTAMA
+                _buildMainBalanceCard(saldoTotal),
                 const SizedBox(height: 30),
 
-                // 3. GRAFIK BATANG (Bar Chart)
+                // 3. GRAFIK BULANAN
                 const Text("Grafik Bulanan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                SizedBox(
-                  height: 250,
-                  child: _buildBarChart(),
-                ),
+                SizedBox(height: 250, child: _buildBarChart()),
+                const SizedBox(height: 30),
+
+                // 4. RINCIAN SALDO PER BULAN (FITUR BARU)
+                const Text("Rincian Saldo Per Bulan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 15),
+                _buildMonthlyDetailsList(),
                 const SizedBox(height: 35),
 
-                // 4. TOMBOL NAVIGASI
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.arrow_downward, color: Colors.green),
-                  label: const Text("Lihat Data Pemasukan", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15), 
-                    backgroundColor: Colors.green.shade50,
-                    elevation: 0,
-                    side: BorderSide(color: Colors.green.shade200),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                  ),
-                  onPressed: () => _openLaporan("Pemasukan"),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.arrow_upward, color: Colors.red),
-                  label: const Text("Lihat Data Pengeluaran", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 15), 
-                    backgroundColor: Colors.red.shade50,
-                    elevation: 0,
-                    side: BorderSide(color: Colors.red.shade200),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                  ),
-                  onPressed: () => _openLaporan("Pengeluaran"),
-                ),
-                const SizedBox(height: 12),
-                
-                if (!isKategorial)
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.volunteer_activism, color: Colors.purple),
-                    label: const Text("Laporan Perpuluhan", style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 15), 
-                      backgroundColor: Colors.purple.shade50,
-                      elevation: 0,
-                      side: BorderSide(color: Colors.purple.shade200),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                    ),
-                    onPressed: _openPerpuluhan,
-                  ),
+                // 5. TOMBOL NAVIGASI
+                _buildNavButtons(isKategorial),
+                const SizedBox(height: 40),
               ],
             ),
           ),
+    );
+  }
+
+  Widget _buildYearFilter() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text("Pilih Tahun:", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<int>(
+              value: _selectedYear,
+              items: _availableYears.map((year) => DropdownMenuItem(value: year, child: Text(year.toString(), style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
+              onChanged: (val) { if (val != null) { setState(() => _selectedYear = val); _loadDataForYear(val); } },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainBalanceCard(int saldoTotal) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text("Total Saldo Tahun Ini", style: TextStyle(color: Colors.grey, fontSize: 14)),
+            const SizedBox(height: 5),
+            Text(formatRupiah(saldoTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue)),
+            const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(height: 1, thickness: 1)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSummaryColumn("Pemasukan", _totalPemasukan, Colors.green),
+                _buildSummaryColumn("Pengeluaran", _totalPengeluaran, Colors.red, isEnd: true),
+              ],
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryColumn(String label, int amount, Color color, {bool isEnd = false}) {
+    return Column(
+      crossAxisAlignment: isEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+        const SizedBox(height: 4),
+        Text(formatRupiah(amount), style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16)),
+      ],
+    );
+  }
+
+  Widget _buildMonthlyDetailsList() {
+    // Hanya tampilkan bulan yang sudah lewat atau ada transaksinya
+    int currentMonthIndex = _selectedYear == DateTime.now().year ? DateTime.now().month - 1 : 11;
+    
+    return Column(
+      children: List.generate(currentMonthIndex + 1, (index) {
+        int saldo = _saldoBulanan[index];
+        bool isPositive = saldo >= 0;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(_months[index], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    isPositive ? "+${formatRupiah(saldo)}" : formatRupiah(saldo),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold, 
+                      color: isPositive ? Colors.green : Colors.red,
+                      fontSize: 15
+                    ),
+                  ),
+                  Text(
+                    "Masuk: ${formatRupiah(_pemasukanBulanan[index])}",
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  )
+                ],
+              )
+            ],
+          ),
+        );
+      }).reversed.toList(), // Tampilkan dari bulan terbaru
+    );
+  }
+
+  Widget _buildNavButtons(bool isKategorial) {
+    return Column(
+      children: [
+        _buildActionButton(Icons.arrow_downward, "Lihat Data Pemasukan", Colors.green, () => _openLaporan("Pemasukan")),
+        const SizedBox(height: 12),
+        _buildActionButton(Icons.arrow_upward, "Lihat Data Pengeluaran", Colors.red, () => _openLaporan("Pengeluaran")),
+        const SizedBox(height: 12),
+        if (!isKategorial)
+          _buildActionButton(Icons.volunteer_activism, "Laporan Perpuluhan", Colors.purple, _openPerpuluhan),
+      ],
+    );
+  }
+
+  Widget _buildActionButton(IconData icon, String label, Color color, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      icon: Icon(icon, color: color),
+      label: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
+      style: ElevatedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 15), 
+        backgroundColor: color.withOpacity(0.05),
+        elevation: 0,
+        side: BorderSide(color: color.withOpacity(0.2)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        minimumSize: const Size(double.infinity, 50)
+      ),
+      onPressed: onPressed,
     );
   }
 
@@ -324,14 +343,9 @@ class _KeuanganPageState extends State<KeuanganPage> {
         barTouchData: BarTouchData(
           enabled: true,
           touchTooltipData: BarTouchTooltipData(
-            tooltipPadding: const EdgeInsets.all(8),
-            tooltipMargin: 8,
             getTooltipItem: (group, groupIndex, rod, rodIndex) {
-              String month = _months[group.x];
-              String type = rodIndex == 0 ? "Masuk" : "Keluar";
-              String value = formatRupiah(rod.toY.toInt());
               return BarTooltipItem(
-                '$month\n$type: $value',
+                '${_months[group.x]}\n${rodIndex == 0 ? "Masuk" : "Keluar"}: ${formatRupiah(rod.toY.toInt())}',
                 const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
               );
             },
@@ -339,27 +353,12 @@ class _KeuanganPageState extends State<KeuanganPage> {
         ),
         titlesData: FlTitlesData(
           show: true,
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              getTitlesWidget: (double value, TitleMeta meta) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(_months[value.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                );
-              },
-            ),
-          ),
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (val, meta) => Padding(padding: const EdgeInsets.only(top: 8), child: Text(_months[val.toInt()], style: const TextStyle(fontSize: 10, color: Colors.grey))))),
           leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), 
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          horizontalInterval: maxVal / 4,
-          getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1),
-        ),
+        gridData: FlGridData(show: true, drawVerticalLine: false, horizontalInterval: maxVal / 4, getDrawingHorizontalLine: (val) => FlLine(color: Colors.grey.shade200, strokeWidth: 1)),
         borderData: FlBorderData(show: false),
         barGroups: List.generate(12, (i) {
           return BarChartGroupData(

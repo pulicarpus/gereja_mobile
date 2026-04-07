@@ -22,9 +22,9 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   final _etNama = TextEditingController();
   final _etWaktu = TextEditingController(); 
   final _etTempat = TextEditingController();
-  final _etDeskripsi = TextEditingController(); // Untuk Firman Tuhan
+  final _etDeskripsi = TextEditingController(); 
   
-  // Controller khusus Pelayan (Lengkap sesuai screenshot)
+  // Controller khusus Pelayan
   final _etWl = TextEditingController();
   final _etSinger = TextEditingController();
   final _etMusik = TextEditingController();
@@ -47,7 +47,6 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     }
   }
 
-  // ==== WAJIB ADA: Mencegah Memory Leak ====
   @override
   void dispose() {
     _etNama.dispose();
@@ -64,9 +63,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     _etPenerimaTamu.dispose();
     super.dispose();
   }
-  // ==========================================
 
-  // --- LOAD DATA JIKA MODE EDIT ---
   Future<void> _loadDataForEdit() async {
     setState(() => _isLoading = true);
     String? churchId = _userManager.getChurchIdForCurrentView();
@@ -79,19 +76,16 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       _etTempat.text = data['tempat'] ?? "";
       _etDeskripsi.text = data['deskripsi'] ?? "";
       
-      // Ambil Tanggal dari Firestore Timestamp
       if (data['tanggal'] != null) {
         _selectedDateTime = (data['tanggal'] as Timestamp).toDate();
         _etWaktu.text = DateFormat('yyyy-MM-dd HH:mm').format(_selectedDateTime);
       }
 
-      // Ambil Map Pelayan
       var p = data['pelayan'] as Map<String, dynamic>?;
       if (p != null) {
         _etWl.text = p['Worship Leader'] ?? "";
         _etSinger.text = p['Singer'] ?? "";
         _etMusik.text = p['Pemain Musik'] ?? "";
-        // Mendukung data lama ('Tamborin') atau data baru ('Pemain Tamborin')
         _etTamborin.text = p['Pemain Tamborin'] ?? p['Tamborin'] ?? "";
         _etLcd.text = p['Operator LCD'] ?? "";
         _etKolektan.text = p['Kolektan'] ?? "";
@@ -102,15 +96,26 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     setState(() => _isLoading = false);
   }
 
-  // --- FUNGSI PICKER TANGGAL & JAM ---
   Future<void> _pickDateTime() async {
-    FocusScope.of(context).unfocus(); // Sembunyikan keyboard
+    FocusScope.of(context).unfocus(); 
 
     DateTime? date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.indigo,
+              onPrimary: Colors.white,
+              onSurface: Colors.black87,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (date != null) {
@@ -118,6 +123,12 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       TimeOfDay? time = await showTimePicker(
         context: context,
         initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Colors.indigo)),
+            child: child!,
+          );
+        },
       );
 
       if (time != null) {
@@ -129,14 +140,12 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     }
   }
 
-  // --- FUNGSI SIMPAN KE FIRESTORE ---
   Future<void> _saveJadwal() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
     String? churchId = _userManager.getChurchIdForCurrentView();
 
-    // Mapping Data Pelayan dengan Key yang benar
     Map<String, String> pelayanMap = {
       "Worship Leader": _etWl.text.trim(),
       "Singer": _etSinger.text.trim(),
@@ -151,7 +160,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     Map<String, dynamic> jadwalData = {
       "namaKegiatan": _etNama.text.trim(),
       "waktu": _etWaktu.text.trim(), 
-      "deskripsi": _etDeskripsi.text.trim(), // Sekarang untuk Firman Tuhan
+      "deskripsi": _etDeskripsi.text.trim(), 
       "tempat": _etTempat.text.trim(),
       "pelayan": pelayanMap,
       "tanggal": Timestamp.fromDate(_selectedDateTime), 
@@ -170,12 +179,12 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal Berhasil Disimpan!")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal Berhasil Disimpan!"), backgroundColor: Colors.green));
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e"), backgroundColor: Colors.red));
       }
     } finally {
       if (mounted) {
@@ -187,103 +196,154 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA), // Background abu-abu muda biar form pop-up
       appBar: AppBar(
-        title: Text(_isEdit ? "Edit Jadwal" : "Tambah Jadwal"),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0.5,
-        actions: [
-          if (!_isLoading) 
-            IconButton(
-              onPressed: _saveJadwal, 
-              icon: const Icon(Icons.check, color: Colors.blue, size: 28)
-            )
-        ],
+        title: Text(_isEdit ? "Edit Jadwal" : "Tambah Jadwal", style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.indigo[900],
+        foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      backgroundColor: Colors.white, // Latar belakang disesuaikan screenshot
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
         : Form(
             key: _formKey,
             child: ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               children: [
-                _buildField(_etNama, "Nama Kegiatan", null, true),
-                const SizedBox(height: 15),
-                
-                // Field Waktu (Read Only, Klik untuk buka Picker)
-                TextFormField(
-                  controller: _etWaktu,
-                  readOnly: true,
-                  onTap: _pickDateTime,
-                  decoration: const InputDecoration(
-                    labelText: "Waktu (Cth: yyyy-MM-dd HH:mm)",
-                    border: OutlineInputBorder(),
+                // --- KARTU 1: INFO UTAMA ---
+                _buildSectionHeader("Informasi Utama", Icons.info_outline),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))]
                   ),
-                  validator: (v) => v!.isEmpty ? "Waktu wajib diisi" : null,
+                  child: Column(
+                    children: [
+                      _buildField(_etNama, "Nama Kegiatan", Icons.event, true),
+                      const SizedBox(height: 15),
+                      
+                      TextFormField(
+                        controller: _etWaktu,
+                        readOnly: true,
+                        onTap: _pickDateTime,
+                        decoration: InputDecoration(
+                          labelText: "Waktu Pelaksanaan",
+                          prefixIcon: Icon(Icons.access_time_filled, color: Colors.indigo.shade300),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.indigo.shade100)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.indigo.shade100)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.indigo, width: 2)),
+                        ),
+                        validator: (v) => v!.isEmpty ? "Waktu wajib diisi" : null,
+                      ),
+                      
+                      const SizedBox(height: 15),
+                      _buildField(_etTempat, "Tempat", Icons.location_on, false),
+                      const SizedBox(height: 15),
+                      _buildField(_etDeskripsi, "Firman Tuhan", Icons.menu_book, false, isMultiline: true),
+                    ],
+                  ),
                 ),
                 
-                const SizedBox(height: 15),
-                _buildField(_etTempat, "Tempat", null, false),
-                const SizedBox(height: 15),
-                
-                // Ganti label menjadi Deskripsi / Firman Tuhan (Multiline)
-                _buildField(_etDeskripsi, "Deskripsi / Firman Tuhan", null, false, isMultiline: true),
-                
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Text("Pelayan Ibadah", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                const SizedBox(height: 25),
+
+                // --- KARTU 2: DAFTAR PELAYAN ---
+                _buildSectionHeader("Petugas Pelayanan", Icons.group),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))]
+                  ),
+                  child: Column(
+                    children: [
+                      _buildField(_etWl, "Worship Leader (WL)", Icons.mic_external_on, false),
+                      const SizedBox(height: 12),
+                      _buildField(_etSinger, "Singer (Pisahkan dengan koma)", Icons.queue_music, false, isMultiline: true),
+                      const SizedBox(height: 12),
+                      _buildField(_etMusik, "Pemain Musik", Icons.piano, false, isMultiline: true),
+                      const SizedBox(height: 12),
+                      _buildField(_etTamborin, "Tamborin", Icons.celebration, false, isMultiline: true),
+                      const SizedBox(height: 12),
+                      _buildField(_etLcd, "Operator LCD", Icons.desktop_mac, false),
+                      const SizedBox(height: 12),
+                      _buildField(_etKolektan, "Kolektan", Icons.volunteer_activism, false, isMultiline: true),
+                      const SizedBox(height: 12),
+                      _buildField(_etDoaSyafaat, "Doa Syafaat", Icons.front_hand, false, isMultiline: true),
+                      const SizedBox(height: 12),
+                      _buildField(_etPenerimaTamu, "Penerima Tamu", Icons.waving_hand, false, isMultiline: true),
+                    ],
+                  ),
                 ),
 
-                _buildField(_etWl, "Worship Leader (WL)", null, false),
-                const SizedBox(height: 10),
-                _buildField(_etSinger, "Singer", null, false, isMultiline: true),
-                const SizedBox(height: 10),
-                _buildField(_etMusik, "Pemain Musik", null, false, isMultiline: true),
-                const SizedBox(height: 10),
-                _buildField(_etTamborin, "Pemain Tamborin", null, false, isMultiline: true),
-                const SizedBox(height: 10),
-                _buildField(_etLcd, "Operator LCD", null, false),
-                const SizedBox(height: 10),
-                _buildField(_etKolektan, "Kolektan", null, false, isMultiline: true),
-                const SizedBox(height: 10),
-                _buildField(_etDoaSyafaat, "Doa Syafaat", null, false, isMultiline: true),
-                const SizedBox(height: 10),
-                _buildField(_etPenerimaTamu, "Penerima Tamu", null, false, isMultiline: true),
-
-                const SizedBox(height: 30),
+                const SizedBox(height: 35),
                 
-                // Tombol biru "Simpan Jadwal" di bawah sesuai screenshot
-                ElevatedButton(
+                // --- TOMBOL SIMPAN SULTAN ---
+                ElevatedButton.icon(
                   onPressed: _saveJadwal,
+                  icon: const Icon(Icons.save, size: 24),
+                  label: const Text("Simpan Jadwal", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue[600],
+                    backgroundColor: Colors.indigo,
                     foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 50),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 5,
+                    shadowColor: Colors.indigo.withOpacity(0.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
                   ),
-                  child: const Text("Simpan Jadwal", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                 ),
-                const SizedBox(height: 20), 
+                const SizedBox(height: 30), 
               ],
             ),
           ),
     );
   }
 
-  // FUNGSI HELPER: isMultiline = true membuat user bisa tekan "Enter" untuk baris baru
-  Widget _buildField(TextEditingController controller, String label, IconData? icon, bool mandatory, {bool isMultiline = false}) {
+  // WIDGET HELPER: Header Bagian
+  Widget _buildSectionHeader(String title, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.indigo, size: 22),
+          const SizedBox(width: 8),
+          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+        ],
+      ),
+    );
+  }
+
+  // WIDGET HELPER: Input Field Modern
+  Widget _buildField(TextEditingController controller, String label, IconData icon, bool mandatory, {bool isMultiline = false}) {
     return TextFormField(
       controller: controller,
-      // Jika isMultiline true, maxLines null agar bisa melar ke bawah. Jika false, maxLines 1.
       maxLines: isMultiline ? null : 1, 
+      minLines: isMultiline ? 2 : 1, // Jika multiline, otomatis agak tinggi
       keyboardType: isMultiline ? TextInputType.multiline : TextInputType.text,
       textInputAction: isMultiline ? TextInputAction.newline : TextInputAction.next,
       textCapitalization: TextCapitalization.words, 
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: icon != null ? Icon(icon) : null, // Icon dihilangkan sesuai screenshot, kecuali di-pass
-        border: const OutlineInputBorder(), // Garis kotak standar
+        labelStyle: TextStyle(color: Colors.grey.shade600),
+        prefixIcon: Icon(icon, color: Colors.indigo.shade300), 
+        filled: true,
+        fillColor: Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), 
+          borderSide: BorderSide(color: Colors.indigo.shade100)
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), 
+          borderSide: BorderSide(color: Colors.indigo.shade100)
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12), 
+          borderSide: const BorderSide(color: Colors.indigo, width: 2)
+        ),
       ),
       validator: (v) => (mandatory && v!.isEmpty) ? "$label tidak boleh kosong" : null,
     );

@@ -112,7 +112,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // 2. MODAL PENCARIAN BUKU LAGU
+  // 2. MODAL PENCARIAN BUKU LAGU (SUDAH BISA CARI ANGKA NKI)
   // =========================================================================
   void _showSongSearchModal(TextEditingController parentController) {
     showModalBottomSheet(
@@ -141,7 +141,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                     child: TextField(
                       onChanged: (val) => setModalState(() => searchQuery = val.toLowerCase()),
                       decoration: InputDecoration(
-                        hintText: "Cari judul lagu...",
+                        hintText: "Cari judul atau nomor lagu...", // Hint diubah
                         prefixIcon: const Icon(Icons.search),
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
@@ -157,29 +157,38 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                         var docs = snapshot.data!.docs.where((doc) {
                           var data = doc.data() as Map<String, dynamic>;
                           String judul = data['judul']?.toString().toLowerCase() ?? "";
-                          return judul.contains(searchQuery);
+                          String nomor = data['nomor']?.toString().toLowerCase() ?? ""; 
+                          
+                          // 👇 LOGIKA BARU: Cari berdasarkan Judul ATAU Nomor 👇
+                          return judul.contains(searchQuery) || nomor.contains(searchQuery);
                         }).toList();
 
                         return ListView.builder(
                           itemCount: docs.length,
                           itemBuilder: (context, index) {
                             var data = docs[index].data() as Map<String, dynamic>;
+                            String nomorStr = data['nomor']?.toString() ?? "";
+                            // Jika ada nomor, tampilkan di list (misal: "12. Iring Maha Tuhan")
+                            String displayTitle = (nomorStr.isNotEmpty) ? "$nomorStr. ${data['judul']}" : data['judul'] ?? "Tanpa Judul";
+
                             return ListTile(
                               leading: const CircleAvatar(backgroundColor: Colors.indigo, child: Icon(Icons.music_note, color: Colors.white, size: 20)),
-                              title: Text(data['judul'] ?? "Tanpa Judul", style: const TextStyle(fontWeight: FontWeight.bold)),
+                              title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(data['kategori'] ?? "NKI"),
                               onTap: () {
                                 showDialog(
                                   context: context,
                                   builder: (c) => AlertDialog(
                                     title: const Text("Tambah Lagu?"),
-                                    content: Text("Tambahkan '${data['judul']}' ke daftar ibadah?"),
+                                    content: Text("Tambahkan '$displayTitle' ke daftar ibadah?"),
                                     actions: [
                                       TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
                                         onPressed: () {
                                           String currentText = parentController.text.trim();
+                                          // PENTING: Yang dimasukkan ke text box tetap MURNI data['judul'] 
+                                          // supaya tidak error saat ditarik fitur "Lihat Lirik"
                                           if (currentText.isNotEmpty) {
                                             parentController.text = "$currentText\n${data['judul']}";
                                           } else {
@@ -244,8 +253,8 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
 
             return TabBarView(
               children: [
-                _buildListView(_currentUrutan, Icons.event_note), // Tab 1: Acara
-                _buildSongList(_currentLagu),                     // Tab 2: Lagu (Vertikal & Klik)
+                _buildListView(_currentUrutan, Icons.event_note),
+                _buildSongList(_currentLagu),
               ],
             );
           },
@@ -314,7 +323,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // 5. WIDGET HELPER: DAFTAR LAGU VERTIKAL (BISA DIKLIK)
+  // 5. WIDGET HELPER: DAFTAR LAGU VERTIKAL
   // =========================================================================
   Widget _buildSongList(List<String> items) {
     if (items.length == 1 && items[0] == "Belum diatur.") {
@@ -348,7 +357,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(15),
-              onTap: () => _openFullScreenLyrics(items[index]), // KLIK BUKA FULL SCREEN
+              onTap: () => _openFullScreenLyrics(items[index]), 
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                 child: Row(
@@ -375,7 +384,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // 6. FITUR FULL SCREEN LIRIK + CUBIT ZOOM (INTERACTIVE VIEWER)
+  // 6. FITUR FULL SCREEN LIRIK (RATA KIRI & CUBIT ZOOM)
   // =========================================================================
   void _openFullScreenLyrics(String judulLaguTerketik) {
     Navigator.push(context, MaterialPageRoute(builder: (context) {
@@ -414,11 +423,10 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(24),
-              // 👇 FITUR SULTAN: CUBIT UNTUK ZOOM (Pinch-to-Zoom) 👇
               child: InteractiveViewer(
                 clipBehavior: Clip.none,
-                minScale: 1.0,  // Batas minimal zoom (ukuran asli)
-                maxScale: 4.0,  // Batas maksimal zoom (4x lipat besarnya)
+                minScale: 1.0,  
+                maxScale: 4.0,  
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(20),
@@ -428,7 +436,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center, // <-- Judul tetap di tengah
                     children: [
                       Text(judulLaguTerketik, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
                       const SizedBox(height: 8),
@@ -438,7 +446,18 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                         child: Text(data['kategori'] ?? "Pujian", style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                       const Divider(height: 40, thickness: 1.5, color: Color(0xFFE8EAF6)),
-                      Text(lirikLagu, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, height: 1.8, color: Colors.black87)),
+                      
+                      // 👇 LIRIK RATA KIRI SULTAN 👇
+                      SizedBox(
+                        width: double.infinity, // Paksa melebar
+                        child: Text(
+                          lirikLagu, 
+                          textAlign: TextAlign.left, // <-- Ini yang bikin lirik rata kiri
+                          style: const TextStyle(fontSize: 18, height: 1.8, color: Colors.black87)
+                        ),
+                      ),
+                      // 👆 ---------------------- 👆
+                      
                       const SizedBox(height: 20),
                     ],
                   ),

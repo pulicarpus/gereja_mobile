@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http; // 👈 IMPORT KURIR HTTP
+import 'dart:convert'; // 👈 IMPORT KONVERTER DATA
+
 import 'user_manager.dart';
+import 'secrets.dart'; // 👈 IMPORT BRANKAS RAHASIA BOS
 
 class AddEditJadwalPage extends StatefulWidget {
   final String? jadwalId;
-  final String? filterKategorial; // null = Umum, isi = Kategorial
+  final String? filterKategorial;
 
   const AddEditJadwalPage({super.key, this.jadwalId, this.filterKategorial});
 
@@ -18,13 +22,11 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final UserManager _userManager = UserManager();
 
-  // Controller untuk input teks utama
   final _etNama = TextEditingController();
   final _etWaktu = TextEditingController(); 
   final _etTempat = TextEditingController();
   final _etDeskripsi = TextEditingController(); 
   
-  // Controller khusus Pelayan
   final _etWl = TextEditingController();
   final _etSinger = TextEditingController();
   final _etMusik = TextEditingController();
@@ -106,13 +108,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       lastDate: DateTime(2100),
       builder: (context, child) {
         return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Colors.indigo,
-              onPrimary: Colors.white,
-              onSurface: Colors.black87,
-            ),
-          ),
+          data: Theme.of(context).copyWith(colorScheme: const ColorScheme.light(primary: Colors.indigo)),
           child: child!,
         );
       },
@@ -139,6 +135,48 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       }
     }
   }
+
+  // 👇 --- MANTRA SAKTI: FUNGSI PENJADWAL ALARM ONESIGNAL --- 👇
+  Future<void> _scheduleNotification(String namaKeg, String tempat, DateTime waktuIbadah) async {
+    try {
+      // 1. Kurangi waktu ibadah dengan 30 menit
+      DateTime waktuNotif = waktuIbadah.subtract(const Duration(minutes: 30));
+
+      // 2. Kalau jadwalnya untuk masa lalu (misal ngedit jadwal lama), batalkan alarm
+      if (waktuNotif.isBefore(DateTime.now())) return;
+
+      // 3. Format waktu standar internasional (UTC) yang dibaca server OneSignal
+      String sendAfter = "${DateFormat('yyyy-MM-dd HH:mm:ss').format(waktuNotif.toUtc())} UTC";
+
+      // 4. Bungkus "Surat Perintah" ke dalam bentuk JSON
+      Map<String, dynamic> payload = {
+        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", // ID OneSignal Bos
+        "included_segments": ["All"], // Kirim ke semua jemaat
+        "headings": {"en": "⏰ Pengingat Ibadah!"},
+        "contents": {"en": "$namaKeg akan dimulai 30 menit lagi di $tempat. Mari bersiap-siap!"},
+        "send_after": sendAfter, // Eksekusi pada waktu yang kita hitung tadi
+      };
+
+      // 5. Kirim ke Server OneSignal pakai kurir HTTP + Kunci Rahasia
+      final response = await http.post(
+        Uri.parse("https://onesignal.com/api/v1/notifications"),
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Authorization": "Basic $osRestKeySecret" // Diambil dari lib/secrets.dart
+        },
+        body: jsonEncode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint("Berhasil setel alarm OneSignal: $sendAfter");
+      } else {
+        debugPrint("Gagal setel alarm OneSignal: ${response.body}");
+      }
+    } catch (e) {
+      debugPrint("Error jaringan saat setel alarm: $e");
+    }
+  }
+  // 👆 -------------------------------------------------------- 👆
 
   Future<void> _saveJadwal() async {
     if (!_formKey.currentState!.validate()) return;
@@ -178,6 +216,9 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         await colRef.add(jadwalData);
       }
 
+      // 👇 PANGGIL MANTRA SAKTI ONESIGNAL SETELAH DATA TERSIMPAN 👇
+      await _scheduleNotification(_etNama.text.trim(), _etTempat.text.trim(), _selectedDateTime);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal Berhasil Disimpan!"), backgroundColor: Colors.green));
         Navigator.pop(context);
@@ -196,7 +237,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // Background abu-abu muda biar form pop-up
+      backgroundColor: const Color(0xFFF5F7FA), 
       appBar: AppBar(
         title: Text(_isEdit ? "Edit Jadwal" : "Tambah Jadwal", style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900],
@@ -210,7 +251,6 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // --- KARTU 1: INFO UTAMA ---
                 _buildSectionHeader("Informasi Utama", Icons.info_outline),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -243,14 +283,13 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
                       const SizedBox(height: 15),
                       _buildField(_etTempat, "Tempat", Icons.location_on, false),
                       const SizedBox(height: 15),
-                      _buildField(_etDeskripsi, "Firman Tuhan", Icons.menu_book, false, isMultiline: true),
+                      _buildField(_etDeskripsi, "Firman Tuhan / Tema", Icons.menu_book, false, isMultiline: true),
                     ],
                   ),
                 ),
                 
                 const SizedBox(height: 25),
 
-                // --- KARTU 2: DAFTAR PELAYAN ---
                 _buildSectionHeader("Petugas Pelayanan", Icons.group),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -267,7 +306,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
                       const SizedBox(height: 12),
                       _buildField(_etMusik, "Pemain Musik", Icons.piano, false, isMultiline: true),
                       const SizedBox(height: 12),
-                      _buildField(_etTamborin, "Tamborin", Icons.celebration, false, isMultiline: true),
+                      _buildField(_etTamborin, "Pemain Tamborin", Icons.celebration, false, isMultiline: true),
                       const SizedBox(height: 12),
                       _buildField(_etLcd, "Operator LCD", Icons.desktop_mac, false),
                       const SizedBox(height: 12),
@@ -282,7 +321,6 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
 
                 const SizedBox(height: 35),
                 
-                // --- TOMBOL SIMPAN SULTAN ---
                 ElevatedButton.icon(
                   onPressed: _saveJadwal,
                   icon: const Icon(Icons.save, size: 24),
@@ -303,7 +341,6 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     );
   }
 
-  // WIDGET HELPER: Header Bagian
   Widget _buildSectionHeader(String title, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, bottom: 12),
@@ -317,12 +354,11 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     );
   }
 
-  // WIDGET HELPER: Input Field Modern
   Widget _buildField(TextEditingController controller, String label, IconData icon, bool mandatory, {bool isMultiline = false}) {
     return TextFormField(
       controller: controller,
       maxLines: isMultiline ? null : 1, 
-      minLines: isMultiline ? 2 : 1, // Jika multiline, otomatis agak tinggi
+      minLines: isMultiline ? 2 : 1, 
       keyboardType: isMultiline ? TextInputType.multiline : TextInputType.text,
       textInputAction: isMultiline ? TextInputAction.newline : TextInputAction.next,
       textCapitalization: TextCapitalization.words, 

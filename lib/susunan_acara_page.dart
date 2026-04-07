@@ -20,7 +20,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   List<String> _currentLagu = ["Belum diatur."];
 
   // =========================================================================
-  // 1. DIALOG EDIT (SEKARANG DILENGKAPI TOMBOL CARI BUKU LAGU)
+  // 1. DIALOG EDIT (DENGAN TOMBOL CARI BUKU LAGU)
   // =========================================================================
   void _showEditDialog(String field, List<String> currentData) {
     if (!_userManager.isAdmin()) return;
@@ -48,7 +48,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 👇 TOMBOL CARI BUKU LAGU (HANYA MUNCUL SAAT EDIT LAGU) 👇
               if (field == 'daftarLagu') ...[
                 ElevatedButton.icon(
                   onPressed: () => _showSongSearchModal(controller),
@@ -63,7 +62,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                 ),
                 const SizedBox(height: 15),
               ],
-              // 👆 -------------------------------------------------- 👆
 
               Expanded(
                 child: TextField(
@@ -114,7 +112,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // 2. MODAL PENCARIAN BUKU LAGU (INTEGRASI DARI LAGU_PAGE)
+  // 2. MODAL PENCARIAN BUKU LAGU
   // =========================================================================
   void _showSongSearchModal(TextEditingController parentController) {
     showModalBottomSheet(
@@ -152,7 +150,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                   ),
                   Expanded(
                     child: FutureBuilder<QuerySnapshot>(
-                      future: _db.collection("songs").get(), // SESUAI DENGAN KOLEKSI LAGU BOS
+                      future: _db.collection("songs").get(), 
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                         
@@ -171,7 +169,6 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                               title: Text(data['judul'] ?? "Tanpa Judul", style: const TextStyle(fontWeight: FontWeight.bold)),
                               subtitle: Text(data['kategori'] ?? "NKI"),
                               onTap: () {
-                                // KONFIRMASI PENAMBAHAN LAGU
                                 showDialog(
                                   context: context,
                                   builder: (c) => AlertDialog(
@@ -182,15 +179,14 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
                                         onPressed: () {
-                                          // Tambahkan judul ke kotak teks (pakai baris baru jika sudah ada teks)
                                           String currentText = parentController.text.trim();
                                           if (currentText.isNotEmpty) {
                                             parentController.text = "$currentText\n${data['judul']}";
                                           } else {
                                             parentController.text = data['judul'];
                                           }
-                                          Navigator.pop(c); // Tutup Konfirmasi
-                                          Navigator.pop(context); // Tutup Pencarian
+                                          Navigator.pop(c); 
+                                          Navigator.pop(context); 
                                         }, 
                                         child: const Text("Tambahkan")
                                       )
@@ -214,67 +210,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // 3. FITUR "LIHAT LIRIK" SAAT IBADAH 
-  // =========================================================================
-  void _showLirikBottomSheet(String judulLaguTerketik) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true, 
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.85, 
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-        ),
-        child: Column(
-          children: [
-            Container(margin: const EdgeInsets.only(top: 12, bottom: 20), width: 50, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Text(judulLaguTerketik, textAlign: TextAlign.center, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.indigo)),
-            ),
-            const Divider(height: 30),
-            Expanded(
-              child: FutureBuilder<QuerySnapshot>(
-                // SEKARANG MENCARI KE KOLEKSI "songs" SESUAI KODE BOS
-                future: _db.collection("songs").where("judul", isEqualTo: judulLaguTerketik).limit(1).get(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.indigo));
-                  
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.search_off, size: 60, color: Colors.grey.shade400),
-                          const SizedBox(height: 10),
-                          Text("Lirik tidak ditemukan di Buku Lagu.", style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                          const SizedBox(height: 5),
-                          const Text("Judul harus persis sama dengan di Buku.", style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        ],
-                      ),
-                    );
-                  }
-
-                  var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-                  String lirikLagu = data['lirik'] ?? "Lirik belum tersedia."; 
-
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-                    child: Text(lirikLagu, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, height: 1.6, color: Colors.black87)),
-                  );
-                }
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // =========================================================================
-  // WIDGET UTAMA (SCAFFOLD & TAB BAR)
+  // 3. WIDGET UTAMA (SCAFFOLD & TAB BAR)
   // =========================================================================
   @override
   Widget build(BuildContext context) {
@@ -308,8 +244,8 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
 
             return TabBarView(
               children: [
-                _buildListView(_currentUrutan, Icons.event_note), 
-                _buildSongCarousel(_currentLagu),                 
+                _buildListView(_currentUrutan, Icons.event_note), // Tab 1: Acara
+                _buildSongList(_currentLagu),                     // Tab 2: Lagu (Vertikal & Klik)
               ],
             );
           },
@@ -331,7 +267,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // WIDGET HELPER 1: DAFTAR ACARA VERTIKAL
+  // 4. WIDGET HELPER: DAFTAR ACARA
   // =========================================================================
   Widget _buildListView(List<String> items, IconData emptyIcon) {
     if (items.length == 1 && items[0] == "Belum diatur.") {
@@ -378,9 +314,9 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   // =========================================================================
-  // WIDGET HELPER 2: CAROUSEL LAGU HORIZONTAL DENGAN TOMBOL LIRIK
+  // 5. WIDGET HELPER: DAFTAR LAGU VERTIKAL (BISA DIKLIK)
   // =========================================================================
-  Widget _buildSongCarousel(List<String> items) {
+  Widget _buildSongList(List<String> items) {
     if (items.length == 1 && items[0] == "Belum diatur.") {
       return Center(
         child: Column(
@@ -395,70 +331,123 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
         ),
       );
     }
-    return Column(
-      children: [
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.swipe_left, size: 16, color: Colors.grey.shade500),
-            const SizedBox(width: 8),
-            Text("Geser untuk melihat lagu berikutnya", style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
-            const SizedBox(width: 8),
-            Icon(Icons.swipe_right, size: 16, color: Colors.grey.shade500),
-          ],
-        ),
-        const SizedBox(height: 10),
-        
-        Expanded(
-          child: PageView.builder(
-            controller: PageController(viewportFraction: 0.85), 
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              return Container(
-                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Colors.indigo, Color(0xFF1A237E)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(25),
-                  boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 8))]
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 80),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            border: Border.all(color: Colors.indigo.shade50),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3))]
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => _openFullScreenLyrics(items[index]), // KLIK BUKA FULL SCREEN
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 35, height: 35,
+                      decoration: BoxDecoration(color: Colors.indigo.shade50, shape: BoxShape.circle),
+                      child: Center(child: Text("${index + 1}", style: TextStyle(color: Colors.indigo.shade800, fontSize: 14, fontWeight: FontWeight.bold))),
+                    ),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Text(items[index], style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87, height: 1.4)),
+                    ),
+                    Icon(Icons.chevron_right, color: Colors.indigo.shade200),
+                  ],
                 ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // =========================================================================
+  // 6. FITUR FULL SCREEN LIRIK + CUBIT ZOOM (INTERACTIVE VIEWER)
+  // =========================================================================
+  void _openFullScreenLyrics(String judulLaguTerketik) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA),
+        appBar: AppBar(
+          title: const Text("Lirik Pujian", style: TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.indigo[900],
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: FutureBuilder<QuerySnapshot>(
+          future: _db.collection("songs").where("judul", isEqualTo: judulLaguTerketik).limit(1).get(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator(color: Colors.indigo));
+            }
+            
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.music_note, size: 80, color: Colors.white.withOpacity(0.2)),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                      child: Text("Lagu Ke-${index + 1} dari ${items.length}", style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(height: 25),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Text(items[index], textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, height: 1.4)),
-                    ),
-                    const SizedBox(height: 30),
-                    
-                    // TOMBOL SULTAN: LIHAT LIRIK
-                    ElevatedButton.icon(
-                      onPressed: () => _showLirikBottomSheet(items[index]), 
-                      icon: const Icon(Icons.lyrics, size: 18),
-                      label: const Text("Lihat Lirik", style: TextStyle(fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.2), 
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      ),
-                    ),
+                    Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
+                    const SizedBox(height: 16),
+                    Text("Lirik tidak ditemukan.", style: TextStyle(color: Colors.grey.shade600, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text("Pastikan judul '$judulLaguTerketik'\nada di Buku Nyanyian.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500)),
                   ],
                 ),
               );
             }
-          ),
+
+            var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+            String lirikLagu = data['lirik'] ?? "Lirik belum tersedia."; 
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              // 👇 FITUR SULTAN: CUBIT UNTUK ZOOM (Pinch-to-Zoom) 👇
+              child: InteractiveViewer(
+                clipBehavior: Clip.none,
+                minScale: 1.0,  // Batas minimal zoom (ukuran asli)
+                maxScale: 4.0,  // Batas maksimal zoom (4x lipat besarnya)
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(judulLaguTerketik, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
+                        child: Text(data['kategori'] ?? "Pujian", style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                      const Divider(height: 40, thickness: 1.5, color: Color(0xFFE8EAF6)),
+                      Text(lirikLagu, textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, height: 1.8, color: Colors.black87)),
+                      const SizedBox(height: 20),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
         ),
-        const SizedBox(height: 80), 
-      ],
-    );
+      );
+    }));
   }
 }

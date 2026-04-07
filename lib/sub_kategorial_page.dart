@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 // Import halaman-halaman yang sudah kita buat sebelumnya
 import 'gallery_page.dart';
 import 'laporan_transaksi_page.dart';
-// import 'data_jemaat_page.dart'; // Nanti sesuaikan namanya
-// import 'chatroom_page.dart';    // Nanti sesuaikan namanya
-// import 'jadwal_page.dart';      // Nanti sesuaikan namanya
+import 'data_jemaat_page.dart'; // Nanti sesuaikan namanya
+import 'chatroom_page.dart';    // Nanti sesuaikan namanya
+import 'jadwal_page.dart';      // Nanti sesuaikan namanya
 
 class SubKategorialPage extends StatelessWidget {
   final String namaKomisi;

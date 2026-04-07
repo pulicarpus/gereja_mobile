@@ -9,10 +9,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
-import 'rincian_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
-import 'tambah_perpuluhan_page.dart'; // Buka komen nanti jika file ini sudah dibuat
+// 👇 KABEL NAVIGASI SUDAH TERSAMBUNG 👇
+import 'rincian_perpuluhan_page.dart'; 
+import 'tambah_perpuluhan_page.dart'; 
 
-// --- DATA CLASS (Pengganti RekapPerpuluhanJemaat.kt) ---
 class RekapPerpuluhanJemaat {
   final String jemaatId;
   final String namaJemaat;
@@ -53,20 +53,18 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   void initState() {
     super.initState();
     DateTime now = DateTime.now();
-    _selectedMonth = now.month - 1; // 0-based index untuk array
+    _selectedMonth = now.month - 1; 
     _selectedYear = now.year;
     
-    // Generate tahun dari 2020 sampai sekarang (seperti logika Kotlin Bos)
     _tahunArray = List.generate(now.year - 2020 + 1, (index) => now.year - index);
     
     _loadData();
   }
 
-  // --- LOGIKA LOAD & GROUPING DATA ---
   Future<void> _loadData() async {
     setState(() {
       _isLoading = true;
-      _selectedRekap = null; // Reset pilihan
+      _selectedRekap = null; 
     });
 
     String? churchId = UserManager().activeChurchId;
@@ -76,9 +74,7 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
       return;
     }
 
-    // Hitung range tanggal bulan terpilih
     DateTime startDate = DateTime(_selectedYear, _selectedMonth + 1, 1);
-    // Tanggal 0 di bulan berikutnya = Hari terakhir bulan ini
     DateTime endDate = DateTime(_selectedYear, _selectedMonth + 2, 0, 23, 59, 59);
 
     try {
@@ -96,7 +92,6 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
         String jemaatId = data['jemaatId'] ?? "";
         String namaJemaat = data['namaJemaat'] ?? "Tanpa Nama";
         
-        // Gunakan jemaatId sebagai key, atau nama jika tidak punya ID
         String key = jemaatId.isNotEmpty ? jemaatId : namaJemaat;
 
         if (!rekapMap.containsKey(key)) {
@@ -128,12 +123,8 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // --- EXPORT PDF ---
   Future<void> _exportToPdf() async {
-    if (_rekapList.isEmpty) {
-      _showSnack("Tidak ada data untuk diekspor");
-      return;
-    }
+    if (_rekapList.isEmpty) return _showSnack("Tidak ada data untuk diekspor");
     _showSnack("Sedang membuat PDF...");
 
     final pdf = pw.Document();
@@ -173,15 +164,11 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     OpenFilex.open(file.path);
   }
 
-  // --- EXPORT CSV ---
   Future<void> _exportToCsv() async {
-    if (_rekapList.isEmpty) {
-      _showSnack("Tidak ada data untuk diekspor");
-      return;
-    }
+    if (_rekapList.isEmpty) return _showSnack("Tidak ada data untuk diekspor");
     
     List<List<dynamic>> rows = [];
-    rows.add(["Nama Jemaat", "Total Perpuluhan"]); // Header
+    rows.add(["Nama Jemaat", "Total Perpuluhan"]); 
     
     for (var rekap in _rekapList) {
       rows.add([rekap.namaJemaat, rekap.totalPerpuluhan]);
@@ -199,7 +186,6 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     OpenFilex.open(file.path);
   }
 
-  // --- UI BUILDING ---
   @override
   Widget build(BuildContext context) {
     bool isAdmin = UserManager().isAdmin();
@@ -226,7 +212,6 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
       ),
       body: Column(
         children: [
-          // SPINNER / DROPDOWN FILTER
           Container(
             color: Colors.white,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -253,7 +238,6 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
             ),
           ),
           
-          // HEADER TOTAL
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -267,7 +251,6 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
             ),
           ),
 
-          // LIST VIEW (Pengganti Adapter)
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
@@ -306,7 +289,7 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
         ],
       ),
       
-      // BOTTOM NAVIGATION MENU (Khusus Admin)
+      // 👇 NAVIGASI BAWAH SUDAH DIBUKA 👇
       bottomNavigationBar: !isAdmin ? null : Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]),
@@ -318,13 +301,12 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
                 label: const Text("Lihat Rincian"),
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
                 onPressed: _selectedRekap == null ? null : () {
-                  // Navigator.push(context, MaterialPageRoute(builder: (_) => RincianPerpuluhanPage(
-                  //   jemaatId: _selectedRekap!.jemaatId,
-                  //   namaJemaat: _selectedRekap!.namaJemaat,
-                  //   bulan: _selectedMonth,
-                  //   tahun: _selectedYear,
-                  // )));
-                  _showSnack("Navigasi ke Rincian: ${_selectedRekap!.namaJemaat}");
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => RincianPerpuluhanPage(
+                    jemaatId: _selectedRekap!.jemaatId,
+                    namaJemaat: _selectedRekap!.namaJemaat,
+                    bulan: _selectedMonth,
+                    tahun: _selectedYear,
+                  ))).then((_) => _loadData());
                 },
               ),
             ),
@@ -335,8 +317,8 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
                 label: const Text("Catat Baru"),
                 style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
                 onPressed: () {
-                  // Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage()));
-                  _showSnack("Navigasi ke Tambah Perpuluhan");
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const TambahPerpuluhanPage()))
+                  .then((_) => _loadData());
                 },
               ),
             ),

@@ -10,7 +10,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';     
 import 'package:audioplayers/audioplayers.dart'; 
 
-// Pastikan file-file ini tersedia
 import 'bible_models.dart';
 import 'notes_pages.dart';
 import 'search_page.dart';
@@ -69,22 +68,20 @@ class _AlkitabPageState extends State<AlkitabPage> {
     super.dispose();
   }
 
-  // 👇 PERBAIKAN LOGIKA AUDIO (PENERJEMAH NOMOR KITAB) 👇
+  // 👇 PERBAIKAN AUDIO: TEMBAK LANGSUNG KE URL WEBSITE ASLI 👇
   String _getAudioUrl(int bookNum, int chapter) {
     int standardBookNum;
-    
-    // Menerjemahkan format Sabda (Kelipatan 10) ke urutan standar Internasional (1-66)
     if (bookNum < 400) {
-      // Perjanjian Lama: Kejadian(10) -> 1, Maleakhi(390) -> 39
       standardBookNum = bookNum ~/ 10; 
     } else {
-      // Perjanjian Baru: Matius(470) -> 40, Wahyu(730) -> 66
       standardBookNum = ((bookNum - 470) ~/ 10) + 40;
     }
     
-    // URL Server Audio Publik (Kode '33' biasanya untuk Bahasa Indonesia)
-    // Jika nanti suaranya pakai bahasa asing, Bos tinggal ganti angka '33' di bawah ini jadi '43' atau cari kode bahasanya.
-    return "https://audio.wordproject.com/bibles/app/audio/14/$standardBookNum/$chapter.mp3";
+    // Format nomor kitab harus 2 digit (contoh: 01, 02, 19, 40)
+    String bookStr = standardBookNum.toString().padLeft(2, '0');
+    
+    // URL web asli WordProject (Dijamin 100% jalan)
+    return "https://wordproject.org/bibles/audio/14_indonesian/b${bookStr}_$chapter.mp3";
   }
 
   Future<void> _playPauseAudio() async {
@@ -199,7 +196,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await _loadDatabase();
   }
 
-  // --- LOGIKA MENU HAMBURGER (PENCARIAN, KAMUS, CATATAN) ---
   void _onMenuSelected(String value) {
     if (value == 'search') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) {
@@ -217,33 +213,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _showNotesManagerDialog() {
     showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      context: context, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (context) => Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Padding(padding: EdgeInsets.all(20), child: Text("Kelola Catatan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-          ListTile(
-            leading: const Icon(Icons.list_alt, color: Colors.indigo),
-            title: const Text("Lihat Daftar Catatan"),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent());
-            },
-          ),
+          ListTile(leading: const Icon(Icons.list_alt, color: Colors.indigo), title: const Text("Lihat Daftar Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }),
           const Divider(),
-          ListTile(
-            leading: const Icon(Icons.cloud_upload, color: Colors.green),
-            title: const Text("Backup ke Cloud"),
-            subtitle: const Text("Amankan catatan ke akun Anda"),
-            onTap: () { Navigator.pop(context); _backupNotesToCloud(); },
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_download, color: Colors.orange),
-            title: const Text("Restore dari Cloud"),
-            subtitle: const Text("Kembalikan catatan (jika ganti HP)"),
-            onTap: () { Navigator.pop(context); _restoreNotesFromCloud(); },
-          ),
+          ListTile(leading: const Icon(Icons.cloud_upload, color: Colors.green), title: const Text("Backup ke Cloud"), subtitle: const Text("Amankan catatan ke akun Anda"), onTap: () { Navigator.pop(context); _backupNotesToCloud(); }),
+          ListTile(leading: const Icon(Icons.cloud_download, color: Colors.orange), title: const Text("Restore dari Cloud"), subtitle: const Text("Kembalikan catatan (jika ganti HP)"), onTap: () { Navigator.pop(context); _restoreNotesFromCloud(); }),
           const SizedBox(height: 20),
         ],
       ),
@@ -267,9 +245,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
       await batch.commit();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup Berhasil! Catatan Anda aman di Cloud.")));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Backup: $e")));
-    } finally { setState(() => _isSyncing = false); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Backup: $e"))); } finally { setState(() => _isSyncing = false); }
   }
 
   Future<void> _restoreNotesFromCloud() async {
@@ -287,12 +263,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       await _prefs.setStringList("ALL_NOTE_KEYS", newKeys);
       await _loadContent();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impor Berhasil! Catatan telah dipulihkan.")));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Impor: $e")));
-    } finally { setState(() => _isSyncing = false); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Impor: $e"))); } finally { setState(() => _isSyncing = false); }
   }
 
-  // --- LOGIKA PILIH AYAT & BUAT CATATAN ---
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
@@ -305,10 +278,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }),
         ListTile(leading: const Icon(Icons.copy), title: const Text("Salin Ayat"), onTap: () { 
           String fullText = "$nas\n";
-          for (var vNum in sorted) {
-            var vData = _verses.firstWhere((element) => element['verse'] == vNum);
-            fullText += "$vNum. ${_cleanText(vData['text'])}\n";
-          }
+          for (var vNum in sorted) { var vData = _verses.firstWhere((element) => element['verse'] == vNum); fullText += "$vNum. ${_cleanText(vData['text'])}\n"; }
           Clipboard.setData(ClipboardData(text: fullText)); Navigator.pop(context); setState(() => _selectedVerses.clear()); 
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ayat disalin ke papan klip")));
         }),
@@ -331,12 +301,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _openNote(String key) {
     String? raw = _prefs.getString(key);
-    if (raw != null) {
-      Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: key, db: _db!, allBooks: _allBooks))).then((_) => _loadContent());
-    }
+    if (raw != null) { Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: key, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }
   }
 
-  // --- KAMUS ---
   void _tampilkanDialogKamus(BuildContext context) {
     final TextEditingController searchController = TextEditingController();
     showDialog(
@@ -356,7 +323,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     try { await launchUrl(url, mode: LaunchMode.inAppBrowserView); } catch (e) {}
   }
 
-  // --- MENU NAVIGASI KITAB ---
   void _showNavigation() {
     showGeneralDialog(
       context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54,
@@ -374,9 +340,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
+  // 👇 PERBAIKAN: JUDUL PERIKOP DITENGAHKAN KEMBALI 👇
   Widget _buildPerikopItem(String title) {
     if (!title.contains("<x>")) {
-      return Padding(padding: const EdgeInsets.only(top: 25, bottom: 10), child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900)));
+      return Container(
+        width: double.infinity, // Memaksa agar membentang penuh lalu di-center
+        padding: const EdgeInsets.only(top: 25, bottom: 10), 
+        child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900))
+      );
     }
     List<InlineSpan> spans = []; final regex = RegExp(r'<x>(.*?)</x>');
     title.splitMapJoin(regex, onMatch: (Match m) {
@@ -391,7 +362,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
       } else { spans.add(TextSpan(text: rawRef)); }
       return "";
     }, onNonMatch: (text) { spans.add(TextSpan(text: text)); return ""; });
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 10), child: Center(child: RichText(textAlign: TextAlign.center, text: TextSpan(style: TextStyle(fontSize: _fontSize - 3, color: Colors.grey.shade700, fontStyle: FontStyle.italic), children: spans))));
+    
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 10), 
+      child: RichText(textAlign: TextAlign.center, text: TextSpan(style: TextStyle(fontSize: _fontSize - 3, color: Colors.grey.shade700, fontStyle: FontStyle.italic), children: spans))
+    );
   }
 
   @override
@@ -415,44 +391,70 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ],
           ),
         ],
-      ),
-      body: Column(
-        children: [
-          // AUDIO PLAYER BAR
-          Container(
-            color: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(children: [
-              IconButton(icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.orange), onPressed: _playPauseAudio),
-              Expanded(child: Slider(value: _position.inSeconds.toDouble(), max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt())))),
-              IconButton(icon: const Icon(Icons.stop, color: Colors.red), onPressed: _resetAudio),
-            ]),
-          ),
-          
-          Expanded(
-            child: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
-              onScaleStart: (d) => _baseFontSize = _fontSize,
-              onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
-              onScaleEnd: (d) => _saveFontSize(),
-              child: ListView(
-                controller: _scrollController,
-                padding: const EdgeInsets.all(15),
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white, borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+        // 👇 PERBAIKAN: AUDIO PLAYER PINDAH KE HEADER (APPBAR) 👇
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: Container(
+            color: Colors.indigo[800], // Warna slightly lebih terang dari header
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: _isAudioLoading 
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.orange), 
+                  onPressed: _playPauseAudio,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                      activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _buildChapterContent(),
+                    child: Slider(
+                      value: _position.inSeconds.toDouble(), 
+                      max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, 
+                      onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt()))
                     ),
-                  ),
-                ],
-              ),
+                  )
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.stop, color: Colors.redAccent, size: 20), 
+                  onPressed: _resetAudio,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
+        onScaleStart: (d) => _baseFontSize = _fontSize,
+        onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
+        onScaleEnd: (d) => _saveFontSize(),
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(15),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white, borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: _buildChapterContent(),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -507,7 +509,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// 👇 CLASS NAVIGASI MEWAH (DIKEMBALIKAN) 👇
+// 👇 CLASS NAVIGASI MEWAH 👇
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks; final Database db; final String currentVersion; final Function(String) onVersionChange; final Function(int, int, int) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.currentVersion, required this.onVersionChange, required this.onSelectionComplete});

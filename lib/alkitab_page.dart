@@ -6,11 +6,13 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // Pastikan file-file ini tersedia di project Anda
 import 'bible_models.dart';
 import 'notes_pages.dart';
 import 'search_page.dart';
+import 'kamus_alkitab_page.dart';
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});

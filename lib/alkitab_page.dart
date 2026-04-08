@@ -99,11 +99,26 @@ class _AlkitabPageState extends State<AlkitabPage> {
         setState(() => _isAudioLoading = true);
         String audioUrl = _getAudioUrl(_currentBookNum, _currentChapter);
         
-        // 👇 TEKNIK PENYAMARAN: Kita paksa audio player memproses sebagai stream speaker 👇
-        await _audioPlayer.play(
-          UrlSource(audioUrl),
-          ctx: AudioContextConfig(forceSpeaker: true).build(),
-        );
+        // 👇 PERBAIKAN ERROR: FORMAT BARU UNTUK AUDIO CONTEXT 👇
+        await _audioPlayer.setAudioContext(AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.music,
+            usageType: AndroidUsageType.media,
+            audioFocus: AndroidAudioFocus.gain,
+          ),
+          iOS: const AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: {
+              AVAudioSessionOptions.defaultToSpeaker,
+              AVAudioSessionOptions.mixWithOthers,
+            },
+          ),
+        ));
+
+        // Tembak URL Sabda-nya
+        await _audioPlayer.play(UrlSource(audioUrl));
         
         setState(() => _isAudioLoading = false);
       }

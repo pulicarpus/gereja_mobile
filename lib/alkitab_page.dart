@@ -445,6 +445,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ]),
         ),
         actions: [
+          // 👇 TOMBOL KAMUS ALKITAB BARU 👇
+          IconButton(
+            icon: const Icon(Icons.menu_book), // Ikon buku
+            tooltip: "Kamus Alkitab",
+            onPressed: () {
+               _tampilkanDialogKamus(context); // Panggil dialog pencarian
+            }
+          ),
+          // 👆 ======================= 👆
+
           IconButton(
             icon: const Icon(Icons.event_note), 
             onPressed: () => Navigator.push(context, MaterialPageRoute(
@@ -783,3 +793,91 @@ class _NavSheetState extends State<_NavSheet> {
     )
   );
 }
+// 👇 FUNGSI PENCARIAN KAMUS ALKITAB 👇
+  void _tampilkanDialogKamus(BuildContext context) {
+    final TextEditingController searchController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.menu_book, color: Colors.indigo),
+              SizedBox(width: 10),
+              Text("Kamus Alkitab", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "Cari arti kata, nama tokoh, atau tempat di Alkitab.",
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 15),
+              TextField(
+                controller: searchController,
+                autofocus: true, // Otomatis munculin keyboard
+                textInputAction: TextInputAction.search, // Tombol enter jadi ikon 'Cari'
+                onSubmitted: (value) {
+                  Navigator.pop(context); // Tutup dialog
+                  _bukaKamusDiBrowser(value);
+                },
+                decoration: InputDecoration(
+                  hintText: "Misal: Kasih, Sabat, Daud...",
+                  filled: true,
+                  fillColor: Colors.indigo.shade50,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(15),
+                    borderSide: BorderSide.none,
+                  ),
+                  prefixIcon: const Icon(Icons.search, color: Colors.indigo),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Batal", style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.indigo,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
+              ),
+              onPressed: () {
+                Navigator.pop(context); // Tutup dialog
+                _bukaKamusDiBrowser(searchController.text);
+              },
+              child: const Text("Cari Arti Kata"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Fungsi untuk mengeksekusi link kamus
+  Future<void> _bukaKamusDiBrowser(String kata) async {
+    kata = kata.trim();
+    if (kata.isEmpty) return;
+
+    // URL langsung ke pencarian kamus SABDA
+    final Uri url = Uri.parse("https://alkitab.sabda.org/dictionary.php?word=$kata");
+
+    try {
+      // Menggunakan mode inAppBrowserView agar tidak keluar dari aplikasi GKII Siloam
+      await launchUrl(url, mode: LaunchMode.inAppBrowserView);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gagal membuka kamus. Pastikan ada koneksi internet.")),
+        );
+      }
+    }
+  }

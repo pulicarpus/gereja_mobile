@@ -20,6 +20,8 @@ import 'ayat_data.dart';
 import 'keuangan_page.dart'; 
 import 'gallery_page.dart';
 import 'kategorial_page.dart'; 
+// 👇 IMPORT DOA PAGE BOS 👇
+import 'doa_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -202,6 +204,10 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
                   }),
+                  // 👇 TOMBOL DOA DITAMBAHKAN DI SINI 👇
+                  _buildDrawerItem(Icons.volunteer_activism, "Pokok Doa", () {
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const DoaPage()));
+                  }),
                   _buildDrawerItem(Icons.chat, "Ruang Chat", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatroomPage()));
                   }),
@@ -214,7 +220,6 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.photo_library, "Gallery", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const GalleryPage()));
                   }),
-                  // Tombol Kategorial di Drawer
                   _buildDrawerItem(Icons.category, "Kategorial", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KategorialPage()));
                   }),

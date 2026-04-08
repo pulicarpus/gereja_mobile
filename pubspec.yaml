@@ -28,6 +28,7 @@ dependencies:
   file_picker: ^8.0.1
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
+  webview_flutter: ^4.10.0  # 👈 TAMBAHKAN ALAT INI BOS!
   open_filex: ^4.4.0
   audioplayers: ^5.2.1
   

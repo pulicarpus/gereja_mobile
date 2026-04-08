@@ -99,7 +99,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         setState(() => _isAudioLoading = true);
         String audioUrl = _getAudioUrl(_currentBookNum, _currentChapter);
         
-        // 👇 PERBAIKAN ERROR: FORMAT BARU UNTUK AUDIO CONTEXT 👇
+        // 👇 PERBAIKAN TOTAL: SEMUA PAKAI NAMED PARAMETERS & FORMAT LIST [] 👇
         await _audioPlayer.setAudioContext(AudioContext(
           android: const AudioContextAndroid(
             isSpeakerphoneOn: true,
@@ -110,14 +110,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ),
           iOS: const AudioContextIOS(
             category: AVAudioSessionCategory.playback,
-            options: []
+            options: [
               AVAudioSessionOptions.defaultToSpeaker,
               AVAudioSessionOptions.mixWithOthers,
             ],
           ),
         ));
 
-        // Tembak URL Sabda-nya
+        // Tembak URL-nya
         await _audioPlayer.play(UrlSource(audioUrl));
         
         setState(() => _isAudioLoading = false);

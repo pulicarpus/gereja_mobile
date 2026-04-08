@@ -79,16 +79,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     super.dispose();
   }
 
-  // --- LOGIKA AUDIO SABDA ---
+// 👇 JALUR ARCHIVE: KITA BUANG SISTEM SINGKATAN SABDA, KEMBALI KE ANGKA URUT 👇
   String _getAudioUrl(int bookNum, int chapter) {
-    int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
-    if (standardBookNum < 1 || standardBookNum > 66) return "";
+    // 1. Hitung nomor kitab standar 1-66
+    int standardBookNum;
+    if (bookNum < 400) {
+      standardBookNum = bookNum ~/ 10; 
+    } else {
+      standardBookNum = ((bookNum - 470) ~/ 10) + 40;
+    }
     
-    String bookCode = _sabdaCodes[standardBookNum];
-    String bookPrefix = standardBookNum.toString().padLeft(2, '0');
-    String chapterPrefix = chapter.toString().padLeft(2, '0');
+    // 2. Format jadi 2 digit (contoh: 01, 02, 19, 40)
+    String bookStr = standardBookNum.toString().padLeft(2, '0');
     
-    return "https://media.sabda.org/alkitab_audio/tb/${bookPrefix}_${bookCode}/${bookPrefix}_${bookCode}${chapterPrefix}.mp3";
+    // 3. Tembak ke server Archive.org (Server publik yang sangat kuat)
+    // Format link: https://archive.org/download/IndonesianBibleAudio/b01_1.mp3
+    return "https://archive.org/download/IndonesianBibleAudio/b${bookStr}_$chapter.mp3";
   }
 
   Future<void> _playPauseAudio() async {

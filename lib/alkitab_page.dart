@@ -44,6 +44,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
   bool _isAudioLoading = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
+  
+  // 👇 Variabel untuk kontrol Slider sembunyi/muncul
+  bool _showSlider = false;
 
   // DAFTAR FOLDER & PREFIX FILE (KEJ - WAH) UNTUK GITHUB BOS
   final Map<int, Map<String, String>> _bibleAudioMap = {
@@ -226,14 +229,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
-  // 👇 PENANGKAP SINYAL DARI HALAMAN CATATAN 👇
   void _handleNavResult(dynamic res) {
     if (res != null && res is Map && res.containsKey('book_number')) {
-      // Jika balik dari tombol "Menuju Pasal Ini"
       setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; });
       _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']);
     } else {
-      // Jika cuma balik sehabis save catatan biasa
       _loadContent(); 
     }
   }
@@ -328,6 +328,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
         actions: [
+          // 👇 TOMBOL PLAY/PAUSE DI HEADER 👇
+          IconButton(
+            icon: _isAudioLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 28), 
+            onPressed: _playPauseAudio,
+          ),
+          // 👇 TOMBOL MUNCULKAN/SEMBUNYIKAN SLIDER 👇
+          IconButton(
+            icon: Icon(_showSlider ? Icons.tune : Icons.tune_outlined, color: Colors.white70),
+            onPressed: () => setState(() => _showSlider = !_showSlider),
+          ),
           if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
           PopupMenuButton<String>(icon: const Icon(Icons.menu), onSelected: _onMenuSelected, itemBuilder: (c) => [
             const PopupMenuItem(value: 'search', child: Row(children: [Icon(Icons.search, color: Colors.indigo), SizedBox(width: 10), Text("Pencarian")])),
@@ -335,11 +347,20 @@ class _AlkitabPageState extends State<AlkitabPage> {
             const PopupMenuItem(value: 'notes', child: Row(children: [Icon(Icons.edit_note, color: Colors.green), SizedBox(width: 10), Text("Kelola Catatan")])),
           ]),
         ],
-        bottom: PreferredSize(preferredSize: const Size.fromHeight(45), child: Container(color: Colors.indigo[800], padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), child: Row(children: [
-          IconButton(icon: _isAudioLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 30), onPressed: _playPauseAudio),
-          Expanded(child: SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6), activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white), child: Slider(value: _position.inSeconds.toDouble(), max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt()))))),
-          IconButton(icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 28), onPressed: _resetAudio),
-        ]))),
+        // 👇 SLIDER HANYA MUNCUL JIKA DITEKAN 👇
+        bottom: _showSlider 
+          ? PreferredSize(
+              preferredSize: const Size.fromHeight(40), 
+              child: Container(
+                color: Colors.indigo[800], 
+                padding: const EdgeInsets.symmetric(horizontal: 10), 
+                child: Row(children: [
+                  Expanded(child: SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6), activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white), child: Slider(value: _position.inSeconds.toDouble(), max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt()))))),
+                  IconButton(icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 24), onPressed: _resetAudio),
+                ])
+              )
+            )
+          : null,
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
         onScaleStart: (d) => _baseFontSize = _fontSize,
@@ -353,7 +374,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // 👇 PERBAIKAN IKON CATATAN DI UJUNG KANAN & LEBIH BESAR 👇
   List<Widget> _buildContent() {
     List<Widget> content = [];
     for (var v in _verses) {
@@ -392,7 +412,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54, pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { 
-    Navigator.pop(context); // 👇 PERBAIKAN: Dialog Navigasi Menutup Otomatis
+    Navigator.pop(context); 
     setState(() { _currentBookNum = b; _currentChapter = c; }); 
     _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: v); 
   })))); }

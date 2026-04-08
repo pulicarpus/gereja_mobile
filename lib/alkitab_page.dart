@@ -7,8 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 👇 UNTUK BACKUP
-import 'package:firebase_auth/firebase_auth.dart';     // 👇 UNTUK CEK USER
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';     
+import 'package:audioplayers/audioplayers.dart'; // 👇 IMPORT AUDIO PLAYER BARU
 
 import 'bible_models.dart';
 import 'notes_pages.dart';
@@ -33,16 +34,93 @@ class _AlkitabPageState extends State<AlkitabPage> {
   int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
-  bool _isSyncing = false; // 👇 INDIKATOR BACKUP
+  bool _isSyncing = false; 
   late SharedPreferences _prefs;
 
   double _fontSize = 18.0;
   double _baseFontSize = 18.0;
 
+  // 👇 VARIABEL UNTUK AUDIO PLAYER 👇
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isPlaying = false;
+  bool _isAudioLoading = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+
   @override
   void initState() {
     super.initState();
     _initApp();
+
+    // Listener untuk Audio Player
+    _audioPlayer.onPlayerStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _isPlaying = state == PlayerState.playing;
+        });
+      }
+    });
+
+    _audioPlayer.onDurationChanged.listen((newDuration) {
+      if (mounted) setState(() => _duration = newDuration);
+    });
+
+    _audioPlayer.onPositionChanged.listen((newPosition) {
+      if (mounted) setState(() => _position = newPosition);
+    });
+    
+    // Kalau audio selesai, reset posisi
+    _audioPlayer.onPlayerComplete.listen((event) {
+      if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; });
+    });
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose(); // Wajib dimatikan saat keluar halaman
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // 👇 FUNGSI GENERATOR LINK AUDIO ALKITAB 👇
+  String _getAudioUrl(int book, int chapter) {
+    // Menggunakan server publik WordProject (Kode 43 untuk Bahasa Indonesia)
+    return "https://audio.wordproject.com/bibles/app/audio/43/$book/$chapter.mp3";
+  }
+
+  // 👇 FUNGSI KONTROL AUDIO 👇
+  Future<void> _playPauseAudio() async {
+    try {
+      if (_isPlaying) {
+        await _audioPlayer.pause();
+      } else {
+        setState(() => _isAudioLoading = true);
+        String url = _getAudioUrl(_currentBookNum, _currentChapter);
+        await _audioPlayer.play(UrlSource(url));
+        setState(() => _isAudioLoading = false);
+      }
+    } catch (e) {
+      setState(() => _isAudioLoading = false);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memutar audio. Pastikan internet aktif.")));
+    }
+  }
+
+  Future<void> _stopAudio() async {
+    await _audioPlayer.stop();
+    if (mounted) setState(() { _isPlaying = false; _position = Duration.zero; });
+  }
+
+  String _formatDuration(Duration d) {
+    String minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    String seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return "$minutes:$seconds";
+  }
+
+  // 👇 FUNGSI UNTUK RESET AUDIO SAAT GANTI PASAL 👇
+  void _resetAudio() {
+    _stopAudio();
+    _duration = Duration.zero;
+    _position = Duration.zero;
   }
 
   String _cleanText(String text) {
@@ -68,39 +146,24 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
   }
 
-  // 👇 FUNGSI BACKUP CATATAN KE CLOUD (FIRESTORE) 👇
   Future<void> _backupNotesToCloud() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Silakan login terlebih dahulu.")));
       return;
     }
-
     setState(() => _isSyncing = true);
     try {
       final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-      if (allKeys.isEmpty) {
-        throw "Tidak ada catatan untuk dibackup.";
-      }
-
+      if (allKeys.isEmpty) throw "Tidak ada catatan untuk dibackup.";
       WriteBatch batch = FirebaseFirestore.instance.batch();
-      
       for (var key in allKeys) {
         String? data = _prefs.getString(key);
         if (data != null) {
-          var docRef = FirebaseFirestore.instance
-              .collection("users")
-              .doc(user.uid)
-              .collection("notes")
-              .doc(key);
-          
-          batch.set(docRef, {
-            "content": data,
-            "updatedAt": FieldValue.serverTimestamp(),
-          });
+          var docRef = FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").doc(key);
+          batch.set(docRef, {"content": data, "updatedAt": FieldValue.serverTimestamp()});
         }
       }
-
       await batch.commit();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup Berhasil! Catatan Anda aman di Cloud.")));
     } catch (e) {
@@ -110,21 +173,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  // 👇 FUNGSI IMPORT CATATAN DARI CLOUD 👇
   Future<void> _restoreNotesFromCloud() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
-
     setState(() => _isSyncing = true);
     try {
-      var snapshot = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(user.uid)
-          .collection("notes")
-          .get();
-
+      var snapshot = await FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").get();
       if (snapshot.docs.isEmpty) throw "Data cloud kosong.";
-
       List<String> newKeys = [];
       for (var doc in snapshot.docs) {
         String key = doc.id;
@@ -132,7 +187,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         await _prefs.setString(key, content);
         newKeys.add(key);
       }
-      
       await _prefs.setStringList("ALL_NOTE_KEYS", newKeys);
       await _loadContent();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impor Berhasil! Catatan telah dipulihkan.")));
@@ -151,25 +205,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Padding(padding: EdgeInsets.all(20), child: Text("Sinkronisasi Catatan Cloud", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-          ListTile(
-            leading: const Icon(Icons.cloud_upload, color: Colors.indigo),
-            title: const Text("Ekspor (Backup) ke Akun"),
-            subtitle: const Text("Simpan semua catatan ke server cloud."),
-            onTap: () { Navigator.pop(context); _backupNotesToCloud(); },
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud_download, color: Colors.orange),
-            title: const Text("Impor (Restore) dari Akun"),
-            subtitle: const Text("Ambil catatan lama jika ganti HP."),
-            onTap: () { Navigator.pop(context); _restoreNotesFromCloud(); },
-          ),
+          ListTile(leading: const Icon(Icons.cloud_upload, color: Colors.indigo), title: const Text("Ekspor (Backup) ke Akun"), subtitle: const Text("Simpan semua catatan ke server cloud."), onTap: () { Navigator.pop(context); _backupNotesToCloud(); }),
+          ListTile(leading: const Icon(Icons.cloud_download, color: Colors.orange), title: const Text("Impor (Restore) dari Akun"), subtitle: const Text("Ambil catatan lama jika ganti HP."), onTap: () { Navigator.pop(context); _restoreNotesFromCloud(); }),
           const SizedBox(height: 20),
         ],
       ),
     );
   }
 
-  // --- LOGIKA DATABASE ---
   Future<void> _changeVersion(String newVersion) async {
     if (_currentVersion == newVersion) return;
     setState(() { _currentVersion = newVersion; _isLoading = true; });
@@ -293,7 +336,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
             child: _NavSheet(
               allBooks: _allBooks, db: _db!, currentVersion: _currentVersion,
               onVersionChange: (v) { Navigator.pop(context); _changeVersion(v); },
-              onSelectionComplete: (b, c, v) { setState(() { _currentBookNum = b; _currentChapter = c; }); _saveLastPosition(); _loadContent(scrollToVerse: v); },
+              onSelectionComplete: (b, c, v) { 
+                setState(() { _currentBookNum = b; _currentChapter = c; }); 
+                _resetAudio(); // Matikan audio sebelumnya saat ganti pasal
+                _saveLastPosition(); 
+                _loadContent(scrollToVerse: v); 
+              },
             ),
           ),
         ),
@@ -336,14 +384,32 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Widget _buildPerikopItem(String title) {
-    return Padding(padding: const EdgeInsets.fromLTRB(20, 30, 20, 10), child: Center(child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 1, color: Colors.indigo.shade900))));
+    if (!title.contains("<x>")) {
+      return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 1))));
+    }
+    List<InlineSpan> spans = [];
+    final regex = RegExp(r'<x>(.*?)</x>');
+    title.splitMapJoin(regex, onMatch: (Match m) {
+      String rawRef = m.group(1) ?? ""; 
+      final refData = RegExp(r'(\d+)\s+(\d+):(\d+)').firstMatch(rawRef);
+      if (refData != null) {
+        int bNum = int.parse(refData.group(1)!); int chap = int.parse(refData.group(2)!); int vStart = int.parse(refData.group(3)!);
+        String bookShort = bNum.toString();
+        try { bookShort = _allBooks.firstWhere((b) => b.bookNumber == bNum).shortName; } catch (e) {}
+        spans.add(TextSpan(text: rawRef.replaceFirst(bNum.toString(), bookShort), style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()..onTap = () { setState(() { _currentBookNum = bNum; _currentChapter = chap; }); _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: vStart); },
+        ));
+      } else { spans.add(TextSpan(text: rawRef)); }
+      return "";
+    }, onNonMatch: (String text) { spans.add(TextSpan(text: text)); return ""; });
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: RichText(textAlign: TextAlign.center, text: TextSpan(style: TextStyle(fontSize: _fontSize - 2, color: Colors.black, fontStyle: FontStyle.italic), children: spans))));
   }
 
   @override
   Widget build(BuildContext context) {
     String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // 👇 LATAR ALKIBTAB ALA RENUNGAN 👇
+      backgroundColor: const Color(0xFFF5F7FA), 
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bookName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
@@ -351,75 +417,137 @@ class _AlkitabPageState extends State<AlkitabPage> {
           if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
           IconButton(icon: const Icon(Icons.cloud_sync), tooltip: "Backup/Restore Cloud", onPressed: _showBackupMenu),
           IconButton(icon: const Icon(Icons.menu_book), onPressed: () => _tampilkanDialogKamus(context)),
-          IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) { if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']); } })),
+          IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) { if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']); } })),
         ],
       ),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
-        onScaleStart: (d) => _baseFontSize = _fontSize,
-        onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
-        onScaleEnd: (d) => _saveFontSize(),
-        child: ListView.builder(
-          controller: _scrollController,
-          padding: const EdgeInsets.only(bottom: 30),
-          itemCount: _verses.length,
-          itemBuilder: (context, i) {
-            final v = _verses[i];
-            final vNum = v['verse'] as int;
-            final isSelected = _selectedVerses.contains(vNum);
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: Column(
+        children: [
+          // 👇 WIDGET AUDIO PLAYER MELAYANG 👇
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
               children: [
-                if (_perikopMap.containsKey(vNum)) ..._perikopMap[vNum]!.map((t) => _buildPerikopItem(t)),
-                
-                // 👇 WIDGET AYAT DENGAN STYLE KARTU RENUNGAN 👇
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: GestureDetector(
-                    onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
-                    onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
-                    child: Container(
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(
-                        color: isSelected ? Colors.indigo.shade50 : Colors.white,
-                        borderRadius: BorderRadius.circular(15),
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
-                        border: Border.all(color: isSelected ? Colors.indigo.shade200 : Colors.transparent)
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
-                            TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                            TextSpan(text: _cleanText(v['text'])),
-                          ])),
-                          if (_verseNotesMap.containsKey(vNum)) 
-                            Padding(
-                              padding: const EdgeInsets.only(top: 10), 
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
-                                  const SizedBox(width: 5),
-                                  Text("Ada Catatan", style: TextStyle(fontSize: 12, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
-                                  const Spacer(),
-                                  InkWell(onTap: () => _showNoteSelection(_verseNotesMap[vNum]!), child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400)),
-                                ],
-                              )
-                            ),
-                        ],
-                      ),
-                    ),
+                // Tombol Play/Pause
+                InkWell(
+                  onTap: _playPauseAudio,
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(color: Colors.orange, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+                    child: _isAudioLoading 
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
                   ),
                 ),
+                const SizedBox(width: 10),
+                
+                // Slider Progress Audio
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Suara: $bookName $_currentChapter", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                          overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                          activeTrackColor: Colors.indigo, inactiveTrackColor: Colors.indigo.shade100, thumbColor: Colors.orange,
+                        ),
+                        child: Slider(
+                          min: 0,
+                          max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                          value: _position.inSeconds.toDouble().clamp(0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
+                          onChanged: (value) async {
+                            final position = Duration(seconds: value.toInt());
+                            await _audioPlayer.seek(position);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Tombol Stop
+                IconButton(
+                  icon: const Icon(Icons.stop, color: Colors.redAccent),
+                  onPressed: _stopAudio,
+                ),
               ],
-            );
-          },
-        ),
+            ),
+          ),
+          
+          // Garis bayangan pembatas
+          Container(height: 3, decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black.withOpacity(0.05), Colors.transparent]))),
+
+          // 👇 LIST AYAT ALKITAB 👇
+          Expanded(
+            child: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
+              onScaleStart: (d) => _baseFontSize = _fontSize,
+              onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
+              onScaleEnd: (d) => _saveFontSize(),
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.only(bottom: 30),
+                itemCount: _verses.length,
+                itemBuilder: (context, i) {
+                  final v = _verses[i];
+                  final vNum = v['verse'] as int;
+                  final isSelected = _selectedVerses.contains(vNum);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_perikopMap.containsKey(vNum)) ..._perikopMap[vNum]!.map((t) => _buildPerikopItem(t)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        child: GestureDetector(
+                          onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
+                          onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
+                          child: Container(
+                            padding: const EdgeInsets.all(15),
+                            decoration: BoxDecoration(
+                              color: isSelected ? Colors.indigo.shade50 : Colors.white,
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
+                              border: Border.all(color: isSelected ? Colors.indigo.shade200 : Colors.transparent)
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
+                                  TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                                  TextSpan(text: _cleanText(v['text'])),
+                                ])),
+                                if (_verseNotesMap.containsKey(vNum)) 
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 10), 
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                                        const SizedBox(width: 5),
+                                        Text("Ada Catatan", style: TextStyle(fontSize: 12, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                        const Spacer(),
+                                        InkWell(onTap: () => _showNoteSelection(_verseNotesMap[vNum]!), child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400)),
+                                      ],
+                                    )
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// --- NAV SHEET (Gunakan Versi Full Bos Sebelumnya) ---
+// --- NAV SHEET ---
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks; final Database db; final String currentVersion; final Function(String) onVersionChange; final Function(int, int, int) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.currentVersion, required this.onVersionChange, required this.onSelectionComplete});

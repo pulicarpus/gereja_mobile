@@ -7,8 +7,9 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👇 UNTUK BACKUP
+import 'package:firebase_auth/firebase_auth.dart';     // 👇 UNTUK CEK USER
 
-// Pastikan file-file ini tersedia di project Anda
 import 'bible_models.dart';
 import 'notes_pages.dart';
 import 'search_page.dart';
@@ -32,6 +33,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   int _currentBookNum = 10; 
   int _currentChapter = 1;
   bool _isLoading = true;
+  bool _isSyncing = false; // 👇 INDIKATOR BACKUP
   late SharedPreferences _prefs;
 
   double _fontSize = 18.0;
@@ -66,6 +68,108 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
   }
 
+  // 👇 FUNGSI BACKUP CATATAN KE CLOUD (FIRESTORE) 👇
+  Future<void> _backupNotesToCloud() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Silakan login terlebih dahulu.")));
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    try {
+      final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+      if (allKeys.isEmpty) {
+        throw "Tidak ada catatan untuk dibackup.";
+      }
+
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      
+      for (var key in allKeys) {
+        String? data = _prefs.getString(key);
+        if (data != null) {
+          var docRef = FirebaseFirestore.instance
+              .collection("users")
+              .doc(user.uid)
+              .collection("notes")
+              .doc(key);
+          
+          batch.set(docRef, {
+            "content": data,
+            "updatedAt": FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup Berhasil! Catatan Anda aman di Cloud.")));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Backup: $e")));
+    } finally {
+      setState(() => _isSyncing = false);
+    }
+  }
+
+  // 👇 FUNGSI IMPORT CATATAN DARI CLOUD 👇
+  Future<void> _restoreNotesFromCloud() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => _isSyncing = true);
+    try {
+      var snapshot = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .collection("notes")
+          .get();
+
+      if (snapshot.docs.isEmpty) throw "Data cloud kosong.";
+
+      List<String> newKeys = [];
+      for (var doc in snapshot.docs) {
+        String key = doc.id;
+        String content = doc.data()['content'];
+        await _prefs.setString(key, content);
+        newKeys.add(key);
+      }
+      
+      await _prefs.setStringList("ALL_NOTE_KEYS", newKeys);
+      await _loadContent();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impor Berhasil! Catatan telah dipulihkan.")));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Impor: $e")));
+    } finally {
+      setState(() => _isSyncing = false);
+    }
+  }
+
+  void _showBackupMenu() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(padding: EdgeInsets.all(20), child: Text("Sinkronisasi Catatan Cloud", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+          ListTile(
+            leading: const Icon(Icons.cloud_upload, color: Colors.indigo),
+            title: const Text("Ekspor (Backup) ke Akun"),
+            subtitle: const Text("Simpan semua catatan ke server cloud."),
+            onTap: () { Navigator.pop(context); _backupNotesToCloud(); },
+          ),
+          ListTile(
+            leading: const Icon(Icons.cloud_download, color: Colors.orange),
+            title: const Text("Impor (Restore) dari Akun"),
+            subtitle: const Text("Ambil catatan lama jika ganti HP."),
+            onTap: () { Navigator.pop(context); _restoreNotesFromCloud(); },
+          ),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  // --- LOGIKA DATABASE ---
   Future<void> _changeVersion(String newVersion) async {
     if (_currentVersion == newVersion) return;
     setState(() { _currentVersion = newVersion; _isLoading = true; });
@@ -95,9 +199,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         )).toList();
       });
       await _loadContent();
-    } catch (e) {
-      setState(() => _isLoading = false);
-    }
+    } catch (e) { setState(() => _isLoading = false); }
   }
 
   Future<void> _loadContent({int? scrollToVerse}) async {
@@ -127,15 +229,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
       if (scrollToVerse != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            double estimatedHeight = (_fontSize * 4) + 20; 
+            double estimatedHeight = (_fontSize * 4) + 50; 
             double position = (scrollToVerse - 1) * estimatedHeight; 
             _scrollController.animateTo(position, duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
           }
         });
       }
-    } catch (e) {
-      setState(() => _isLoading = false);
-    }
+    } catch (e) { setState(() => _isLoading = false); }
   }
 
   Future<void> _syncNotes() async {
@@ -160,27 +260,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(padding: EdgeInsets.all(16.0), child: Text("Pilih Catatan", style: TextStyle(fontWeight: FontWeight.bold))),
-          const Divider(),
-          Flexible(
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: keys.length,
-              itemBuilder: (context, i) {
-                String key = keys[i];
-                String raw = _prefs.getString(key) ?? "";
-                return ListTile(
-                  leading: const Text("📝"),
-                  title: Text(raw.split("~|~")[0]),
-                  onTap: () { Navigator.pop(context); _openNote(key); },
-                );
-              },
-            ),
-          ),
-        ],
+      builder: (context) => ListView.builder(
+        shrinkWrap: true, itemCount: keys.length,
+        itemBuilder: (context, i) {
+          String key = keys[i];
+          String raw = _prefs.getString(key) ?? "";
+          return ListTile(leading: const Icon(Icons.edit_note), title: Text(raw.split("~|~")[0]), onTap: () { Navigator.pop(context); _openNote(key); });
+        },
       ),
     );
   }
@@ -196,10 +282,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _showNavigation() {
     showGeneralDialog(
-      context: context,
-      barrierDismissible: true, 
-      barrierLabel: "Nav",
-      barrierColor: Colors.black54,
+      context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, anim1, anim2) => Align(
         alignment: Alignment.topCenter,
@@ -210,18 +293,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
             child: _NavSheet(
               allBooks: _allBooks, db: _db!, currentVersion: _currentVersion,
               onVersionChange: (v) { Navigator.pop(context); _changeVersion(v); },
-              onSelectionComplete: (b, c, v) {
-                setState(() { _currentBookNum = b; _currentChapter = c; });
-                _saveLastPosition(); _loadContent(scrollToVerse: v);
-              },
+              onSelectionComplete: (b, c, v) { setState(() { _currentBookNum = b; _currentChapter = c; }); _saveLastPosition(); _loadContent(scrollToVerse: v); },
             ),
           ),
         ),
       ),
-      transitionBuilder: (context, anim1, anim2, child) => SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic)),
-        child: child,
-      ),
+      transitionBuilder: (context, anim1, anim2, child) => SlideTransition(position: Tween<Offset>(begin: const Offset(0, -1), end: Offset.zero).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic)), child: child),
     );
   }
 
@@ -231,20 +308,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String bookName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String nas = "$bookName $_currentChapter:${sorted.join(",")}";
     showModalBottomSheet(
-      context: context, 
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), 
+      context: context, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), 
       builder: (context) => Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () {
-          Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); 
-        }),
-        ListTile(leading: const Icon(Icons.copy), title: const Text("Salin"), onTap: () {
-          Clipboard.setData(ClipboardData(text: nas)); Navigator.pop(context); setState(() => _selectedVerses.clear());
-        }),
+        ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }),
+        ListTile(leading: const Icon(Icons.copy), title: const Text("Salin"), onTap: () { Clipboard.setData(ClipboardData(text: nas)); Navigator.pop(context); setState(() => _selectedVerses.clear()); }),
       ])
     );
   }
 
-  // 👇 FITUR KAMUS ALKITAB (SABDA) 👇
   void _tampilkanDialogKamus(BuildContext context) {
     final TextEditingController searchController = TextEditingController();
     showDialog(
@@ -252,16 +323,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Row(children: [Icon(Icons.menu_book, color: Colors.indigo), SizedBox(width: 10), Text("Kamus Alkitab")]),
-        content: TextField(
-          controller: searchController,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: "Cari arti kata..."),
-          onSubmitted: (v) { Navigator.pop(context); _bukaKamusDiBrowser(v); },
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          ElevatedButton(onPressed: () { Navigator.pop(context); _bukaKamusDiBrowser(searchController.text); }, child: const Text("Cari")),
-        ],
+        content: TextField(controller: searchController, autofocus: true, decoration: const InputDecoration(hintText: "Cari arti kata..."), onSubmitted: (v) { Navigator.pop(context); _bukaKamusDiBrowser(v); }),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")), ElevatedButton(onPressed: () { Navigator.pop(context); _bukaKamusDiBrowser(searchController.text); }, child: const Text("Cari"))],
       ),
     );
   }
@@ -269,46 +332,25 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _bukaKamusDiBrowser(String kata) async {
     if (kata.trim().isEmpty) return;
     final Uri url = Uri.parse("https://alkitab.sabda.org/dictionary.php?word=${kata.trim()}");
-    try { await launchUrl(url, mode: LaunchMode.inAppBrowserView); } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal membuka kamus.")));
-    }
+    try { await launchUrl(url, mode: LaunchMode.inAppBrowserView); } catch (e) {}
   }
 
-  // 👇 LOGIKA PERIKOP RUMIT (DENGAN REFERENSI SILANG WARNA BIRU) 👇
   Widget _buildPerikopItem(String title) {
-    if (!title.contains("<x>")) {
-      return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 1))));
-    }
-    List<InlineSpan> spans = [];
-    final regex = RegExp(r'<x>(.*?)</x>');
-    title.splitMapJoin(regex, onMatch: (Match m) {
-      String rawRef = m.group(1) ?? ""; 
-      final refData = RegExp(r'(\d+)\s+(\d+):(\d+)').firstMatch(rawRef);
-      if (refData != null) {
-        int bNum = int.parse(refData.group(1)!);
-        int chap = int.parse(refData.group(2)!);
-        int vStart = int.parse(refData.group(3)!);
-        String bookShort = bNum.toString();
-        try { bookShort = _allBooks.firstWhere((b) => b.bookNumber == bNum).shortName; } catch (e) {}
-        spans.add(TextSpan(text: rawRef.replaceFirst(bNum.toString(), bookShort), style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, decoration: TextDecoration.underline),
-          recognizer: TapGestureRecognizer()..onTap = () { setState(() { _currentBookNum = bNum; _currentChapter = chap; }); _saveLastPosition(); _loadContent(scrollToVerse: vStart); },
-        ));
-      } else { spans.add(TextSpan(text: rawRef)); }
-      return "";
-    }, onNonMatch: (String text) { spans.add(TextSpan(text: text)); return ""; });
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Center(child: RichText(textAlign: TextAlign.center, text: TextSpan(style: TextStyle(fontSize: _fontSize - 2, color: Colors.black, fontStyle: FontStyle.italic), children: spans))));
+    return Padding(padding: const EdgeInsets.fromLTRB(20, 30, 20, 10), child: Center(child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 1, color: Colors.indigo.shade900))));
   }
 
   @override
   Widget build(BuildContext context) {
     String bookName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA), // 👇 LATAR ALKIBTAB ALA RENUNGAN 👇
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bookName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
         actions: [
+          if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
+          IconButton(icon: const Icon(Icons.cloud_sync), tooltip: "Backup/Restore Cloud", onPressed: _showBackupMenu),
           IconButton(icon: const Icon(Icons.menu_book), onPressed: () => _tampilkanDialogKamus(context)),
-          IconButton(icon: const Icon(Icons.event_note), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent())),
           IconButton(icon: const Icon(Icons.search), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) { if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']); } })),
         ],
       ),
@@ -318,6 +360,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onScaleEnd: (d) => _saveFontSize(),
         child: ListView.builder(
           controller: _scrollController,
+          padding: const EdgeInsets.only(bottom: 30),
           itemCount: _verses.length,
           itemBuilder: (context, i) {
             final v = _verses[i];
@@ -327,21 +370,43 @@ class _AlkitabPageState extends State<AlkitabPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (_perikopMap.containsKey(vNum)) ..._perikopMap[vNum]!.map((t) => _buildPerikopItem(t)),
-                GestureDetector(
-                  onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
-                  onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
-                  child: Container(
-                    color: isSelected ? Colors.blue.withOpacity(0.1) : Colors.transparent,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        RichText(text: TextSpan(style: TextStyle(color: Colors.black, fontSize: _fontSize, height: 1.5), children: [
-                          TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                          TextSpan(text: _cleanText(v['text'])),
-                        ])),
-                        if (_verseNotesMap.containsKey(vNum)) Padding(padding: const EdgeInsets.only(top: 8), child: InkWell(onTap: () => _showNoteSelection(_verseNotesMap[vNum]!), child: const Text("📝", style: TextStyle(fontSize: 25)))),
-                      ],
+                
+                // 👇 WIDGET AYAT DENGAN STYLE KARTU RENUNGAN 👇
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: GestureDetector(
+                    onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
+                    onTap: () => setState(() => isSelected ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
+                    child: Container(
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(
+                        color: isSelected ? Colors.indigo.shade50 : Colors.white,
+                        borderRadius: BorderRadius.circular(15),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5, offset: const Offset(0, 2))],
+                        border: Border.all(color: isSelected ? Colors.indigo.shade200 : Colors.transparent)
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
+                            TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                            TextSpan(text: _cleanText(v['text'])),
+                          ])),
+                          if (_verseNotesMap.containsKey(vNum)) 
+                            Padding(
+                              padding: const EdgeInsets.only(top: 10), 
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                                  const SizedBox(width: 5),
+                                  Text("Ada Catatan", style: TextStyle(fontSize: 12, color: Colors.orange.shade800, fontWeight: FontWeight.bold)),
+                                  const Spacer(),
+                                  InkWell(onTap: () => _showNoteSelection(_verseNotesMap[vNum]!), child: Icon(Icons.arrow_forward_ios, size: 12, color: Colors.grey.shade400)),
+                                ],
+                              )
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -354,7 +419,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// 👇 CLASS NAVIGASI (FULL UI DENGAN PEMISAHAN PERJANJIAN LAMA & BARU) 👇
+// --- NAV SHEET (Gunakan Versi Full Bos Sebelumnya) ---
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks; final Database db; final String currentVersion; final Function(String) onVersionChange; final Function(int, int, int) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.currentVersion, required this.onVersionChange, required this.onSelectionComplete});

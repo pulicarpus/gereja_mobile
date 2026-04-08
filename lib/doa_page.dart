@@ -19,7 +19,7 @@ class _DoaPageState extends State<DoaPage> {
   final UserManager _userManager = UserManager();
 
   void _prosesAmen(String docId, List<dynamic> currentDaftarAmin) {
-    String currentUserName = _userManager.getUserNama() ?? "Jemaat";
+    String currentUserName = _userManager.UserNama ?? "Jemaat";
     
     // Cegah orang yang sama klik Amin berkali-kali
     if (currentDaftarAmin.contains(currentUserName)) {
@@ -175,7 +175,7 @@ class _DoaPageState extends State<DoaPage> {
               }
 
               // Cek apakah user saat ini sudah Amin
-              String currentUserName = _userManager.getUserNama() ?? "Jemaat";
+              String currentUserName = _userManager.UserNama ?? "Jemaat";
               bool hasAmened = daftarAmin.contains(currentUserName);
 
               return Card(

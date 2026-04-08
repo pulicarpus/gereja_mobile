@@ -45,6 +45,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
+  // 👇 KAMUS SINGKATAN AUDIO SABDA (1-66) 👇
+  final List<String> _sabdaCodes = [
+    "", "kej", "kel", "ima", "bil", "ula", "yos", "hak", "rut", "1sa", "2sa",
+    "1ra", "2ra", "1ta", "2ta", "ezr", "neh", "est", "ayb", "mzm", "ams",
+    "pkh", "kid", "yes", "yer", "rat", "yeh", "dan", "hos", "yoe", "amo",
+    "oba", "yun", "mik", "nah", "hab", "zef", "hag", "zak", "mal",
+    "mat", "mrk", "luk", "yoh", "kis", "rom", "1ko", "2ko", "gal", "efe",
+    "flp", "kol", "1te", "2te", "1ti", "2ti", "tit", "flm", "ibr", "yak",
+    "1pe", "2pe", "1yo", "2yo", "3yo", "yud", "why"
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -68,20 +79,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
     super.dispose();
   }
 
-  // 👇 PERBAIKAN AUDIO: TEMBAK LANGSUNG KE URL WEBSITE ASLI 👇
+  // 👇 PENERJEMAH API SERVER SABDA 👇
   String _getAudioUrl(int bookNum, int chapter) {
-    int standardBookNum;
-    if (bookNum < 400) {
-      standardBookNum = bookNum ~/ 10; 
-    } else {
-      standardBookNum = ((bookNum - 470) ~/ 10) + 40;
-    }
+    int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
+    if (standardBookNum < 1 || standardBookNum > 66) return "";
     
-    // Format nomor kitab harus 2 digit (contoh: 01, 02, 19, 40)
-    String bookStr = standardBookNum.toString().padLeft(2, '0');
+    String bookCode = _sabdaCodes[standardBookNum];
+    String bookPrefix = standardBookNum.toString().padLeft(2, '0');
+    String chapterPrefix = chapter.toString().padLeft(2, '0');
     
-    // URL web asli WordProject (Dijamin 100% jalan)
-    return "https://wordproject.org/bibles/audio/14_indonesian/b${bookStr}_$chapter.mp3";
+    // Hasil: https://media.sabda.org/alkitab_audio/tb/40_mat/40_mat01.mp3
+    return "https://media.sabda.org/alkitab_audio/tb/${bookPrefix}_${bookCode}/${bookPrefix}_${bookCode}${chapterPrefix}.mp3";
   }
 
   Future<void> _playPauseAudio() async {
@@ -96,7 +104,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
     } catch (e) {
       setState(() => _isAudioLoading = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio gagal diputar. Pastikan internet aktif.")));
+      // Memunculkan pesan error asli jika gagal
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Putar: ${e.toString()}")));
     }
   }
 
@@ -196,6 +205,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await _loadDatabase();
   }
 
+  // --- LOGIKA MENU HAMBURGER & BACKUP ---
   void _onMenuSelected(String value) {
     if (value == 'search') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) {
@@ -340,11 +350,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
-  // 👇 PERBAIKAN: JUDUL PERIKOP DITENGAHKAN KEMBALI 👇
+  // 👇 PERBAIKAN JUDUL PERIKOP DI TENGAH 👇
   Widget _buildPerikopItem(String title) {
     if (!title.contains("<x>")) {
       return Container(
-        width: double.infinity, // Memaksa agar membentang penuh lalu di-center
+        width: double.infinity,
         padding: const EdgeInsets.only(top: 25, bottom: 10), 
         child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900))
       );
@@ -380,7 +390,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bookName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
         actions: [
           if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
-          
           PopupMenuButton<String>(
             icon: const Icon(Icons.menu),
             onSelected: _onMenuSelected,
@@ -391,18 +400,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ],
           ),
         ],
-        // 👇 PERBAIKAN: AUDIO PLAYER PINDAH KE HEADER (APPBAR) 👇
+        // 👇 PERBAIKAN: PEMUTAR AUDIO DI DALAM APPBAR (HEMAT RUANG) 👇
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
+          preferredSize: const Size.fromHeight(45),
           child: Container(
-            color: Colors.indigo[800], // Warna slightly lebih terang dari header
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            color: Colors.indigo[800], 
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             child: Row(
               children: [
                 IconButton(
                   icon: _isAudioLoading 
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.orange), 
+                      : Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 30), 
                   onPressed: _playPauseAudio,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
@@ -424,7 +433,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.stop, color: Colors.redAccent, size: 20), 
+                  icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 28), 
                   onPressed: _resetAudio,
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),

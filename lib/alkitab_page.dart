@@ -73,15 +73,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _getAudioUrl(int bookNum, int chapter) {
     int standardBookNum;
     
+    // Menerjemahkan format Sabda (Kelipatan 10) ke urutan standar Internasional (1-66)
     if (bookNum < 400) {
-      // Perjanjian Lama: ID 10-390 diubah jadi 1-39
+      // Perjanjian Lama: Kejadian(10) -> 1, Maleakhi(390) -> 39
       standardBookNum = bookNum ~/ 10; 
     } else {
-      // Perjanjian Baru: ID 470-730 diubah jadi 40-66
+      // Perjanjian Baru: Matius(470) -> 40, Wahyu(730) -> 66
       standardBookNum = ((bookNum - 470) ~/ 10) + 40;
     }
     
-    return "https://audio.wordproject.com/bibles/app/audio/43/$standardBookNum/$chapter.mp3";
+    // URL Server Audio Publik (Kode '33' biasanya untuk Bahasa Indonesia)
+    // Jika nanti suaranya pakai bahasa asing, Bos tinggal ganti angka '33' di bawah ini jadi '43' atau cari kode bahasanya.
+    return "https://audio.wordproject.com/bibles/app/audio/33/$standardBookNum/$chapter.mp3";
   }
 
   Future<void> _playPauseAudio() async {
@@ -96,7 +99,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
     } catch (e) {
       setState(() => _isAudioLoading = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio tidak tersedia atau koneksi terputus.")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio gagal diputar. Pastikan internet aktif.")));
     }
   }
 
@@ -212,7 +215,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  // --- LOGIKA BACKUP & RESTORE CATATAN ---
   void _showNotesManagerDialog() {
     showModalBottomSheet(
       context: context,
@@ -334,7 +336,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  // --- KAMUS & UI LAINNYA ---
+  // --- KAMUS ---
   void _tampilkanDialogKamus(BuildContext context) {
     final TextEditingController searchController = TextEditingController();
     showDialog(
@@ -354,6 +356,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     try { await launchUrl(url, mode: LaunchMode.inAppBrowserView); } catch (e) {}
   }
 
+  // --- MENU NAVIGASI KITAB ---
   void _showNavigation() {
     showGeneralDialog(
       context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54,
@@ -504,7 +507,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// --- NAVIGASI SHEET ---
+// 👇 CLASS NAVIGASI MEWAH (DIKEMBALIKAN) 👇
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks; final Database db; final String currentVersion; final Function(String) onVersionChange; final Function(int, int, int) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.currentVersion, required this.onVersionChange, required this.onSelectionComplete});
@@ -512,16 +515,51 @@ class _NavSheet extends StatefulWidget {
 }
 
 class _NavSheetState extends State<_NavSheet> {
-  BibleBook? selBook; List<int> chapters = [];
+  BibleBook? selBook; int? selChapter; List<int> chapters = []; List<int> verses = [];
+  
   void _getChapters(BibleBook b) async {
-    final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ?", [b.bookNumber]);
-    setState(() { selBook = b; chapters = res.map((e) => e['chapter'] as int).toList(); });
+    final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]);
+    setState(() { selBook = b; chapters = res.map((e) => e['chapter'] as int).toList(); selChapter = null; });
   }
+  
+  void _getVerses(int c) async {
+    final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selBook!.bookNumber, c]);
+    setState(() { selChapter = c; verses = res.map((e) => e['verse'] as int).toList(); });
+  }
+  
   @override 
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => SafeArea(bottom: false, child: _buildContent());
+
+  Widget _buildContent() {
+    if (selChapter != null) return _buildGrid("Ayat: ${selBook!.name} $selChapter", verses, (v) { widget.onSelectionComplete(selBook!.bookNumber, selChapter!, v); Navigator.pop(context); }, () => setState(() => selChapter = null));
+    if (selBook != null) return _buildGrid("Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
+    
+    List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
+    List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
+    
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      if (selBook == null) Expanded(child: ListView(children: widget.allBooks.map((b) => ListTile(title: Text(b.name), onTap: () => _getChapters(b))).toList())),
-      if (selBook != null) Expanded(child: GridView.count(crossAxisCount: 5, children: chapters.map((c) => InkWell(onTap: () { Navigator.pop(context); widget.onSelectionComplete(selBook!.bookNumber, c, 1); }, child: Center(child: Text("$c")))).toList())),
+      Container(padding: const EdgeInsets.all(16), color: Colors.indigo[50], child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        const Text("Versi:", style: TextStyle(fontWeight: FontWeight.bold)),
+        DropdownButton<String>(value: widget.currentVersion, items: const [DropdownMenuItem(value: "TB.SQLite3", child: Text("TB")), DropdownMenuItem(value: "TJL.SQLite3", child: Text("TJL"))], onChanged: (v) => widget.onVersionChange(v!)),
+      ])),
+      Flexible(
+        child: ListView(
+          shrinkWrap: true, 
+          children: [
+            _header("PERJANJIAN LAMA", Colors.pink), 
+            _kitabGrid(pl), 
+            const Divider(), 
+            _header("PERJANJIAN BARU", Colors.blue), 
+            _kitabGrid(pb)
+          ]
+        )
+      ),
     ]);
   }
+
+  Widget _buildGrid(String t, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(mainAxisSize: MainAxisSize.min, children: [AppBar(title: Text(t, style: const TextStyle(fontSize: 16, color: Colors.black)), leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), backgroundColor: Colors.transparent, elevation: 0), Flexible(child: GridView.builder(shrinkWrap: true, padding: const EdgeInsets.all(12), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 60, childAspectRatio: 1.2, mainAxisSpacing: 6, crossAxisSpacing: 6), itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))))]);
+  
+  Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(12), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 12)));
+  
+  Widget _kitabGrid(List<BibleBook> books) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 12), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 68, childAspectRatio: 1.9, mainAxisSpacing: 6, crossAxisSpacing: 6), itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade300)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))));
 }

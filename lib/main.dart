@@ -28,7 +28,7 @@ import 'kategorial_page.dart';
 import 'doa_page.dart';
 import 'pengurus_page.dart';
 import 'daftar_pengguna_page.dart';
-import 'tentang_aplikasi_page.dart'; // 👇 TAMBAHKAN INI
+import 'tentang_aplikasi_page.dart'; // 👇 IMPORT TENTANG APLIKASI
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,7 +43,7 @@ void main() async {
 
 void _initOneSignal() {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
-  OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614"); // Ganti dengan App ID Bos jika perlu
+  OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 }
 
@@ -88,7 +88,6 @@ class _MainActivityState extends State<MainActivity> {
   String _alamatGereja = "Memuat alamat...";
   String? _fotoGerejaUrl;
   
-  // Media Sosial Gembala
   String _waGembala = "";
   String _fbGembala = "";
   String _igGembala = "";
@@ -145,7 +144,6 @@ class _MainActivityState extends State<MainActivity> {
     });
   }
 
-  // 👇 FUNGSI GANTI FOTO GEREJA (ADMIN/SUPERADMIN) 👇
   Future<void> _ubahFotoGereja() async {
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
@@ -175,7 +173,6 @@ class _MainActivityState extends State<MainActivity> {
     }
   }
 
-  // 👇 FUNGSI EDIT PROFIL GEMBALA 👇
   void _tampilkanDialogEditGembala() {
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
@@ -273,22 +270,29 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  void _bukaLink(String urlString) async {
+  // 👇 PERBAIKAN FUNGSI BUKA LINK SOSMED 👇
+  void _bukaLink(String urlString, bool isWhatsApp) async {
     if (urlString.isEmpty) return;
     
-    // Perbaiki link WA jika dimulai dengan 0
-    if (urlString.startsWith("0")) {
-       urlString = "https://wa.me/62${urlString.substring(1)}";
-    }
+    Uri uri;
 
-    Uri uri = Uri.parse(urlString);
-    if (!urlString.startsWith("http")) {
-       uri = Uri.parse("https://$urlString");
-    }
-
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (isWhatsApp) {
+      String cleanNumber = urlString.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanNumber.startsWith('0')) {
+        cleanNumber = '62${cleanNumber.substring(1)}';
+      }
+      uri = Uri.parse("https://wa.me/$cleanNumber");
     } else {
+      if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
+        uri = Uri.parse("https://$urlString");
+      } else {
+        uri = Uri.parse(urlString);
+      }
+    }
+
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak dapat membuka tautan.")));
     }
   }
@@ -307,7 +311,7 @@ class _MainActivityState extends State<MainActivity> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.indigo[900],
-        // 👇 TAMBAHKAN BLOK ACTIONS INI 👇
+        // 👇 TAMBAHAN TOMBOL TENTANG APLIKASI DI KANAN ATAS 👇
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline, color: Colors.indigo),
@@ -318,12 +322,10 @@ class _MainActivityState extends State<MainActivity> {
               ));
             },
           ),
-          const SizedBox(width: 8), // Memberi sedikit jarak dari pinggir layar
+          const SizedBox(width: 8), 
         ],
-        // 👆 ========================== 👆
       ),
       drawer: _buildDrawer(user, isAdmin, isSuperAdmin),
-// ...
       body: _isLoadingUpload 
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -350,7 +352,7 @@ class _MainActivityState extends State<MainActivity> {
                       ),
                     ),
 
-                  // 👇 FOTO HEADER GEREJA 👇
+                  // 👇 FOTO HEADER GEREJA & ALAMAT 👇
                   GestureDetector(
                     onTap: (isAdmin || isSuperAdmin) ? _ubahFotoGereja : null,
                     child: Stack(
@@ -363,6 +365,37 @@ class _MainActivityState extends State<MainActivity> {
                           ),
                           child: _fotoGerejaUrl == null ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)) : null,
                         ),
+                        
+                        // ALAMAT OVERLAY
+                        Positioned(
+                          bottom: 10, left: 10, 
+                          right: (isAdmin || isSuperAdmin) ? 110 : 10,
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6), 
+                                borderRadius: BorderRadius.circular(20)
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.location_on, color: Colors.redAccent, size: 16),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      _alamatGereja, 
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
                         if (isAdmin || isSuperAdmin)
                           Positioned(
                             bottom: 10, right: 10,
@@ -387,17 +420,7 @@ class _MainActivityState extends State<MainActivity> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user.activeChurchName ?? "GKII SILOAM", style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.location_on, size: 18, color: Colors.redAccent),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(_alamatGereja, style: const TextStyle(color: Colors.black87, fontSize: 14))),
-                          ],
-                        ),
-                        const SizedBox(height: 25),
-                        
+                        // 👇 KARTU AYAT EMAS 👇
                         GestureDetector(
                           onTap: () {
                             setState(() { _ayatEmas = AyatData.getAyatAcak(); });
@@ -443,7 +466,7 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                         const SizedBox(height: 10),
                         
-                        // 👇 KARTU GEMBALA (DENGAN MEDSOS) 👇
+                        // 👇 KARTU PROFIL GEMBALA & SOSMED 👇
                         Container(
                           padding: const EdgeInsets.all(15),
                           decoration: BoxDecoration(
@@ -478,11 +501,11 @@ class _MainActivityState extends State<MainActivity> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                   children: [
-                                    if (_waGembala.isNotEmpty) _buildSosmedIcon(Icons.phone, Colors.green, () => _bukaLink(_waGembala)),
-                                    if (_fbGembala.isNotEmpty) _buildSosmedIcon(Icons.facebook, Colors.blue, () => _bukaLink(_fbGembala)),
-                                    if (_igGembala.isNotEmpty) _buildSosmedIcon(Icons.camera_alt, Colors.purple, () => _bukaLink(_igGembala)),
-                                    if (_tiktokGembala.isNotEmpty) _buildSosmedIcon(Icons.music_note, Colors.black, () => _bukaLink(_tiktokGembala)),
-                                    if (_ytGembala.isNotEmpty) _buildSosmedIcon(Icons.play_circle_fill, Colors.red, () => _bukaLink(_ytGembala)),
+                                    if (_waGembala.isNotEmpty) _buildSosmedIcon(Icons.phone, Colors.green, () => _bukaLink(_waGembala, true)),
+                                    if (_fbGembala.isNotEmpty) _buildSosmedIcon(Icons.facebook, Colors.blue, () => _bukaLink(_fbGembala, false)),
+                                    if (_igGembala.isNotEmpty) _buildSosmedIcon(Icons.camera_alt, Colors.purple, () => _bukaLink(_igGembala, false)),
+                                    if (_tiktokGembala.isNotEmpty) _buildSosmedIcon(Icons.music_note, Colors.black, () => _bukaLink(_tiktokGembala, false)),
+                                    if (_ytGembala.isNotEmpty) _buildSosmedIcon(Icons.play_circle_fill, Colors.red, () => _bukaLink(_ytGembala, false)),
                                   ],
                                 )
                               ]
@@ -492,7 +515,6 @@ class _MainActivityState extends State<MainActivity> {
                         
                         const SizedBox(height: 35),
                         
-                        // 👇 WIDGET JEMAAT BERULANG TAHUN 👇
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),
                         _buildWidgetUlangTahun(user.activeChurchId),
@@ -518,7 +540,7 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // 👇 FUNGSI UNTUK MENGAMBIL DATA ULANG TAHUN 👇
+  // 👇 DAFTAR ULTAH HORIZONTAL YANG BARU 👇
   Widget _buildWidgetUlangTahun(String? churchId) {
     if (churchId == null) return const SizedBox.shrink();
 
@@ -539,7 +561,7 @@ class _MainActivityState extends State<MainActivity> {
 
         for (var doc in snapshot.data!.docs) {
           var data = doc.data() as Map<String, dynamic>;
-          String tglLahir = data['tanggalLahir'] ?? ""; // Format: dd-MM-yyyy
+          String tglLahir = data['tanggalLahir'] ?? ""; 
 
           if (tglLahir.length >= 10) {
             String hariLahir = tglLahir.substring(0, 2);
@@ -560,47 +582,83 @@ class _MainActivityState extends State<MainActivity> {
               children: [
                 Icon(Icons.cake, color: Colors.grey),
                 SizedBox(width: 10),
-                Text("Tidak ada jemaat yang berulang tahun bulan ini.", style: TextStyle(color: Colors.grey)),
+                Text("Tidak ada yang berulang tahun bulan ini.", style: TextStyle(color: Colors.grey, fontSize: 13)),
               ],
             ),
           );
         }
 
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: ultahList.length,
-          itemBuilder: (context, index) {
-            var jemaat = ultahList[index];
-            bool isHariIni = jemaat['isHariIni'] ?? false;
+        ultahList.sort((a, b) {
+          if (a['isHariIni'] && !b['isHariIni']) return -1;
+          if (!a['isHariIni'] && b['isHariIni']) return 1;
+          return 0;
+        });
 
-            return Card(
-              elevation: 0,
-              color: isHariIni ? Colors.orange.shade50 : Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-                side: BorderSide(color: isHariIni ? Colors.orange.shade300 : Colors.grey.shade200)
-              ),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: isHariIni ? Colors.orange : Colors.indigo.shade100,
-                  backgroundImage: jemaat['fotoProfil'] != null ? CachedNetworkImageProvider(jemaat['fotoProfil']) : null,
-                  child: jemaat['fotoProfil'] == null ? Icon(Icons.person, color: isHariIni ? Colors.white : Colors.indigo) : null,
+        return SizedBox(
+          height: 115, 
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: ultahList.length,
+            itemBuilder: (context, index) {
+              var jemaat = ultahList[index];
+              bool isHariIni = jemaat['isHariIni'] ?? false;
+              
+              String namaLengkap = jemaat['namaLengkap'] ?? "Nama";
+              String namaPendek = namaLengkap.split(' ')[0];
+
+              String tglLahirPenuh = jemaat['tanggalLahir'] ?? "";
+              String tglSingkat = tglLahirPenuh.length >= 5 ? tglLahirPenuh.substring(0, 5) : tglLahirPenuh;
+
+              return Container(
+                width: 100,
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isHariIni ? Colors.orange.shade50 : Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: isHariIni ? Colors.orange.shade300 : Colors.grey.shade200),
+                  boxShadow: [
+                    if (!isHariIni) BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 5, offset: const Offset(0, 3))
+                  ]
                 ),
-                title: Text(jemaat['namaLengkap'] ?? "Nama", style: TextStyle(fontWeight: FontWeight.bold, color: isHariIni ? Colors.orange.shade900 : Colors.black87)),
-                subtitle: Text("Lahir: ${jemaat['tanggalLahir']}", style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                trailing: isHariIni 
-                    ? const Icon(Icons.cake, color: Colors.orange) 
-                    : const Icon(Icons.calendar_month, color: Colors.grey, size: 16),
-              ),
-            );
-          },
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: isHariIni ? Colors.orange : Colors.indigo.shade50,
+                      backgroundImage: jemaat['fotoProfil'] != null ? CachedNetworkImageProvider(jemaat['fotoProfil']) : null,
+                      child: jemaat['fotoProfil'] == null ? Icon(Icons.person, color: isHariIni ? Colors.white : Colors.indigo, size: 20) : null,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      namaPendek, 
+                      maxLines: 1, 
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isHariIni ? Colors.orange.shade900 : Colors.black87)
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(isHariIni ? Icons.cake : Icons.calendar_month, size: 10, color: isHariIni ? Colors.orange : Colors.grey),
+                        const SizedBox(width: 4),
+                        Text(
+                          tglSingkat, 
+                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: isHariIni ? FontWeight.bold : FontWeight.normal)
+                        ),
+                      ],
+                    )
+                  ],
+                ),
+              );
+            },
+          ),
         );
       },
     );
   }
 
-  // WIDGET DRAWER (MENU SAMPING)
   Widget _buildDrawer(UserManager user, bool isAdmin, bool isSuperAdmin) {
      return Drawer(
         child: Column(
@@ -635,20 +693,9 @@ class _MainActivityState extends State<MainActivity> {
                     Text(
                       user.userNama ?? "Jemaat",
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white, 
-                        fontSize: 16, 
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                     ),
-                    Text(
-                      user.activeChurchName ?? "GKII SILOAM",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7), 
-                        fontSize: 11
-                      ),
-                    ),
+                    Text(user.activeChurchName ?? "GKII SILOAM", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
                   ],
                 ),
               ),

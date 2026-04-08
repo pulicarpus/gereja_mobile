@@ -45,6 +45,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
+  // 👇 DAFTAR FOLDER & PREFIX FILE (KEJ - WAH) UNTUK GITHUB BOS 👇
   final Map<int, Map<String, String>> _bibleAudioMap = {
     1: {"folder": "kejadian", "file": "01_kej"},
     2: {"folder": "keluaran", "file": "02_kel"},
@@ -221,6 +222,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
+  String _cleanText(String text) {
+    return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+  }
+
   // --- ACTIONS & MENU ---
   void _onMenuSelected(String val) {
     if (val == 'search') {
@@ -326,9 +331,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
           IconButton(icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 28), onPressed: _resetAudio),
         ]))),
       ),
-      body: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView(
-        controller: _scrollController, padding: const EdgeInsets.all(15),
-        children: [Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildContent()))],
+      body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
+        onScaleStart: (d) => _baseFontSize = _fontSize,
+        onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
+        onScaleEnd: (d) => _prefs.setDouble('LAST_FONT_SIZE', _fontSize),
+        child: ListView(
+          controller: _scrollController, padding: const EdgeInsets.all(15),
+          children: [Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildContent()))],
+        ),
       ),
     );
   }

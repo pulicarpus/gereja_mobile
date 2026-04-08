@@ -28,16 +28,14 @@ import 'kategorial_page.dart';
 import 'doa_page.dart';
 import 'pengurus_page.dart';
 import 'daftar_pengguna_page.dart';
-import 'tentang_aplikasi_page.dart'; // 👇 IMPORT TENTANG APLIKASI
+import 'tentang_aplikasi_page.dart';
+import 'profil_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
   await initializeDateFormatting('id_ID', null);
-  
   _initOneSignal();
-  
   runApp(const MyApp());
 }
 
@@ -107,10 +105,8 @@ class _MainActivityState extends State<MainActivity> {
   void _initSession() async {
     final userManager = UserManager();
     await userManager.loadFromPrefs();
-    
     _setupOneSignal();
     _loadDataGereja();
-    
     if (mounted) setState(() {}); 
   }
 
@@ -133,7 +129,6 @@ class _MainActivityState extends State<MainActivity> {
           _fotoGembalaUrl = data?['fotoGembalaUrl'];
           _alamatGereja = data?['alamat'] ?? "Alamat tidak tersedia";
           _fotoGerejaUrl = data?['fotoGerejaUrl'];
-          
           _waGembala = data?['waGembala'] ?? "";
           _fbGembala = data?['fbGembala'] ?? "";
           _igGembala = data?['igGembala'] ?? "";
@@ -157,14 +152,9 @@ class _MainActivityState extends State<MainActivity> {
       File imageFile = File(pickedFile.path);
       String fileName = "header_${DateTime.now().millisecondsSinceEpoch}.jpg";
       Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-      
       await ref.putFile(imageFile);
       String url = await ref.getDownloadURL();
-
-      await _db.collection("churches").doc(churchId).update({
-        "fotoGerejaUrl": url
-      });
-      
+      await _db.collection("churches").doc(churchId).update({"fotoGerejaUrl": url});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto Gereja berhasil diperbarui.")));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal upload foto: $e")));
@@ -234,10 +224,8 @@ class _MainActivityState extends State<MainActivity> {
               onPressed: () async {
                 setState(() => _isLoadingUpload = true);
                 Navigator.pop(context);
-
                 String? finalFotoUrl = _fotoGembalaUrl;
                 String churchId = user.activeChurchId!;
-
                 try {
                   if (imageFile != null) {
                     String fileName = "gembala_${DateTime.now().millisecondsSinceEpoch}.jpg";
@@ -245,7 +233,6 @@ class _MainActivityState extends State<MainActivity> {
                     await ref.putFile(imageFile!);
                     finalFotoUrl = await ref.getDownloadURL();
                   }
-
                   await _db.collection("churches").doc(churchId).update({
                     "namaGembala": txtNama.text.trim(),
                     "waGembala": txtWa.text.trim(),
@@ -270,12 +257,9 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // 👇 PERBAIKAN FUNGSI BUKA LINK SOSMED 👇
   void _bukaLink(String urlString, bool isWhatsApp) async {
     if (urlString.isEmpty) return;
-    
     Uri uri;
-
     if (isWhatsApp) {
       String cleanNumber = urlString.replaceAll(RegExp(r'[^0-9]'), '');
       if (cleanNumber.startsWith('0')) {
@@ -289,7 +273,6 @@ class _MainActivityState extends State<MainActivity> {
         uri = Uri.parse(urlString);
       }
     }
-
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (e) {
@@ -311,7 +294,6 @@ class _MainActivityState extends State<MainActivity> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.indigo[900],
-        // 👇 TAMBAHAN TOMBOL TENTANG APLIKASI DI KANAN ATAS 👇
         actions: [
           IconButton(
             icon: const Icon(Icons.info_outline, color: Colors.indigo),
@@ -352,7 +334,7 @@ class _MainActivityState extends State<MainActivity> {
                       ),
                     ),
 
-                  // 👇 FOTO HEADER GEREJA & ALAMAT 👇
+                  // 👇 FOTO HEADER GEREJA (TIDAK TERPOTONG) 👇
                   GestureDetector(
                     onTap: (isAdmin || isSuperAdmin) ? _ubahFotoGereja : null,
                     child: Stack(
@@ -360,42 +342,18 @@ class _MainActivityState extends State<MainActivity> {
                         Container(
                           width: double.infinity, height: 220,
                           decoration: BoxDecoration(
-                            color: Colors.indigo.shade50,
-                            image: _fotoGerejaUrl != null ? DecorationImage(image: CachedNetworkImageProvider(_fotoGerejaUrl!), fit: BoxFit.cover) : null,
+                            color: Colors.indigo.shade50, 
                           ),
-                          child: _fotoGerejaUrl == null ? Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)) : null,
+                          child: _fotoGerejaUrl != null 
+                              ? CachedNetworkImage(
+                                  imageUrl: _fotoGerejaUrl!,
+                                  fit: BoxFit.contain, // Gambar Utuh
+                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                                  errorWidget: (context, url, error) => const Icon(Icons.error),
+                                )
+                              : Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)),
                         ),
                         
-                        // ALAMAT OVERLAY
-                        Positioned(
-                          bottom: 10, left: 10, 
-                          right: (isAdmin || isSuperAdmin) ? 110 : 10,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6), 
-                                borderRadius: BorderRadius.circular(20)
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.location_on, color: Colors.redAccent, size: 16),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      _alamatGereja, 
-                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
-                                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-
                         if (isAdmin || isSuperAdmin)
                           Positioned(
                             bottom: 10, right: 10,
@@ -415,12 +373,31 @@ class _MainActivityState extends State<MainActivity> {
                     ),
                   ),
                   
+                  // 👇 ALAMAT DIPINDAHKAN KE BAWAH FOTO 👇
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    color: Colors.white,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.redAccent, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _alamatGereja, 
+                            style: TextStyle(color: Colors.indigo.shade900, fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                  
                   Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 👇 KARTU AYAT EMAS 👇
                         GestureDetector(
                           onTap: () {
                             setState(() { _ayatEmas = AyatData.getAyatAcak(); });
@@ -466,7 +443,6 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                         const SizedBox(height: 10),
                         
-                        // 👇 KARTU PROFIL GEMBALA & SOSMED 👇
                         Container(
                           padding: const EdgeInsets.all(15),
                           decoration: BoxDecoration(
@@ -540,7 +516,6 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // 👇 DAFTAR ULTAH HORIZONTAL YANG BARU 👇
   Widget _buildWidgetUlangTahun(String? churchId) {
     if (churchId == null) return const SizedBox.shrink();
 
@@ -672,31 +647,54 @@ class _MainActivityState extends State<MainActivity> {
                 ),
               ),
               child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: CircleAvatar(
-                        radius: 35,
-                        backgroundColor: Colors.indigo[100],
-                        backgroundImage: user.userFotoUrl != null 
-                            ? CachedNetworkImageProvider(user.userFotoUrl!) 
-                            : null,
-                        child: user.userFotoUrl == null 
-                            ? const Icon(Icons.person, size: 40, color: Colors.indigo) 
-                            : null,
+                // 👇 FOTO DAN NAMA SEKARANG BISA DI-KLIK KE PROFIL 👇
+                child: InkWell(
+                  onTap: () {
+                    Navigator.pop(context); 
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (context) => const ProfilPage()
+                    )).then((_) {
+                      setState(() { _initSession(); });
+                    });
+                  },
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Stack(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(3),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: CircleAvatar(
+                              radius: 35,
+                              backgroundColor: Colors.indigo[100],
+                              backgroundImage: user.userFotoUrl != null 
+                                  ? CachedNetworkImageProvider(user.userFotoUrl!) 
+                                  : null,
+                              child: user.userFotoUrl == null 
+                                  ? const Icon(Icons.person, size: 40, color: Colors.indigo) 
+                                  : null,
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0, right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle),
+                              child: const Icon(Icons.edit, size: 12, color: Colors.white),
+                            ),
+                          )
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      user.userNama ?? "Jemaat",
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                    ),
-                    Text(user.activeChurchName ?? "GKII SILOAM", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
-                  ],
+                      const SizedBox(height: 12),
+                      Text(
+                        user.userNama ?? "Jemaat",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                      ),
+                      Text(user.activeChurchName ?? "GKII SILOAM", style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11)),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -770,18 +768,8 @@ class _MainActivityState extends State<MainActivity> {
                   .then((_) => setState(() { _initSession(); }));
                 },
               ),
-              const Divider(height: 1),
             ],
-            ListTile(
-              leading: const Icon(Icons.logout, color: Colors.red),
-              title: const Text("Keluar Akun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              onTap: () async {
-                await _auth.signOut();
-                OneSignal.logout();
-                if (context.mounted) Navigator.pushReplacementNamed(context, '/login');
-              },
-            ),
-            const SizedBox(height: 10),
+            // 👇 TOMBOL KELUAR AKUN DI BAWAH SUDAH DIHAPUS BERSIH 👇
           ],
         ),
       );

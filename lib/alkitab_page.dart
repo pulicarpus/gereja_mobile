@@ -45,7 +45,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
-  // 👇 DAFTAR FOLDER & PREFIX FILE (KEJ - WAH) UNTUK GITHUB BOS 👇
+  // DAFTAR FOLDER & PREFIX FILE (KEJ - WAH) UNTUK GITHUB BOS
   final Map<int, Map<String, String>> _bibleAudioMap = {
     1: {"folder": "kejadian", "file": "01_kej"},
     2: {"folder": "keluaran", "file": "02_kel"},
@@ -226,12 +226,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
+  // 👇 PENANGKAP SINYAL DARI HALAMAN CATATAN 👇
+  void _handleNavResult(dynamic res) {
+    if (res != null && res is Map && res.containsKey('book_number')) {
+      // Jika balik dari tombol "Menuju Pasal Ini"
+      setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; });
+      _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']);
+    } else {
+      // Jika cuma balik sehabis save catatan biasa
+      _loadContent(); 
+    }
+  }
+
   // --- ACTIONS & MENU ---
   void _onMenuSelected(String val) {
     if (val == 'search') {
-      Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) {
-        if (res != null) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']); }
-      });
+      Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult);
     } else if (val == 'dictionary') {
       _showDictionary();
     } else if (val == 'notes') {
@@ -247,7 +257,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   void _showNotesManager() {
     showModalBottomSheet(context: context, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [
       const Padding(padding: EdgeInsets.all(20), child: Text("Kelola Catatan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-      ListTile(leading: const Icon(Icons.list_alt, color: Colors.indigo), title: const Text("Lihat Daftar Catatan"), onTap: () { Navigator.pop(c); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }),
+      ListTile(leading: const Icon(Icons.list_alt, color: Colors.indigo), title: const Text("Lihat Daftar Catatan"), onTap: () { Navigator.pop(c); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult); }),
       const Divider(),
       ListTile(leading: const Icon(Icons.cloud_upload, color: Colors.green), title: const Text("Backup ke Cloud"), onTap: () { Navigator.pop(c); _syncCloud(true); }),
       ListTile(leading: const Icon(Icons.cloud_download, color: Colors.orange), title: const Text("Restore dari Cloud"), onTap: () { Navigator.pop(c); _syncCloud(false); }),
@@ -284,7 +294,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         String txt = "$nas\n"; for (var v in sorted) { var d = _verses.firstWhere((e) => e['verse'] == v); txt += "$v. ${_cleanText(d['text'])}\n"; }
         Clipboard.setData(ClipboardData(text: txt)); Navigator.pop(context); setState(() => _selectedVerses.clear());
       }),
-      ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent()); }),
+      ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult); }),
     ]));
   }
 
@@ -292,7 +302,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String bName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     String ref = "$bName $_currentChapter:$vNum";
     if (keys == null || keys.isEmpty) {
-      Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: ref, prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) => _loadContent());
+      Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: ref, prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult);
     } else if (keys.length == 1) {
       _openNote(keys.first);
     } else {
@@ -305,7 +315,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   void _openNote(String k) {
     String? raw = _prefs.getString(k);
-    if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then((_) => _loadContent());
+    if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then(_handleNavResult);
   }
 
   // --- UI BUILDING ---
@@ -343,31 +353,49 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
+  // 👇 PERBAIKAN IKON CATATAN DI UJUNG KANAN & LEBIH BESAR 👇
   List<Widget> _buildContent() {
     List<Widget> content = [];
     for (var v in _verses) {
       int vNum = v['verse'] as int; bool isSel = _selectedVerses.contains(vNum);
       if (_perikopMap.containsKey(vNum)) { for (var t in _perikopMap[vNum]!) content.add(Container(width: double.infinity, padding: const EdgeInsets.only(top: 25, bottom: 10), child: Text(t, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900)))); }
+      
       content.add(GestureDetector(
         onLongPress: () { if (!isSel) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
         onTap: () => setState(() => isSel ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
         child: Container(
-          color: isSel ? Colors.blue.withOpacity(0.15) : Colors.transparent, padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-          child: RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
-            WidgetSpan(alignment: PlaceholderAlignment.middle, child: GestureDetector(onTap: () => _handleNoteClick(vNum, _verseNotesMap[vNum]), child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text("$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-              if (_verseNotesMap.containsKey(vNum)) const Icon(Icons.edit_note, size: 18, color: Colors.orange),
-              const SizedBox(width: 4),
-            ]))),
-            TextSpan(text: _cleanText(v['text'])),
-          ])),
+          color: isSel ? Colors.blue.withOpacity(0.15) : Colors.transparent, 
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
+                  TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                  TextSpan(text: _cleanText(v['text'])),
+                ])),
+              ),
+              if (_verseNotesMap.containsKey(vNum))
+                Padding(
+                  padding: const EdgeInsets.only(left: 8.0, top: 2.0),
+                  child: InkWell(
+                    onTap: () => _handleNoteClick(vNum, _verseNotesMap[vNum]),
+                    child: const Icon(Icons.edit_note, size: 28, color: Colors.orange),
+                  ),
+                ),
+            ],
+          ),
         ),
       ));
     }
     return content;
   }
 
-  void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54, pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { setState(() { _currentBookNum = b; _currentChapter = c; }); _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: v); })))); }
+  void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", barrierColor: Colors.black54, pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { 
+    Navigator.pop(context); // 👇 PERBAIKAN: Dialog Navigasi Menutup Otomatis
+    setState(() { _currentBookNum = b; _currentChapter = c; }); 
+    _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: v); 
+  })))); }
 }
 
 class _NavSheet extends StatefulWidget {

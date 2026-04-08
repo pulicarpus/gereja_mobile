@@ -28,6 +28,7 @@ import 'kategorial_page.dart';
 import 'doa_page.dart';
 import 'pengurus_page.dart';
 import 'daftar_pengguna_page.dart';
+import 'tentang_aplikasi_page.dart'; // 👇 TAMBAHKAN INI
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

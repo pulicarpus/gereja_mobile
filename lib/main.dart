@@ -306,8 +306,23 @@ class _MainActivityState extends State<MainActivity> {
         elevation: 0,
         backgroundColor: Colors.white,
         foregroundColor: Colors.indigo[900],
+        // 👇 TAMBAHKAN BLOK ACTIONS INI 👇
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.indigo),
+            tooltip: "Tentang Aplikasi",
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(
+                builder: (context) => const TentangAplikasiPage()
+              ));
+            },
+          ),
+          const SizedBox(width: 8), // Memberi sedikit jarak dari pinggir layar
+        ],
+        // 👆 ========================== 👆
       ),
       drawer: _buildDrawer(user, isAdmin, isSuperAdmin),
+// ...
       body: _isLoadingUpload 
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(

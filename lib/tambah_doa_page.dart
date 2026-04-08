@@ -46,7 +46,7 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
     setState(() => _isLoading = true);
 
     String userUid = _auth.currentUser?.uid ?? "";
-    String userNama = _userManager.getUserNama() ?? "Jemaat";
+    String userNama = _userManager.UserNama ?? "Jemaat";
     String? churchId = _userManager.getChurchIdForCurrentView();
 
     if (churchId == null) {

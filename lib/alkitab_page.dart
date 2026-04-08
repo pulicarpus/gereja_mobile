@@ -45,6 +45,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
 
+  // 👇 KAMUS SINGKATAN SABDA UNTUK JALUR AUDIO DRAMA 👇
+  final List<String> _sabdaCodes = [
+    "", "kej", "kel", "ima", "bil", "ula", "yos", "hak", "rut", "1sa", "2sa",
+    "1ra", "2ra", "1ta", "2ta", "ezr", "neh", "est", "ayb", "mzm", "ams",
+    "pkh", "kid", "yes", "yer", "rat", "yeh", "dan", "hos", "yoe", "amo",
+    "oba", "yun", "mik", "nah", "hab", "zef", "hag", "zak", "mal",
+    "mat", "mrk", "luk", "yoh", "kis", "rom", "1ko", "2ko", "gal", "efe",
+    "flp", "kol", "1te", "2te", "1ti", "2ti", "tit", "flm", "ibr", "yak",
+    "1pe", "2pe", "1yo", "2yo", "3yo", "yud", "why"
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -68,20 +79,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
     super.dispose();
   }
 
-  // 👇 PERBAIKAN FINAL AUDIO (JALUR WEB WORDPROJECT SESUAI CHROME BOS) 👇
+  // --- LOGIKA AUDIO SABDA ---
   String _getAudioUrl(int bookNum, int chapter) {
-    int standardBookNum;
-    if (bookNum < 400) {
-      standardBookNum = bookNum ~/ 10; 
-    } else {
-      standardBookNum = ((bookNum - 470) ~/ 10) + 40;
-    }
+    int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
+    if (standardBookNum < 1 || standardBookNum > 66) return "";
     
-    // Format 2 digit (01, 02, ..., 66)
-    String bookStr = standardBookNum.toString().padLeft(2, '0');
+    String bookCode = _sabdaCodes[standardBookNum];
+    String bookPrefix = standardBookNum.toString().padLeft(2, '0');
+    String chapterPrefix = chapter.toString().padLeft(2, '0');
     
-    // Tembak langsung ke URL website WordProject
-    return "https://wordproject.org/bibles/audio/14_indonesian/b${bookStr}_$chapter.mp3";
+    return "https://media.sabda.org/alkitab_audio/tb/${bookPrefix}_${bookCode}/${bookPrefix}_${bookCode}${chapterPrefix}.mp3";
   }
 
   Future<void> _playPauseAudio() async {
@@ -91,7 +98,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
       } else {
         setState(() => _isAudioLoading = true);
         String audioUrl = _getAudioUrl(_currentBookNum, _currentChapter);
-        await _audioPlayer.play(UrlSource(audioUrl));
+        
+        // 👇 TEKNIK PENYAMARAN: Kita paksa audio player memproses sebagai stream speaker 👇
+        await _audioPlayer.play(
+          UrlSource(audioUrl),
+          ctx: AudioContextConfig(forceSpeaker: true).build(),
+        );
+        
         setState(() => _isAudioLoading = false);
       }
     } catch (e) {
@@ -106,7 +119,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     _position = Duration.zero;
   }
 
-  // --- LOGIKA APP & DB ---
+  // --- LOGIKA DATABASE ---
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
@@ -164,7 +177,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       if (scrollToVerse != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollController.hasClients) {
-            _scrollController.animateTo((scrollToVerse - 1) * (_fontSize * 3), duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
+            _scrollController.animateTo((scrollToVerse - 1) * (_fontSize * 3.5), duration: const Duration(milliseconds: 600), curve: Curves.easeOut);
           }
         });
       }
@@ -196,7 +209,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     await _loadDatabase();
   }
 
-  // --- LOGIKA MENU HAMBURGER & BACKUP ---
+  // --- MENU HAMBURGER & FITUR TAMBAHAN ---
   void _onMenuSelected(String value) {
     if (value == 'search') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then((res) {
@@ -231,11 +244,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   Future<void> _backupNotesToCloud() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Silakan login terlebih dahulu."))); return; }
+    if (user == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Silakan login dahulu."))); return; }
     setState(() => _isSyncing = true);
     try {
       final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-      if (allKeys.isEmpty) throw "Tidak ada catatan untuk dibackup.";
       WriteBatch batch = FirebaseFirestore.instance.batch();
       for (var key in allKeys) {
         String? data = _prefs.getString(key);
@@ -245,8 +257,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
         }
       }
       await batch.commit();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup Berhasil! Catatan Anda aman di Cloud.")));
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Backup: $e"))); } finally { setState(() => _isSyncing = false); }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup Berhasil!")));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e"))); } finally { setState(() => _isSyncing = false); }
   }
 
   Future<void> _restoreNotesFromCloud() async {
@@ -255,7 +267,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     setState(() => _isSyncing = true);
     try {
       var snapshot = await FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").get();
-      if (snapshot.docs.isEmpty) throw "Data cloud kosong.";
       List<String> newKeys = [];
       for (var doc in snapshot.docs) {
         String key = doc.id; String content = doc.data()['content'];
@@ -263,8 +274,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
       await _prefs.setStringList("ALL_NOTE_KEYS", newKeys);
       await _loadContent();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Impor Berhasil! Catatan telah dipulihkan.")));
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Impor: $e"))); } finally { setState(() => _isSyncing = false); }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Restore Berhasil!")));
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal: $e"))); } finally { setState(() => _isSyncing = false); }
   }
 
   void _showActionMenu() {
@@ -281,7 +292,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
           String fullText = "$nas\n";
           for (var vNum in sorted) { var vData = _verses.firstWhere((element) => element['verse'] == vNum); fullText += "$vNum. ${_cleanText(vData['text'])}\n"; }
           Clipboard.setData(ClipboardData(text: fullText)); Navigator.pop(context); setState(() => _selectedVerses.clear()); 
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ayat disalin ke papan klip")));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Disalin ke Klip")));
         }),
       ])
     );
@@ -306,21 +317,20 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _tampilkanDialogKamus(BuildContext context) {
-    final TextEditingController searchController = TextEditingController();
+    final TextEditingController sc = TextEditingController();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(children: [Icon(Icons.menu_book, color: Colors.indigo), SizedBox(width: 10), Text("Kamus Alkitab")]),
-        content: TextField(controller: searchController, autofocus: true, decoration: const InputDecoration(hintText: "Cari arti kata..."), onSubmitted: (v) { Navigator.pop(context); _bukaKamusDiBrowser(v); }),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")), ElevatedButton(onPressed: () { Navigator.pop(context); _bukaKamusDiBrowser(searchController.text); }, child: const Text("Cari"))],
+        title: const Text("Kamus Alkitab"),
+        content: TextField(controller: sc, autofocus: true, decoration: const InputDecoration(hintText: "Kata kunci...")),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")), ElevatedButton(onPressed: () { Navigator.pop(context); _bukaKamusDiBrowser(sc.text); }, child: const Text("Cari"))],
       ),
     );
   }
 
-  Future<void> _bukaKamusDiBrowser(String kata) async {
-    if (kata.trim().isEmpty) return;
-    final Uri url = Uri.parse("https://alkitab.sabda.org/dictionary.php?word=${kata.trim()}");
+  Future<void> _bukaKamusDiBrowser(String k) async {
+    if (k.trim().isEmpty) return;
+    final Uri url = Uri.parse("https://alkitab.sabda.org/dictionary.php?word=${k.trim()}");
     try { await launchUrl(url, mode: LaunchMode.inAppBrowserView); } catch (e) {}
   }
 
@@ -341,6 +351,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     );
   }
 
+  // 👇 PERIKOP DITENGAHKAN 👇
   Widget _buildPerikopItem(String title) {
     if (!title.contains("<x>")) {
       return Container(
@@ -380,7 +391,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bookName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
         actions: [
           if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
-          
           PopupMenuButton<String>(
             icon: const Icon(Icons.menu),
             onSelected: _onMenuSelected,
@@ -391,6 +401,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ],
           ),
         ],
+        // 👇 AUDIO PLAYER DI HEADER 👇
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(45),
           child: Container(
@@ -411,7 +422,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   child: SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
                       activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white,
                     ),
                     child: Slider(
@@ -443,14 +453,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white, borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: _buildChapterContent(),
-              ),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildChapterContent()),
             ),
           ],
         ),
@@ -463,11 +467,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
     for (var v in _verses) {
       int vNum = v['verse'] as int;
       bool isSelected = _selectedVerses.contains(vNum);
-
       if (_perikopMap.containsKey(vNum)) {
         for (var title in _perikopMap[vNum]!) { content.add(_buildPerikopItem(title)); }
       }
-      
       content.add(
         GestureDetector(
           onLongPress: () { if (!isSelected) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
@@ -488,14 +490,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
                     padding: const EdgeInsets.only(top: 8), 
                     child: InkWell(
                       onTap: () => _showNoteSelection(_verseNotesMap[vNum]!), 
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.edit_note, size: 16, color: Colors.orange),
-                          const SizedBox(width: 4),
-                          Text("Lihat Catatan", style: TextStyle(fontSize: _fontSize - 4, color: Colors.orange.shade800, fontStyle: FontStyle.italic)),
-                        ],
-                      )
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.edit_note, size: 16, color: Colors.orange),
+                        const SizedBox(width: 4),
+                        Text("Lihat Catatan", style: TextStyle(fontSize: _fontSize - 4, color: Colors.orange.shade800, fontStyle: FontStyle.italic)),
+                      ])
                     )
                   ),
               ],
@@ -508,7 +507,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-// 👇 CLASS NAVIGASI MEWAH 👇
+// --- NAV SHEET MEWAH ---
 class _NavSheet extends StatefulWidget {
   final List<BibleBook> allBooks; final Database db; final String currentVersion; final Function(String) onVersionChange; final Function(int, int, int) onSelectionComplete;
   const _NavSheet({required this.allBooks, required this.db, required this.currentVersion, required this.onVersionChange, required this.onSelectionComplete});
@@ -517,50 +516,30 @@ class _NavSheet extends StatefulWidget {
 
 class _NavSheetState extends State<_NavSheet> {
   BibleBook? selBook; int? selChapter; List<int> chapters = []; List<int> verses = [];
-  
   void _getChapters(BibleBook b) async {
     final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]);
     setState(() { selBook = b; chapters = res.map((e) => e['chapter'] as int).toList(); selChapter = null; });
   }
-  
   void _getVerses(int c) async {
     final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selBook!.bookNumber, c]);
     setState(() { selChapter = c; verses = res.map((e) => e['verse'] as int).toList(); });
   }
-  
   @override 
   Widget build(BuildContext context) => SafeArea(bottom: false, child: _buildContent());
-
   Widget _buildContent() {
     if (selChapter != null) return _buildGrid("Ayat: ${selBook!.name} $selChapter", verses, (v) { widget.onSelectionComplete(selBook!.bookNumber, selChapter!, v); Navigator.pop(context); }, () => setState(() => selChapter = null));
     if (selBook != null) return _buildGrid("Pasal: ${selBook!.name}", chapters, (c) => _getVerses(c), () => setState(() => selBook = null));
-    
     List<BibleBook> pl = widget.allBooks.where((b) => b.bookNumber < 470).toList();
     List<BibleBook> pb = widget.allBooks.where((b) => b.bookNumber >= 470).toList();
-    
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Container(padding: const EdgeInsets.all(16), color: Colors.indigo[50], child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         const Text("Versi:", style: TextStyle(fontWeight: FontWeight.bold)),
         DropdownButton<String>(value: widget.currentVersion, items: const [DropdownMenuItem(value: "TB.SQLite3", child: Text("TB")), DropdownMenuItem(value: "TJL.SQLite3", child: Text("TJL"))], onChanged: (v) => widget.onVersionChange(v!)),
       ])),
-      Flexible(
-        child: ListView(
-          shrinkWrap: true, 
-          children: [
-            _header("PERJANJIAN LAMA", Colors.pink), 
-            _kitabGrid(pl), 
-            const Divider(), 
-            _header("PERJANJIAN BARU", Colors.blue), 
-            _kitabGrid(pb)
-          ]
-        )
-      ),
+      Flexible(child: ListView(shrinkWrap: true, children: [_header("PERJANJIAN LAMA", Colors.pink), _kitabGrid(pl), const Divider(), _header("PERJANJIAN BARU", Colors.blue), _kitabGrid(pb)]))
     ]);
   }
-
   Widget _buildGrid(String t, List<int> items, Function(int) onTap, VoidCallback onBack) => Column(mainAxisSize: MainAxisSize.min, children: [AppBar(title: Text(t, style: const TextStyle(fontSize: 16, color: Colors.black)), leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: onBack), backgroundColor: Colors.transparent, elevation: 0), Flexible(child: GridView.builder(shrinkWrap: true, padding: const EdgeInsets.all(12), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 60, childAspectRatio: 1.2, mainAxisSpacing: 6, crossAxisSpacing: 6), itemCount: items.length, itemBuilder: (ctx, i) => InkWell(onTap: () => onTap(items[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)), child: Text("${items[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))))]);
-  
   Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(12), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold, fontSize: 12)));
-  
   Widget _kitabGrid(List<BibleBook> books) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 12), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 68, childAspectRatio: 1.9, mainAxisSpacing: 6, crossAxisSpacing: 6), itemCount: books.length, itemBuilder: (ctx, i) => InkWell(onTap: () => _getChapters(books[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey.shade300)), child: Text(books[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)))));
 }

@@ -84,7 +84,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     
     // URL Server Audio Publik (Kode '33' biasanya untuk Bahasa Indonesia)
     // Jika nanti suaranya pakai bahasa asing, Bos tinggal ganti angka '33' di bawah ini jadi '43' atau cari kode bahasanya.
-    return "https://audio.wordproject.com/bibles/app/audio/33/$standardBookNum/$chapter.mp3";
+    return "https://audio.wordproject.com/bibles/app/audio/14/$standardBookNum/$chapter.mp3";
   }
 
   Future<void> _playPauseAudio() async {

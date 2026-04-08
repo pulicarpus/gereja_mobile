@@ -20,8 +20,9 @@ import 'ayat_data.dart';
 import 'keuangan_page.dart'; 
 import 'gallery_page.dart';
 import 'kategorial_page.dart'; 
-// 👇 IMPORT DOA PAGE BOS 👇
 import 'doa_page.dart';
+// 👇 IMPORT PENGURUS PAGE BOS 👇
+import 'pengurus_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -204,7 +205,6 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
                   }),
-                  // 👇 TOMBOL DOA DITAMBAHKAN DI SINI 👇
                   _buildDrawerItem(Icons.volunteer_activism, "Pokok Doa", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DoaPage()));
                   }),
@@ -226,8 +226,9 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
                   }),
+                  // 👇 TOMBOL PENGURUS SUDAH AKTIF BOS 👇
                   _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {
-                    // TODO: Halaman Pengurus
+                    Navigator.push(context, MaterialPageRoute(builder: (context) => const PengurusPage()));
                   }),
                 ],
               ),

@@ -110,10 +110,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ),
           iOS: const AudioContextIOS(
             category: AVAudioSessionCategory.playback,
-            options: {
+            options: []
               AVAudioSessionOptions.defaultToSpeaker,
               AVAudioSessionOptions.mixWithOthers,
-            },
+            ],
           ),
         ));
 

@@ -78,7 +78,7 @@ class _ProfilPageState extends State<ProfilPage> {
       }
 
       // 2. Update data di Firestore
-      await _db.collection("users").document(user.uid).update({
+      await _db.collection("users").doc(user.uid).update({
         "namaLengkap": _namaController.text.trim(),
         "photoUrl": finalPhotoUrl,
       });
@@ -114,7 +114,7 @@ class _ProfilPageState extends State<ProfilPage> {
             onPressed: () async {
               await _auth.signOut();
               OneSignal.logout();
-              await _userManager.clearSession(); // Pastikan ada fungsi reset di UserManager
+              await _userManager.reset(); // Pastikan ada fungsi reset di UserManager
               if (mounted) {
                 Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
               }

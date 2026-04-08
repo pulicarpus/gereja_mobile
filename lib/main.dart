@@ -21,7 +21,6 @@ import 'keuangan_page.dart';
 import 'gallery_page.dart';
 import 'kategorial_page.dart'; 
 import 'doa_page.dart';
-// 👇 IMPORT PENGURUS PAGE BOS 👇
 import 'pengurus_page.dart';
 
 void main() async {
@@ -226,7 +225,6 @@ class _MainActivityState extends State<MainActivity> {
                   _buildDrawerItem(Icons.menu_book_outlined, "Alkitab", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const AlkitabPage()));
                   }),
-                  // 👇 TOMBOL PENGURUS SUDAH AKTIF BOS 👇
                   _buildDrawerItem(Icons.supervisor_account, "Pengurus", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const PengurusPage()));
                   }),
@@ -234,6 +232,23 @@ class _MainActivityState extends State<MainActivity> {
               ),
             ),
             const Divider(),
+            
+            // 👇 TAMBAHAN BARU: TOMBOL MANAJEMEN AKUN PENGGUNA 👇
+            if (isAdmin || isSuperAdmin) ...[
+              ListTile(
+                leading: const Icon(Icons.manage_accounts, color: Colors.blue),
+                title: const Text("Manajemen Pengguna", style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: const Text("Atur Role & Kategorial Akun", style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(context);
+                  // TODO: Nanti kita arahkan ke Daftar Pengguna Page 
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Halaman Daftar Pengguna sedang disiapkan!")));
+                },
+              ),
+              const Divider(height: 1),
+            ],
+            // 👆 ================================================= 👆
+
             if (isSuperAdmin) ...[
               ListTile(
                 leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
@@ -245,7 +260,7 @@ class _MainActivityState extends State<MainActivity> {
                   .then((_) => setState(() { _initSession(); }));
                 },
               ),
-              const Divider(),
+              const Divider(height: 1),
             ],
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.red),
@@ -380,8 +395,6 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   
                   const SizedBox(height: 30),
-                  
-                  // TODO: Tempat untuk menampung widget Jemaat Berulang Tahun
                   
                   const SizedBox(height: 50),
                 ],

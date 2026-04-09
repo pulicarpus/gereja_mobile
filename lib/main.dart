@@ -92,7 +92,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: navigatorKey, // 👇 PASANG KUNCI NAVIGASI DI SINI 👇
       debugShowCheckedModeBanner: false,
-      title: 'GKII SILOAM',
+      title: 'GKII mobile',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,

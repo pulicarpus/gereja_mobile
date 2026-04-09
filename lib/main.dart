@@ -76,7 +76,7 @@ class MyApp extends StatelessWidget {
       // 👇 3. PASANG KUNCI NAVIGASINYA DI SINI 👇
       navigatorKey: navigatorKey, 
       debugShowCheckedModeBanner: false,
-      title: 'GKII SILOAM',
+      title: 'GKII_DEV',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,

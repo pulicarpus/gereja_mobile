@@ -31,7 +31,6 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 
-// 👇 KUNCI NAVIGASI GLOBAL UNTUK KLIK NOTIFIKASI 👇
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -47,38 +46,24 @@ void _initOneSignal() {
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 
-  // 👇 PENANGKAP KLIK NOTIFIKASI 👇
   OneSignal.Notifications.addClickListener((event) {
     final data = event.notification.additionalData;
     
     if (data != null && data['type'] != null) {
       String type = data['type'];
       
-      // 👇 INI OBATNYA BOS! Kita suruh dia nunggu 800 milidetik (0.8 detik) 👇
-      // Supaya MaterialApp selesai dimuat sebelum pindah halaman.
       Future.delayed(const Duration(milliseconds: 800), () {
-        
-        // Pastikan navigatorKey sudah siap
         if (navigatorKey.currentState != null) {
           if (type == 'chat') {
             String? namaKategorial = data['kategorial']; 
-            navigatorKey.currentState?.push(
-              MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial))
-            );
+            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial)));
           } else if (type == 'doa') {
-            navigatorKey.currentState?.push(
-              MaterialPageRoute(builder: (context) => const DoaPage())
-            );
+            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => const DoaPage()));
           } else if (type == 'jadwal') {
             String? namaKategorial = data['kategorial'];
-            navigatorKey.currentState?.push(
-              MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial))
-            );
+            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial)));
           }
-        } else {
-          debugPrint("Waduh, NavigatorKey masih belum siap nih!");
         }
-        
       });
     }
   });
@@ -90,16 +75,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: navigatorKey, // 👇 PASANG KUNCI NAVIGASI DI SINI 👇
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
-      title: 'GKII mobile',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-      ),
-      home: FirebaseAuth.instance.currentUser == null 
-          ? const LoginPage() 
-          : const MainActivity(),
+      title: 'GKII SILOAM',
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo), useMaterial3: true),
+      home: FirebaseAuth.instance.currentUser == null ? const LoginPage() : const MainActivity(),
       routes: {
         '/home': (context) => const MainActivity(),
         '/login': (context) => const LoginPage(),
@@ -152,12 +132,9 @@ class _MainActivityState extends State<MainActivity> {
 
   void _setupOneSignal() {
     final user = _auth.currentUser;
-    final churchId = UserManager().activeChurchId; // Ambil ID Gerejanya
-
+    final churchId = UserManager().activeChurchId; 
     if (user != null) {
       OneSignal.login(user.uid);
-      
-      // Kita tempelkan "KTP" gereja ke HP jemaat
       if (churchId != null) {
         OneSignal.User.addTagWithKey("active_church", churchId);
       }
@@ -334,6 +311,10 @@ class _MainActivityState extends State<MainActivity> {
     bool isSuperAdmin = user.isSuperAdmin();
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
+    // 👇 AMBIL UKURAN LAYAR HP SAAT INI 👇
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(user.activeChurchName ?? "GKII SILOAM", style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -346,9 +327,7 @@ class _MainActivityState extends State<MainActivity> {
             icon: const Icon(Icons.info_outline, color: Colors.indigo),
             tooltip: "Tentang Aplikasi",
             onPressed: () {
-              Navigator.push(context, MaterialPageRoute(
-                builder: (context) => const TentangAplikasiPage()
-              ));
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TentangAplikasiPage()));
             },
           ),
           const SizedBox(width: 8), 
@@ -385,15 +364,15 @@ class _MainActivityState extends State<MainActivity> {
                     onTap: (isAdmin || isSuperAdmin) ? _ubahFotoGereja : null,
                     child: Stack(
                       children: [
+                        // 👇 TINGGI FOTO OTOMATIS MENYESUAIKAN 25% TINGGI LAYAR 👇
                         Container(
-                          width: double.infinity, height: 220,
-                          decoration: BoxDecoration(
-                            color: Colors.indigo.shade50, 
-                          ),
+                          width: double.infinity, 
+                          height: screenHeight * 0.25, 
+                          decoration: BoxDecoration(color: Colors.indigo.shade50),
                           child: _fotoGerejaUrl != null 
                               ? CachedNetworkImage(
                                   imageUrl: _fotoGerejaUrl!,
-                                  fit: BoxFit.contain, // Gambar Utuh
+                                  fit: BoxFit.contain, 
                                   placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
                                   errorWidget: (context, url, error) => const Icon(Icons.error),
                                 )
@@ -438,8 +417,9 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),
                   
+                  // 👇 PADDING & SPASI BAWAH DIATUR DINAMIS 👇
                   Padding(
-                    padding: const EdgeInsets.all(20),
+                    padding: EdgeInsets.all(screenWidth * 0.05),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -472,7 +452,8 @@ class _MainActivityState extends State<MainActivity> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 35),
+                        
+                        SizedBox(height: screenHeight * 0.04), // Jarak Dinamis
                         
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -534,7 +515,7 @@ class _MainActivityState extends State<MainActivity> {
                           ),
                         ),
                         
-                        const SizedBox(height: 35),
+                        SizedBox(height: screenHeight * 0.04), // Jarak Dinamis
                         
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),

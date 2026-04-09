@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'user_manager.dart';
-// 👇 Sesuaikan import ini dengan nama file asli Bos di Flutter
+// 👇 IMPORT SUDAH DIAKTIFKAN 👇
 import 'add_edit_jemaat_page.dart';
 import 'pilih_jemaat_page.dart'; 
 import 'detail_jemaat_page.dart';
@@ -34,7 +34,6 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
     _churchId = _userManager.getChurchIdForCurrentView();
   }
 
-  // Fungsi pengurutan agar Kepala Keluarga di atas, disusul Istri, lalu Anak
   int _getSortWeight(String? status) {
     switch (status) {
       case "Kepala Keluarga": return 0;
@@ -70,13 +69,10 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
               title: const Text("Tambah Anggota Baru (Manual)"),
               onTap: () {
                 Navigator.pop(context);
-                // 👇 PASTIKAN NAMA PAGE INI SESUAI DENGAN PUNYA BOS 👇
-                /*
+                // 👇 TOMBOL TAMBAH MANUAL SUDAH DISAMBUNG 👇
                 Navigator.push(context, MaterialPageRoute(
                   builder: (context) => AddEditJemaatPage(idKepalaKeluargaBaru: widget.idKepalaKeluarga)
                 ));
-                */
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fitur AddEditJemaatPage belum disambung.")));
               },
             ),
             const SizedBox(height: 20),
@@ -87,17 +83,15 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   }
 
   Future<void> _pilihDariDaftarJemaat() async {
-    // 👇 CARA FLUTTER MENANGKAP HASIL DARI HALAMAN LAIN (PENGGANTI INTERFACE KOTLIN) 👇
-    /*
+    // 👇 TOMBOL PILIH DARI DAFTAR SUDAH DISAMBUNG 👇
     final selectedJemaat = await Navigator.push(context, MaterialPageRoute(
-      builder: (context) => const PilihJemaatPage() // Halaman yang isinya list jemaat untuk dipilih
+      builder: (context) => const PilihJemaatPage() 
     ));
 
+    // Kalau Bos beneran milih orang (tidak pencet tombol back)
     if (selectedJemaat != null) {
       _showSetFamilyStatusDialog(selectedJemaat['id'], selectedJemaat['namaLengkap']);
     }
-    */
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fitur PilihJemaatPage belum disambung.")));
   }
 
   void _showSetFamilyStatusDialog(String jemaatId, String namaJemaat) {
@@ -188,7 +182,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
     if (_churchId == null) return;
     try {
       await _db.collection("churches").doc(_churchId).collection("jemaat").doc(docId).update({
-        "idKepalaKeluarga": docId, // Jadikan dirinya sendiri kepala keluarga
+        "idKepalaKeluarga": docId, 
         "statusKeluarga": "Kepala Keluarga"
       });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$nama berhasil dikeluarkan.")));
@@ -210,7 +204,6 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // Mengambil semua jemaat yang punya idKepalaKeluarga sama dengan yang dipilih
         stream: _db.collection("churches").doc(_churchId).collection("jemaat")
             .where("idKepalaKeluarga", isEqualTo: widget.idKepalaKeluarga)
             .snapshots(),
@@ -222,7 +215,6 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             return const Center(child: Text("Tidak ada anggota keluarga."));
           }
 
-          // Proses pengurutan manual sesuai bobot (0, 1, 2, 3)
           var listAnggota = snapshot.data!.docs.toList();
           listAnggota.sort((a, b) {
             var dataA = a.data() as Map<String, dynamic>;
@@ -236,12 +228,12 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             itemBuilder: (context, index) {
               var doc = listAnggota[index];
               var data = doc.data() as Map<String, dynamic>;
+              data['id'] = doc.id; // Jangan lupa simpan ID-nya untuk dikirim ke detail
               
               String status = data['statusKeluarga'] ?? "-";
               String nama = data['namaLengkap'] ?? "Tanpa Nama";
               String? fotoUrl = data['fotoProfil'];
               
-              // Warna khusus untuk Kepala Keluarga
               bool isKepala = status == "Kepala Keluarga";
 
               return Card(
@@ -274,8 +266,10 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
                     onPressed: () => _showMemberActionDialog(data, doc.id),
                   ),
                   onTap: () {
-                    // 👇 GANTI DENGAN NAVIGASI KE HALAMAN DETAIL JEMAAT FLUTTER BOS 👇
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Membuka detail $nama")));
+                    // 👇 TOMBOL DETAIL SUDAH DISAMBUNG 👇
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (context) => DetailJemaatPage(jemaatData: data)
+                    ));
                   },
                 ),
               );

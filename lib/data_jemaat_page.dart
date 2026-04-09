@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user_manager.dart';
 import 'add_edit_jemaat_page.dart';
-import 'dashboard_page.dart'; // Import halaman dashboard baru
+import 'dashboard_page.dart'; 
+import 'anggota_keluarga_page.dart'; // 👇 IMPORT HALAMAN KELUARGA BARU BOS
 
 class DataJemaatPage extends StatefulWidget {
   final String? filterKategorial;
@@ -152,30 +153,24 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     subtitle: Text(label),
   );
 
+  // 👇 FUNGSI INI SUDAH DIROMBAK UNTUK BUKA HALAMAN ANGGOTA KELUARGA 👇
   void _showKeluarga(String? idKK, String? nama) {
     if (idKK == null || idKK.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data Keluarga tidak ditemukan")));
       return;
     }
-    final keluarga = _allJemaat.where((j) => j['idKepalaKeluarga'] == idKK).toList();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text("Keluarga $nama", style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: keluarga.length,
-            separatorBuilder: (c, i) => const Divider(),
-            itemBuilder: (c, i) => ListTile(
-              leading: const Icon(Icons.person_outline),
-              title: Text(keluarga[i]['namaLengkap']),
-              subtitle: Text(keluarga[i]['statusKeluarga']),
-            ),
-          ),
+    
+    // 1. Tutup dulu BottomSheet (Detail Jemaat) yang sedang terbuka
+    Navigator.pop(context);
+
+    // 2. Lempar ke halaman AnggotaKeluargaPage
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AnggotaKeluargaPage(
+          idKepalaKeluarga: idKK,
+          namaKepalaKeluarga: nama ?? "Keluarga",
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Tutup"))],
       ),
     );
   }
@@ -205,7 +200,6 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               });
             },
           ),
-          // Tombol Dashboard Grafik Baru
           IconButton(
             onPressed: _goToDashboard, 
             icon: const Icon(Icons.dashboard_customize_rounded)

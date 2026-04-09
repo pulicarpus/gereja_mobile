@@ -45,7 +45,7 @@ class TentangAplikasiPage extends StatelessWidget {
               child: Icon(Icons.church, size: 80, color: Colors.indigo.shade800),
             ),
             const SizedBox(height: 20),
-            const Text("GKII SILOAM", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo, letterSpacing: 1.5)),
+            const Text("GKII mobile", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo, letterSpacing: 1.5)),
             const SizedBox(height: 5),
             Text("Versi 2.0.0 (Flutter Edition)", style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
             

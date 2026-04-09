@@ -137,12 +137,10 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     // 👇 DAFTAR SUDAH 100% SAMA DENGAN ADD EDIT JEMAAT PAGE 👇
     final List<String> daftarKategorial = [
       "Sekolah Minggu",
-      "Tunas Remaja",
-      "Pemuda",
-      "Kaum Perempuan",
-      "Kaum Pria",
-      "Lansia",
-      "Umum / Belum diatur"
+      "AMKI",
+      "Perkawan",
+      "Perkaria",
+      "Lainnya"
     ];
 
     showModalBottomSheet(

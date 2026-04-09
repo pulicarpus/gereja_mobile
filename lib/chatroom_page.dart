@@ -285,12 +285,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
     setState(() { _replyMessage = null; _etPesan.clear(); });
   }
 
+  // 👇 FUNGSI NOTIFIKASI DENGAN TIKET KATEGORIAL 👇
   Future<void> _kirimNotif(String pesan) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null || osRestKey.isEmpty) return;
     
     try {
-      print("MENGIRIM NOTIF KE GEREJA: $churchId"); // Log 1
+      print("MENGIRIM NOTIF KE GEREJA: $churchId"); 
       
       var response = await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
@@ -300,20 +301,24 @@ class _ChatroomPageState extends State<ChatroomPage> {
         },
         body: jsonEncode({
           "app_id": osAppId,
-          // Mengirim ke HP yang punya tag active_church sesuai gerejanya
           "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
           "headings": {"en": "Chat: ${UserManager().userNama}"},
-          "contents": {"en": pesan}
+          "contents": {"en": pesan},
+          // 👇 INI DIA TIKETNYA! 👇
+          "data": {
+             "type": "chat",
+             "kategorial": widget.filterKategorial 
+          }
         }),
       );
       
-      // CCTV: Cetak hasil balasan dari OneSignal ke konsol/log terminal
       print("HASIL ONESIGNAL: ${response.statusCode} - ${response.body}");
       
     } catch (e) {
       print("ERROR FATAL NOTIF: $e");
     }
   }
+
   // --- 5. UI BUILDING ---
   Future<void> _bukaFile(String url, String fileName) async {
     _showSnack("Mengunduh dokumen...");
@@ -353,9 +358,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   @override
   Widget build(BuildContext context) {
+    String title = widget.filterKategorial != null ? "Chat ${widget.filterKategorial}" : "Chat Jemaat";
     return Scaffold(
       backgroundColor: const Color(0xFFE5DDD5),
-      appBar: AppBar(title: const Text("Chat Jemaat"), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))]),
+      appBar: AppBar(title: Text(title), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))]),
       body: Column(children: [
         Expanded(child: StreamBuilder<QuerySnapshot>(
           stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),

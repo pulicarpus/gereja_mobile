@@ -25,7 +25,7 @@ class _DoaPageState extends State<DoaPage> {
   final String osRestKey = osRestKeySecret; 
   final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
 
-  // 👇 FUNGSI KIRIM NOTIF PRIBADI KE PEMILIK DOA 👇
+  // 👇 FUNGSI KIRIM NOTIF PRIBADI KE PEMILIK DOA DENGAN TIKET 👇
   Future<void> _kirimNotifAmin(String targetUid, String namaPengirim, String isiDoa) async {
     if (osRestKey.isEmpty || targetUid.isEmpty) return;
     
@@ -44,7 +44,11 @@ class _DoaPageState extends State<DoaPage> {
           "app_id": osAppId,
           "include_external_user_ids": [targetUid], // Nembak spesifik ke UID si pembuat doa
           "headings": {"en": "Dukungan Doa 🙏"},
-          "contents": {"en": "$namaPengirim baru saja mengaminkan doa Anda: \"$snippet\""}
+          "contents": {"en": "$namaPengirim baru saja mengaminkan doa Anda: \"$snippet\""},
+          // 👇 INI DIA TIKET MENUJU HALAMAN DOA 👇
+          "data": {
+            "type": "doa"
+          }
         }),
       );
     } catch (e) {

@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
 import 'user_manager.dart';
+import 'secrets.dart'; // 👇 Pastikan ini di-import untuk membaca osRestKeySecret
 
 class TambahDoaPage extends StatefulWidget {
   final String? doaId;
@@ -40,6 +44,37 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
     super.dispose();
   }
 
+  // 👇 FUNGSI KIRIM NOTIFIKASI DOA BARU KE SEMUA JEMAAT 👇
+  Future<void> _kirimNotifDoaBaru(String namaPemohon, String churchId, bool isPrivat) async {
+    final String osRestKey = osRestKeySecret; 
+    final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
+    
+    if (osRestKey.isEmpty) return;
+
+    try {
+      // Kalau privat, pesannya dibedakan sedikit biar admin tahu
+      String pesanNotif = isPrivat 
+          ? "$namaPemohon mengirimkan pokok doa khusus (Privat)."
+          : "$namaPemohon baru saja membagikan pokok doa. Mari kita dukung dalam doa.";
+
+      await http.post(
+        Uri.parse('https://onesignal.com/api/v1/notifications'),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8', 
+          'Authorization': 'Basic $osRestKey'
+        },
+        body: jsonEncode({
+          "app_id": osAppId,
+          "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
+          "headings": {"en": "🙏 Permohonan Doa Baru"},
+          "contents": {"en": pesanNotif}
+        }),
+      );
+    } catch (e) {
+      debugPrint("Gagal kirim notif doa baru: $e");
+    }
+  }
+
   Future<void> _simpanDoa() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -61,7 +96,6 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
         await _db.collection("prayers").doc(widget.doaId).update({
           "isiDoa": _etIsiDoa.text.trim(),
           "isPrivat": _isPrivat,
-          // Tanggal tidak diubah agar tetap sesuai waktu pertama kali dibuat
         });
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Permohonan doa diperbarui!")));
@@ -72,16 +106,20 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
         await docRef.set({
           "id": docRef.id,
           "uid": userUid,
-          "nama": userNama, // Diseragamkan dengan field yang dibaca di doa_page.dart
+          "nama": userNama, 
           "isiDoa": _etIsiDoa.text.trim(),
-          "tanggal": FieldValue.serverTimestamp(), // Jam server yang akurat 100%
+          "tanggal": FieldValue.serverTimestamp(), 
           "churchId": churchId,
           "isPrivat": _isPrivat,
-          "daftarAmin": [], // Awalnya kosong
+          "daftarAmin": [], 
         });
+        
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Doa berhasil dibagikan!")));
         }
+        
+        // 👇 PANGGIL FUNGSI NOTIFIKASI SETELAH DOA BERHASIL DISIMPAN 👇
+        _kirimNotifDoaBaru(userNama, churchId, _isPrivat);
       }
       
       // Tutup halaman setelah sukses

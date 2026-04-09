@@ -45,77 +45,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   
-  // 👇 Variabel untuk kontrol Slider sembunyi/muncul
   bool _showSlider = false;
 
-  // DAFTAR FOLDER & PREFIX FILE (KEJ - WAH) UNTUK GITHUB BOS
   final Map<int, Map<String, String>> _bibleAudioMap = {
-    1: {"folder": "kejadian", "file": "01_kej"},
-    2: {"folder": "keluaran", "file": "02_kel"},
-    3: {"folder": "imamat", "file": "03_ima"},
-    4: {"folder": "bilangan", "file": "04_bil"},
-    5: {"folder": "ulangan", "file": "05_ula"},
-    6: {"folder": "yosua", "file": "06_yos"},
-    7: {"folder": "hakim-hakim", "file": "07_hak"},
-    8: {"folder": "rut", "file": "08_rut"},
-    9: {"folder": "1samuel", "file": "09_1sa"},
-    10: {"folder": "2samuel", "file": "10_2sa"},
-    11: {"folder": "1raja-raja", "file": "11_1ra"},
-    12: {"folder": "2raja-raja", "file": "12_2ra"},
-    13: {"folder": "1tawarikh", "file": "13_1ta"},
-    14: {"folder": "2tawarikh", "file": "14_2ta"},
-    15: {"folder": "ezra", "file": "15_ezr"},
-    16: {"folder": "nehemia", "file": "16_neh"},
-    17: {"folder": "ester", "file": "17_est"},
-    18: {"folder": "ayub", "file": "18_ayu"},
-    19: {"folder": "mazmur", "file": "19_maz"},
-    20: {"folder": "amsal", "file": "20_ams"},
-    21: {"folder": "pengkhotbah", "file": "21_pen"},
-    22: {"folder": "kidungagung", "file": "22_kid"},
-    23: {"folder": "yesaya", "file": "23_yes"},
-    24: {"folder": "yeremia", "file": "24_yer"},
-    25: {"folder": "ratapan", "file": "25_rat"},
-    26: {"folder": "yehezkiel", "file": "26_yeh"},
-    27: {"folder": "daniel", "file": "27_dan"},
-    28: {"folder": "hosea", "file": "28_hos"},
-    29: {"folder": "yoel", "file": "29_yoe"},
-    30: {"folder": "amos", "file": "30_amo"},
-    31: {"folder": "obaja", "file": "31_oba"},
-    32: {"folder": "yunus", "file": "32_yun"},
-    33: {"folder": "mikha", "file": "33_mik"},
-    34: {"folder": "nahum", "file": "34_nah"},
-    35: {"folder": "habakuk", "file": "35_hab"},
-    36: {"folder": "zefanya", "file": "36_zef"},
-    37: {"folder": "hagai", "file": "37_hag"},
-    38: {"folder": "zakharia", "file": "38_zak"},
-    39: {"folder": "maleakhi", "file": "39_mal"},
-    40: {"folder": "matius", "file": "01_mat"},
-    41: {"folder": "markus", "file": "02_mar"},
-    42: {"folder": "lukas", "file": "03_luk"},
-    43: {"folder": "yohanes", "file": "04_yoh"},
-    44: {"folder": "kisahpararasul", "file": "05_kis"},
-    45: {"folder": "roma", "file": "06_rom"},
-    46: {"folder": "1korintus", "file": "07_1ko"},
-    47: {"folder": "2korintus", "file": "08_2ko"},
-    48: {"folder": "galatia", "file": "09_gal"},
-    49: {"folder": "efesus", "file": "10_efe"},
-    50: {"folder": "filipi", "file": "11_flp"},
-    51: {"folder": "kolose", "file": "12_kol"},
-    52: {"folder": "1tesalonika", "file": "13_1te"},
-    53: {"folder": "2tesalonika", "file": "14_2te"},
-    54: {"folder": "1timotius", "file": "15_1ti"},
-    55: {"folder": "2timotius", "file": "16_2ti"},
-    56: {"folder": "titus", "file": "17_tit"},
-    57: {"folder": "filemon", "file": "18_fil"},
-    58: {"folder": "ibrani", "file": "19_ibr"},
-    59: {"folder": "yakobus", "file": "20_yak"},
-    60: {"folder": "1petrus", "file": "21_1pe"},
-    61: {"folder": "2petrus", "file": "22_2pe"},
-    62: {"folder": "1yohanes", "file": "23_1yo"},
-    63: {"folder": "2yohanes", "file": "24_2yo"},
-    64: {"folder": "3yohanes", "file": "25_3yo"},
-    65: {"folder": "yudas", "file": "26_yud"},
-    66: {"folder": "wahyu", "file": "27_wah"},
+    1: {"folder": "kejadian", "file": "01_kej"}, 2: {"folder": "keluaran", "file": "02_kel"}, 3: {"folder": "imamat", "file": "03_ima"}, 4: {"folder": "bilangan", "file": "04_bil"}, 5: {"folder": "ulangan", "file": "05_ula"}, 6: {"folder": "yosua", "file": "06_yos"}, 7: {"folder": "hakim-hakim", "file": "07_hak"}, 8: {"folder": "rut", "file": "08_rut"}, 9: {"folder": "1samuel", "file": "09_1sa"}, 10: {"folder": "2samuel", "file": "10_2sa"}, 11: {"folder": "1raja-raja", "file": "11_1ra"}, 12: {"folder": "2raja-raja", "file": "12_2ra"}, 13: {"folder": "1tawarikh", "file": "13_1ta"}, 14: {"folder": "2tawarikh", "file": "14_2ta"}, 15: {"folder": "ezra", "file": "15_ezr"}, 16: {"folder": "nehemia", "file": "16_neh"}, 17: {"folder": "ester", "file": "17_est"}, 18: {"folder": "ayub", "file": "18_ayu"}, 19: {"folder": "mazmur", "file": "19_maz"}, 20: {"folder": "amsal", "file": "20_ams"}, 21: {"folder": "pengkhotbah", "file": "21_pen"}, 22: {"folder": "kidungagung", "file": "22_kid"}, 23: {"folder": "yesaya", "file": "23_yes"}, 24: {"folder": "yeremia", "file": "24_yer"}, 25: {"folder": "ratapan", "file": "25_rat"}, 26: {"folder": "yehezkiel", "file": "26_yeh"}, 27: {"folder": "daniel", "file": "27_dan"}, 28: {"folder": "hosea", "file": "28_hos"}, 29: {"folder": "yoel", "file": "29_yoe"}, 30: {"folder": "amos", "file": "30_amo"}, 31: {"folder": "obaja", "file": "31_oba"}, 32: {"folder": "yunus", "file": "32_yun"}, 33: {"folder": "mikha", "file": "33_mik"}, 34: {"folder": "nahum", "file": "34_nah"}, 35: {"folder": "habakuk", "file": "35_hab"}, 36: {"folder": "zefanya", "file": "36_zef"}, 37: {"folder": "hagai", "file": "37_hag"}, 38: {"folder": "zakharia", "file": "38_zak"}, 39: {"folder": "maleakhi", "file": "39_mal"},
+    40: {"folder": "matius", "file": "01_mat"}, 41: {"folder": "markus", "file": "02_mar"}, 42: {"folder": "lukas", "file": "03_luk"}, 43: {"folder": "yohanes", "file": "04_yoh"}, 44: {"folder": "kisahpararasul", "file": "05_kis"}, 45: {"folder": "roma", "file": "06_rom"}, 46: {"folder": "1korintus", "file": "07_1ko"}, 47: {"folder": "2korintus", "file": "08_2ko"}, 48: {"folder": "galatia", "file": "09_gal"}, 49: {"folder": "efesus", "file": "10_efe"}, 50: {"folder": "filipi", "file": "11_flp"}, 51: {"folder": "kolose", "file": "12_kol"}, 52: {"folder": "1tesalonika", "file": "13_1te"}, 53: {"folder": "2tesalonika", "file": "14_2te"}, 54: {"folder": "1timotius", "file": "15_1ti"}, 55: {"folder": "2timotius", "file": "16_2ti"}, 56: {"folder": "titus", "file": "17_tit"}, 57: {"folder": "filemon", "file": "18_fil"}, 58: {"folder": "ibrani", "file": "19_ibr"}, 59: {"folder": "yakobus", "file": "20_yak"}, 60: {"folder": "1petrus", "file": "21_1pe"}, 61: {"folder": "2petrus", "file": "22_2pe"}, 62: {"folder": "1yohanes", "file": "23_1yo"}, 63: {"folder": "2yohanes", "file": "24_2yo"}, 64: {"folder": "3yohanes", "file": "25_3yo"}, 65: {"folder": "yudas", "file": "26_yud"}, 66: {"folder": "wahyu", "file": "27_wah"},
   };
 
   @override
@@ -229,24 +163,73 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   }
 
+  // 👇 FUNGSI PINTAR UNTUK MENGUBAH (<x>ID CH:VR</x>) JADI LINK BIRU BISA DIKLIK 👇
+  List<InlineSpan> _parseTextWithLinks(String rawText) {
+    List<InlineSpan> spans = [];
+    final regex = RegExp(r'<x>(.*?)</x>');
+    int lastMatchEnd = 0;
+    
+    for (var match in regex.allMatches(rawText)) {
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(text: _cleanText(rawText.substring(lastMatchEnd, match.start))));
+      }
+      
+      String innerText = match.group(1) ?? ""; 
+      try {
+        List<String> parts = innerText.split(RegExp(r'\s+'));
+        if (parts.isNotEmpty) {
+          int targetBookNum = int.parse(parts[0]);
+          String targetRef = parts.length > 1 ? parts.sublist(1).join(' ') : "";
+          
+          BibleBook? targetBook;
+          try { targetBook = _allBooks.firstWhere((b) => b.bookNumber == targetBookNum); } catch(e){}
+          
+          String displayText = targetBook != null ? "${targetBook.shortName} $targetRef" : innerText;
+          
+          int targetChapter = 1;
+          int targetVerse = 1;
+          if (targetRef.contains(':')) {
+             var refParts = targetRef.split(':');
+             targetChapter = int.tryParse(refParts[0]) ?? 1;
+             targetVerse = int.tryParse(refParts[1].split(RegExp(r'[^0-9]')).first) ?? 1; 
+          }
+          
+          spans.add(
+            TextSpan(
+              text: displayText,
+              style: TextStyle(color: Colors.blue.shade700, decoration: TextDecoration.underline, fontWeight: FontWeight.bold),
+              recognizer: TapGestureRecognizer()..onTap = () {
+                 setState(() { _currentBookNum = targetBookNum; _currentChapter = targetChapter; });
+                 _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: targetVerse);
+              }
+            )
+          );
+        }
+      } catch (e) {
+        spans.add(TextSpan(text: _cleanText(innerText)));
+      }
+      lastMatchEnd = match.end;
+    }
+    
+    if (lastMatchEnd < rawText.length) {
+      spans.add(TextSpan(text: _cleanText(rawText.substring(lastMatchEnd))));
+    }
+    
+    return spans;
+  }
+
   void _handleNavResult(dynamic res) {
     if (res != null && res is Map && res.containsKey('book_number')) {
       setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; });
       _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: res['verse']);
-    } else {
-      _loadContent(); 
-    }
+    } else { _loadContent(); }
   }
 
   // --- ACTIONS & MENU ---
   void _onMenuSelected(String val) {
-    if (val == 'search') {
-      Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult);
-    } else if (val == 'dictionary') {
-      _showDictionary();
-    } else if (val == 'notes') {
-      _showNotesManager();
-    }
+    if (val == 'search') { Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); } 
+    else if (val == 'dictionary') { _showDictionary(); } 
+    else if (val == 'notes') { _showNotesManager(); }
   }
 
   void _showDictionary() {
@@ -328,18 +311,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white,
         title: InkWell(onTap: _showNavigation, child: Row(mainAxisSize: MainAxisSize.min, children: [Text("$bName $_currentChapter"), const Icon(Icons.arrow_drop_down)])),
         actions: [
-          // 👇 TOMBOL PLAY/PAUSE DI HEADER 👇
-          IconButton(
-            icon: _isAudioLoading 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 28), 
-            onPressed: _playPauseAudio,
-          ),
-          // 👇 TOMBOL MUNCULKAN/SEMBUNYIKAN SLIDER 👇
-          IconButton(
-            icon: Icon(_showSlider ? Icons.tune : Icons.tune_outlined, color: Colors.white70),
-            onPressed: () => setState(() => _showSlider = !_showSlider),
-          ),
+          IconButton(icon: _isAudioLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 28), onPressed: _playPauseAudio),
+          IconButton(icon: Icon(_showSlider ? Icons.tune : Icons.tune_outlined, color: Colors.white70), onPressed: () => setState(() => _showSlider = !_showSlider)),
           if (_isSyncing) const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
           PopupMenuButton<String>(icon: const Icon(Icons.menu), onSelected: _onMenuSelected, itemBuilder: (c) => [
             const PopupMenuItem(value: 'search', child: Row(children: [Icon(Icons.search, color: Colors.indigo), SizedBox(width: 10), Text("Pencarian")])),
@@ -347,20 +320,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
             const PopupMenuItem(value: 'notes', child: Row(children: [Icon(Icons.edit_note, color: Colors.green), SizedBox(width: 10), Text("Kelola Catatan")])),
           ]),
         ],
-        // 👇 SLIDER HANYA MUNCUL JIKA DITEKAN 👇
-        bottom: _showSlider 
-          ? PreferredSize(
-              preferredSize: const Size.fromHeight(40), 
-              child: Container(
-                color: Colors.indigo[800], 
-                padding: const EdgeInsets.symmetric(horizontal: 10), 
-                child: Row(children: [
-                  Expanded(child: SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6), activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white), child: Slider(value: _position.inSeconds.toDouble(), max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt()))))),
-                  IconButton(icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 24), onPressed: _resetAudio),
-                ])
-              )
-            )
-          : null,
+        bottom: _showSlider ? PreferredSize(preferredSize: const Size.fromHeight(40), child: Container(color: Colors.indigo[800], padding: const EdgeInsets.symmetric(horizontal: 10), child: Row(children: [
+          Expanded(child: SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6), activeTrackColor: Colors.orange, inactiveTrackColor: Colors.white30, thumbColor: Colors.white), child: Slider(value: _position.inSeconds.toDouble(), max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0, onChanged: (v) => _audioPlayer.seek(Duration(seconds: v.toInt()))))),
+          IconButton(icon: const Icon(Icons.stop_circle, color: Colors.redAccent, size: 24), onPressed: _resetAudio),
+        ]))) : null,
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
         onScaleStart: (d) => _baseFontSize = _fontSize,
@@ -378,7 +341,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
     List<Widget> content = [];
     for (var v in _verses) {
       int vNum = v['verse'] as int; bool isSel = _selectedVerses.contains(vNum);
-      if (_perikopMap.containsKey(vNum)) { for (var t in _perikopMap[vNum]!) content.add(Container(width: double.infinity, padding: const EdgeInsets.only(top: 25, bottom: 10), child: Text(t, textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900)))); }
+      
+      // 👇 PERIKOP & AYAT PARALEL YANG SUDAH DIBERSIHKAN 👇
+      if (_perikopMap.containsKey(vNum)) { 
+        for (var t in _perikopMap[vNum]!) {
+          content.add(Container(
+            width: double.infinity, padding: const EdgeInsets.only(top: 25, bottom: 10), 
+            child: RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900),
+                children: _parseTextWithLinks(t) // Mengubah referensi di perikop jadi link biru!
+              ),
+            )
+          )); 
+        }
+      }
       
       content.add(GestureDetector(
         onLongPress: () { if (!isSel) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
@@ -392,7 +370,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
               Expanded(
                 child: RichText(text: TextSpan(style: TextStyle(color: Colors.black87, fontSize: _fontSize, height: 1.6), children: [
                   TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
-                  TextSpan(text: _cleanText(v['text'])),
+                  // 👇 TEXT AYAT YANG SUDAH BERSIH DARI <x> 👇
+                  ..._parseTextWithLinks(v['text'].toString()),
                 ])),
               ),
               if (_verseNotesMap.containsKey(vNum))
@@ -427,17 +406,31 @@ class _NavSheetState extends State<_NavSheet> {
   BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = [];
   void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); }
   void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); }
+  
   @override 
   Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [
     AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null),
     const Divider(height: 1),
     Expanded(child: _buildGrid()),
   ])));
+
+  // 👇 LOGIKA PERBAIKAN GRID PL DAN PB (DIJAMIN 100% AKURAT) 👇
   Widget _buildGrid() {
     if (selC != null) return _grid(vrs, (v) => widget.onSelectionComplete(selB!.bookNumber, selC!, v));
     if (selB != null) return _grid(chs, (c) => _getVerses(c));
-    return ListView(children: [_header("PERJANJIAN LAMA", Colors.pink), _kGrid(widget.allBooks.where((b) => b.bookNumber < 400).toList()), _header("PERJANJIAN BARU", Colors.blue), _kGrid(widget.allBooks.where((b) => b.bookNumber >= 400).toList())]);
+    
+    // Potong berdasarkan index/urutan, bukan bookNumber, karena Alkitab pasti 39 PL.
+    List<BibleBook> plBooks = widget.allBooks.length >= 39 ? widget.allBooks.sublist(0, 39) : widget.allBooks;
+    List<BibleBook> pbBooks = widget.allBooks.length > 39 ? widget.allBooks.sublist(39) : [];
+    
+    return ListView(children: [
+      _header("PERJANJIAN LAMA", Colors.pink), 
+      _kGrid(plBooks), 
+      if (pbBooks.isNotEmpty) _header("PERJANJIAN BARU", Colors.blue), 
+      if (pbBooks.isNotEmpty) _kGrid(pbBooks)
+    ]);
   }
+  
   Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(15), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold)));
   Widget _kGrid(List<BibleBook> bks) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 10), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 70, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5), itemCount: bks.length, itemBuilder: (c, i) => InkWell(onTap: () => _getChapters(bks[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(5)), child: Text(bks[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))));
   Widget _grid(List<int> its, Function(int) onTap) => GridView.builder(padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 60, mainAxisSpacing: 10, crossAxisSpacing: 10), itemCount: its.length, itemBuilder: (c, i) => InkWell(onTap: () => onTap(its[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${its[i]}", style: const TextStyle(fontWeight: FontWeight.bold)))));

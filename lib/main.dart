@@ -112,8 +112,16 @@ class _MainActivityState extends State<MainActivity> {
 
   void _setupOneSignal() {
     final user = _auth.currentUser;
+    final churchId = UserManager().activeChurchId; // Ambil ID Gerejanya
+
     if (user != null) {
       OneSignal.login(user.uid);
+      
+      // 👇 INI DIA KUNCI PENYELAMAT NOTIFIKASINYA BOS! 👇
+      // Kita tempelkan "KTP" gereja ke HP jemaat
+      if (churchId != null) {
+        OneSignal.User.addTagWithKey("active_church", churchId);
+      }
     }
   }
 

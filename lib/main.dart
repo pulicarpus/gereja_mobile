@@ -31,6 +31,9 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 
+// 👇 1. KUNCI NAVIGASI GLOBAL UNTUK MENANGKAP KLIK NOTIFIKASI 👇
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -43,6 +46,30 @@ void _initOneSignal() {
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
+
+  // 👇 2. LOGIKA PENANGKAP TIKET SAAT NOTIF DIKLIK 👇
+  OneSignal.Notifications.addClickListener((event) {
+    final data = event.notification.additionalData;
+    
+    if (data != null && data['type'] != null) {
+      String type = data['type'];
+      
+      if (type == 'chat') {
+        // Ambil nama kategorial kalau ada (bisa null kalau ini chat jemaat umum)
+        String? namaKategorial = data['kategorial']; 
+        
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(
+            builder: (context) => ChatroomPage(filterKategorial: namaKategorial)
+          )
+        );
+      } else if (type == 'doa') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (context) => const DoaPage())
+        );
+      }
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -51,6 +78,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      // 👇 3. PASANG KUNCI NAVIGASINYA DI SINI 👇
+      navigatorKey: navigatorKey, 
       debugShowCheckedModeBanner: false,
       title: 'GKII SILOAM',
       theme: ThemeData(
@@ -117,7 +146,6 @@ class _MainActivityState extends State<MainActivity> {
     if (user != null) {
       OneSignal.login(user.uid);
       
-      // 👇 INI DIA KUNCI PENYELAMAT NOTIFIKASINYA BOS! 👇
       // Kita tempelkan "KTP" gereja ke HP jemaat
       if (churchId != null) {
         OneSignal.User.addTagWithKey("active_church", churchId);
@@ -342,7 +370,6 @@ class _MainActivityState extends State<MainActivity> {
                       ),
                     ),
 
-                  // 👇 FOTO HEADER GEREJA (TIDAK TERPOTONG) 👇
                   GestureDetector(
                     onTap: (isAdmin || isSuperAdmin) ? _ubahFotoGereja : null,
                     child: Stack(
@@ -355,7 +382,7 @@ class _MainActivityState extends State<MainActivity> {
                           child: _fotoGerejaUrl != null 
                               ? CachedNetworkImage(
                                   imageUrl: _fotoGerejaUrl!,
-                                  fit: BoxFit.contain, // Gambar Utuh
+                                  fit: BoxFit.contain,
                                   placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
                                   errorWidget: (context, url, error) => const Icon(Icons.error),
                                 )
@@ -381,7 +408,6 @@ class _MainActivityState extends State<MainActivity> {
                     ),
                   ),
                   
-                  // 👇 ALAMAT DIPINDAHKAN KE BAWAH FOTO 👇
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -655,7 +681,6 @@ class _MainActivityState extends State<MainActivity> {
                 ),
               ),
               child: Center(
-                // 👇 FOTO DAN NAMA SEKARANG BISA DI-KLIK KE PROFIL 👇
                 child: InkWell(
                   onTap: () {
                     Navigator.pop(context); 
@@ -777,7 +802,6 @@ class _MainActivityState extends State<MainActivity> {
                 },
               ),
             ],
-            // 👇 TOMBOL KELUAR AKUN DI BAWAH SUDAH DIHAPUS BERSIH 👇
           ],
         ),
       );

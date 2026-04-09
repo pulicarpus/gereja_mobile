@@ -288,19 +288,32 @@ class _ChatroomPageState extends State<ChatroomPage> {
   Future<void> _kirimNotif(String pesan) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null || osRestKey.isEmpty) return;
+    
     try {
-      await http.post(Uri.parse('https://onesignal.com/api/v1/notifications'),
-        headers: {'Content-Type': 'application/json', 'Authorization': 'Basic $osRestKey'},
+      print("MENGIRIM NOTIF KE GEREJA: $churchId"); // Log 1
+      
+      var response = await http.post(
+        Uri.parse('https://onesignal.com/api/v1/notifications'),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8', 
+          'Authorization': 'Basic $osRestKey'
+        },
         body: jsonEncode({
           "app_id": osAppId,
+          // Mengirim ke HP yang punya tag active_church sesuai gerejanya
           "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
           "headings": {"en": "Chat: ${UserManager().userNama}"},
           "contents": {"en": pesan}
         }),
       );
-    } catch (_) {}
+      
+      // CCTV: Cetak hasil balasan dari OneSignal ke konsol/log terminal
+      print("HASIL ONESIGNAL: ${response.statusCode} - ${response.body}");
+      
+    } catch (e) {
+      print("ERROR FATAL NOTIF: $e");
+    }
   }
-
   // --- 5. UI BUILDING ---
   Future<void> _bukaFile(String url, String fileName) async {
     _showSnack("Mengunduh dokumen...");

@@ -26,9 +26,10 @@ class KategorialPage extends StatelessWidget {
               Icons.child_care,
               Colors.orange,
             ),
+            // 👇 INI YANG TADI TERSALAH KETIK, SEKARANG SUDAH JADI AMKI 👇
             _buildMenuCard(
               context,
-              "namaKomisi",
+              "AMKI", 
               Icons.group,
               Colors.blue,
             ),

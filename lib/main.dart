@@ -47,30 +47,25 @@ void _initOneSignal() {
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 
-  // 👇 2. LOGIKA PENANGKAP TIKET SAAT NOTIF DIKLIK 👇
-  OneSignal.Notifications.addClickListener((event) {
+OneSignal.Notifications.addClickListener((event) {
     final data = event.notification.additionalData;
     
     if (data != null && data['type'] != null) {
       String type = data['type'];
       
       if (type == 'chat') {
-        // Ambil nama kategorial kalau ada (bisa null kalau ini chat jemaat umum)
         String? namaKategorial = data['kategorial']; 
-        
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(
-            builder: (context) => ChatroomPage(filterKategorial: namaKategorial)
-          )
-        );
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial)));
       } else if (type == 'doa') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => const DoaPage())
-        );
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => const DoaPage()));
+      } 
+      // 👇 TAMBAHKAN BAGIAN INI UNTUK MENANGKAP TIKET JADWAL 👇
+      else if (type == 'jadwal') {
+        String? namaKategorial = data['kategorial'];
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial)));
       }
     }
   });
-}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

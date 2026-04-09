@@ -188,7 +188,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
                 const SizedBox(height: 15),
 
                 _buildDropdown("Jenis Kelamin", ["Pria", "Wanita"], _jenisKelamin, (v) => setState(() => _jenisKelamin = v!)),
-                _buildDropdown("Kelompok", ["Sekolah Minggu", "Pemuda Remaja", "Perkawan", "Perkaria", "Lainnya"], _kelompok, (v) => setState(() => _kelompok = v!)),
+                _buildDropdown("Kelompok", ["Sekolah Minggu", "AMKI", "Perkawan", "Perkaria", "Lainnya"], _kelompok, (v) => setState(() => _kelompok = v!)),
                 _buildDropdown("Status Keluarga", ["Kepala Keluarga", "Istri", "Anak"], _statusKeluarga, (v) => setState(() => _statusKeluarga = v!)),
                 
                 const SizedBox(height: 15),

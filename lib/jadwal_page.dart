@@ -38,7 +38,7 @@ class _JadwalPageState extends State<JadwalPage> {
     }
   }
 
-  // 👇 --- MANTRA ONESIGNAL: TEMBAK NOTIF PENGUMUMAN LANGSUNG --- 👇
+  // 👇 --- MANTRA ONESIGNAL DENGAN TIKET KE HALAMAN JADWAL --- 👇
   Future<void> _sendPengumumanNotification(String isiPengumuman) async {
     try {
       Map<String, dynamic> payload = {
@@ -46,7 +46,11 @@ class _JadwalPageState extends State<JadwalPage> {
         "included_segments": ["All"], // Tembak ke semua jemaat
         "headings": {"en": "📢 Pengumuman Gereja!"},
         "contents": {"en": isiPengumuman},
-        // Tidak pakai "send_after" karena kita mau notifnya masuk DETIK INI JUGA
+        // 👇 INI DIA TIKET MENUJU HALAMAN JADWAL 👇
+        "data": {
+          "type": "jadwal",
+          "kategorial": widget.filterKategorial // Ikut bawa nama kategorial kalau ada
+        }
       };
 
       await http.post(

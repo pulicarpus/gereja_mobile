@@ -44,7 +44,7 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
     super.dispose();
   }
 
-  // 👇 FUNGSI KIRIM NOTIFIKASI DOA BARU KE SEMUA JEMAAT 👇
+  // 👇 FUNGSI KIRIM NOTIFIKASI DOA BARU KE SEMUA JEMAAT DENGAN TIKET 👇
   Future<void> _kirimNotifDoaBaru(String namaPemohon, String churchId, bool isPrivat) async {
     final String osRestKey = osRestKeySecret; 
     final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
@@ -67,7 +67,11 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
           "app_id": osAppId,
           "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
           "headings": {"en": "🙏 Permohonan Doa Baru"},
-          "contents": {"en": pesanNotif}
+          "contents": {"en": pesanNotif},
+          // 👇 INI DIA TIKET MENUJU HALAMAN DOA 👇
+          "data": {
+            "type": "doa"
+          }
         }),
       );
     } catch (e) {

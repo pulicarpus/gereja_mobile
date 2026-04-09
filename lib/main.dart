@@ -54,21 +54,32 @@ void _initOneSignal() {
     if (data != null && data['type'] != null) {
       String type = data['type'];
       
-      if (type == 'chat') {
-        String? namaKategorial = data['kategorial']; 
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial))
-        );
-      } else if (type == 'doa') {
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => const DoaPage())
-        );
-      } else if (type == 'jadwal') {
-        String? namaKategorial = data['kategorial'];
-        navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial))
-        );
-      }
+      // 👇 INI OBATNYA BOS! Kita suruh dia nunggu 800 milidetik (0.8 detik) 👇
+      // Supaya MaterialApp selesai dimuat sebelum pindah halaman.
+      Future.delayed(const Duration(milliseconds: 800), () {
+        
+        // Pastikan navigatorKey sudah siap
+        if (navigatorKey.currentState != null) {
+          if (type == 'chat') {
+            String? namaKategorial = data['kategorial']; 
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial))
+            );
+          } else if (type == 'doa') {
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (context) => const DoaPage())
+            );
+          } else if (type == 'jadwal') {
+            String? namaKategorial = data['kategorial'];
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial))
+            );
+          }
+        } else {
+          debugPrint("Waduh, NavigatorKey masih belum siap nih!");
+        }
+        
+      });
     }
   });
 }

@@ -101,6 +101,44 @@ class _DoaPageState extends State<DoaPage> {
     );
   }
 
+  // 👇 FUNGSI BARU UNTUK MENAMPILKAN SIAPA SAJA YANG MENGAMINKAN 👇
+  void _tampilkanDaftarAmin(List<dynamic> daftarAmin) {
+    if (daftarAmin.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+          const SizedBox(height: 16),
+          Text("${daftarAmin.length} Orang Mengaminkan", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          const Divider(),
+          // Membatasi tinggi list agar tidak penuh satu layar kalau yang amin banyak
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: daftarAmin.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  leading: const CircleAvatar(
+                    backgroundColor: Colors.indigo,
+                    child: Icon(Icons.person, color: Colors.white, size: 20),
+                  ),
+                  title: Text(daftarAmin[index].toString(), style: const TextStyle(fontWeight: FontWeight.w500)),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String? churchId = _userManager.getChurchIdForCurrentView();
@@ -231,9 +269,18 @@ class _DoaPageState extends State<DoaPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              daftarAmin.isEmpty ? "Belum ada dukungan" : "${daftarAmin.length} Orang Mengaminkan", 
-                              style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)
+                            // 👇 TEKS "X ORANG MENGAMINKAN" SEKARANG BISA DIKLIK 👇
+                            GestureDetector(
+                              onTap: () => _tampilkanDaftarAmin(daftarAmin),
+                              child: Text(
+                                daftarAmin.isEmpty ? "Belum ada dukungan" : "${daftarAmin.length} Orang Mengaminkan", 
+                                style: TextStyle(
+                                  color: daftarAmin.isEmpty ? Colors.grey[600] : Colors.indigo, 
+                                  fontSize: 13, 
+                                  fontWeight: FontWeight.bold,
+                                  decoration: daftarAmin.isNotEmpty ? TextDecoration.underline : TextDecoration.none
+                                )
+                              ),
                             ),
                             TextButton.icon(
                               onPressed: hasAmened ? null : () => _prosesAmen(docId, daftarAmin),

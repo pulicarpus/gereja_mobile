@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http; // 👈 IMPORT KURIR HTTP
-import 'dart:convert'; // 👈 IMPORT KONVERTER DATA
+import 'package:http/http.dart' as http; 
+import 'dart:convert'; 
 
 import 'user_manager.dart';
-import 'secrets.dart'; // 👈 IMPORT BRANKAS RAHASIA BOS
+import 'secrets.dart'; 
 
 class AddEditJadwalPage extends StatefulWidget {
   final String? jadwalId;
@@ -136,33 +136,40 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     }
   }
 
-  // 👇 --- MANTRA SAKTI: FUNGSI PENJADWAL ALARM ONESIGNAL --- 👇
-  Future<void> _scheduleNotification(String namaKeg, String tempat, DateTime waktuIbadah) async {
+  // 👇 --- VERSI WIB (GMT+0700): LEBIH GAMPANG DIBACA ADMIN --- 👇
+  Future<void> _scheduleNotification(String namaKeg, String tempat, DateTime waktuIbadah, String? churchId) async {
     try {
+      if (churchId == null) return;
+      
       // 1. Kurangi waktu ibadah dengan 30 menit
       DateTime waktuNotif = waktuIbadah.subtract(const Duration(minutes: 30));
 
-      // 2. Kalau jadwalnya untuk masa lalu (misal ngedit jadwal lama), batalkan alarm
+      // 2. Kalau jadwalnya untuk masa lalu batalkan alarm
       if (waktuNotif.isBefore(DateTime.now())) return;
 
-      // 3. Format waktu standar internasional (UTC) yang dibaca server OneSignal
-      String sendAfter = "${DateFormat('yyyy-MM-dd HH:mm:ss').format(waktuNotif.toUtc())} UTC";
+      // 3. Format waktu LOKAL ADMIN dan cap sebagai WIB (GMT+0700)
+      String sendAfter = "${DateFormat('yyyy-MM-dd HH:mm:ss').format(waktuNotif)} GMT+0700";
 
-      // 4. Bungkus "Surat Perintah" ke dalam bentuk JSON
+      // 4. Bungkus payload JSON
       Map<String, dynamic> payload = {
-        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", // ID OneSignal Bos
-        "included_segments": ["All"], // Kirim ke semua jemaat
-        "headings": {"en": "⏰ Pengingat Ibadah!"},
+        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
+        "included_segments": ["All"], 
+        "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
+        "headings": {"en": "⏰ 30 Menit Lagi!"},
         "contents": {"en": "$namaKeg akan dimulai 30 menit lagi di $tempat. Mari bersiap-siap!"},
-        "send_after": sendAfter, // Eksekusi pada waktu yang kita hitung tadi
+        "send_after": sendAfter, // OneSignal akan memproses ini persis sesuai WIB
+        "data": {
+          "type": "jadwal",
+          "kategorial": widget.filterKategorial
+        }
       };
 
-      // 5. Kirim ke Server OneSignal pakai kurir HTTP + Kunci Rahasia
+      // 5. Kirim ke Server OneSignal
       final response = await http.post(
         Uri.parse("https://onesignal.com/api/v1/notifications"),
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          "Authorization": "Basic $osRestKeySecret" // Diambil dari lib/secrets.dart
+          "Authorization": "Basic $osRestKeySecret" 
         },
         body: jsonEncode(payload),
       );
@@ -216,8 +223,8 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         await colRef.add(jadwalData);
       }
 
-      // 👇 PANGGIL MANTRA SAKTI ONESIGNAL SETELAH DATA TERSIMPAN 👇
-      await _scheduleNotification(_etNama.text.trim(), _etTempat.text.trim(), _selectedDateTime);
+      // Panggil fungsi notif dengan format WIB
+      await _scheduleNotification(_etNama.text.trim(), _etTempat.text.trim(), _selectedDateTime, churchId);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal Berhasil Disimpan!"), backgroundColor: Colors.green));

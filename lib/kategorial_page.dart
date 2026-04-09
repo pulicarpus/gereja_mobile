@@ -28,7 +28,7 @@ class KategorialPage extends StatelessWidget {
             ),
             _buildMenuCard(
               context,
-              "Pemuda Remaja",
+              "namaKomisi",
               Icons.group,
               Colors.blue,
             ),

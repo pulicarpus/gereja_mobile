@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart'; 
-import 'package:http/http.dart' as http; // 👈 IMPORT KURIR HTTP
-import 'dart:convert'; // 👈 IMPORT KONVERTER
+import 'package:http/http.dart' as http; 
+import 'dart:convert'; 
 
 import 'user_manager.dart'; 
 import 'add_edit_jadwal_page.dart';
 import 'susunan_acara_page.dart';
-import 'secrets.dart'; // 👈 IMPORT BRANKAS RAHASIA UNTUK KUNCI ONESIGNAL
+import 'secrets.dart'; 
 
 class JadwalPage extends StatefulWidget {
   final String? filterKategorial;
@@ -38,18 +38,16 @@ class _JadwalPageState extends State<JadwalPage> {
     }
   }
 
-  // 👇 --- MANTRA ONESIGNAL DENGAN TIKET KE HALAMAN JADWAL --- 👇
   Future<void> _sendPengumumanNotification(String isiPengumuman) async {
     try {
       Map<String, dynamic> payload = {
-        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", // ID OneSignal Bos
-        "included_segments": ["All"], // Tembak ke semua jemaat
+        "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
+        "included_segments": ["All"], 
         "headings": {"en": "📢 Pengumuman Gereja!"},
         "contents": {"en": isiPengumuman},
-        // 👇 INI DIA TIKET MENUJU HALAMAN JADWAL 👇
         "data": {
           "type": "jadwal",
-          "kategorial": widget.filterKategorial // Ikut bawa nama kategorial kalau ada
+          "kategorial": widget.filterKategorial 
         }
       };
 
@@ -57,7 +55,7 @@ class _JadwalPageState extends State<JadwalPage> {
         Uri.parse("https://onesignal.com/api/v1/notifications"),
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          "Authorization": "Basic $osRestKeySecret" // Pakai kunci dari GitHub Secrets
+          "Authorization": "Basic $osRestKeySecret" 
         },
         body: jsonEncode(payload),
       );
@@ -66,7 +64,6 @@ class _JadwalPageState extends State<JadwalPage> {
       debugPrint("Error kirim notif pengumuman: $e");
     }
   }
-  // 👆 ------------------------------------------------------------- 👆
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +141,21 @@ class _JadwalPageState extends State<JadwalPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).snapshots(),
       builder: (context, snapshot) {
-        String teks = snapshot.data?.get('teks') ?? "Tidak ada pengumuman khusus.";
+        // 👇 PERBAIKAN ERROR ABU-ABU DI SINI BOS 👇
+        String teks = "Tidak ada pengumuman khusus.";
+        
+        // Cek dulu apakah datanya ada di Firestore
+        if (snapshot.hasData && snapshot.data!.exists) {
+          // Ambil datanya dengan aman sebagai Map
+          Map<String, dynamic>? dataMap = snapshot.data!.data() as Map<String, dynamic>?;
+          
+          // Kalau field 'teks' memang ada, baru kita pakai
+          if (dataMap != null && dataMap.containsKey('teks')) {
+            teks = dataMap['teks'];
+          }
+        }
+        // 👆 ----------------------------------- 👆
+
         return GestureDetector(
           onLongPress: isAdmin ? () => _showEditPengumumanDialog(docId, teks) : null,
           child: Container(
@@ -353,17 +364,13 @@ class _JadwalPageState extends State<JadwalPage> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-            // 👇 UBAH JADI ASYNC AGAR BISA KIRIM NOTIF 👇
             onPressed: () async {
               String teksBaru = controller.text.trim();
               
-              // 1. Tutup dialognya dulu biar aplikasinya terasa cepat
               Navigator.pop(context);
               
-              // 2. Simpan ke database
               await _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': teksBaru});
               
-              // 3. Panggil kurir notif kalau teksnya tidak kosong
               if (teksBaru.isNotEmpty) {
                 await _sendPengumumanNotification(teksBaru);
               }

@@ -15,10 +15,21 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
   final UserManager _userManager = UserManager();
   String? _churchId;
 
+  // 👇 VARIABEL UNTUK PENCARIAN 👇
+  bool _isSearching = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
+
   @override
   void initState() {
     super.initState();
     _churchId = _userManager.getChurchIdForCurrentView();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
@@ -28,10 +39,44 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Pilih Jemaat", style: TextStyle(fontWeight: FontWeight.bold)),
+        // 👇 LOGIKA APPBAR BERUBAH JADI KOTAK PENCARIAN KALAU TOMBOL DITEKAN 👇
+        title: _isSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  hintText: "Cari nama jemaat...",
+                  hintStyle: TextStyle(color: Colors.white70),
+                  border: InputBorder.none,
+                ),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value.toLowerCase();
+                  });
+                },
+              )
+            : const Text("Pilih Jemaat", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          // 👇 TOMBOL KACA PEMBESAR / SILANG 👇
+          IconButton(
+            icon: Icon(_isSearching ? Icons.close : Icons.search),
+            onPressed: () {
+              setState(() {
+                if (_isSearching) {
+                  _isSearching = false;
+                  _searchController.clear();
+                  _searchQuery = "";
+                } else {
+                  _isSearching = true;
+                }
+              });
+            },
+          )
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
         // Mengambil semua jemaat di gereja ini
@@ -44,7 +89,26 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
             return const Center(child: Text("Belum ada data jemaat."));
           }
 
-          var listJemaat = snapshot.data!.docs;
+          // 👇 PROSES PENYARINGAN DATA BERDASARKAN KATA KUNCI 👇
+          var listJemaat = snapshot.data!.docs.where((doc) {
+            var data = doc.data() as Map<String, dynamic>;
+            String nama = (data['namaLengkap'] ?? "").toLowerCase();
+            return nama.contains(_searchQuery);
+          }).toList();
+
+          // Kalau hasil pencarian kosong
+          if (listJemaat.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.search_off, size: 60, color: Colors.grey.shade400),
+                  const SizedBox(height: 10),
+                  Text("Tidak ada jemaat bernama '$_searchQuery'", style: TextStyle(color: Colors.grey.shade600)),
+                ],
+              ),
+            );
+          }
 
           return ListView.builder(
             padding: const EdgeInsets.all(12),
@@ -67,14 +131,14 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
                 child: ListTile(
                   leading: CircleAvatar(
                     backgroundColor: Colors.indigo.shade100,
-                    backgroundImage: fotoUrl != null ? CachedNetworkImageProvider(fotoUrl) : null,
-                    child: fotoUrl == null ? const Icon(Icons.person, color: Colors.indigo) : null,
+                    backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? CachedNetworkImageProvider(fotoUrl) : null,
+                    child: fotoUrl == null || fotoUrl.isEmpty ? const Icon(Icons.person, color: Colors.indigo) : null,
                   ),
                   title: Text(nama, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(statusKeluarga, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                   trailing: const Icon(Icons.person_add, color: Colors.green),
                   onTap: () {
-                    // 👇 INI KUNCINYA: Saat diklik, tutup halaman dan bawa datanya kembali!
+                    // Saat diklik, tutup halaman dan bawa datanya kembali
                     Navigator.pop(context, data);
                   },
                 ),

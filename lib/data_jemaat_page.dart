@@ -4,7 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'user_manager.dart';
 import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
-import 'anggota_keluarga_page.dart'; // 👇 IMPORT HALAMAN KELUARGA BARU BOS
+import 'anggota_keluarga_page.dart'; 
+import 'daftar_keluarga_page.dart'; // 👇 IMPORT HALAMAN DAFTAR KELUARGA BARU BOS
 
 class DataJemaatPage extends StatefulWidget {
   final String? filterKategorial;
@@ -47,6 +48,9 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
 
       if (mounted) {
         setState(() {
+          // Urutkan berdasarkan nama secara default
+          tempData.sort((a, b) => (a['namaLengkap'] ?? "").toString().toLowerCase().compareTo((b['namaLengkap'] ?? "").toString().toLowerCase()));
+          
           _allJemaat = tempData;
           _filteredJemaat = tempData;
           _isLoading = false;
@@ -66,14 +70,8 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     });
   }
 
-  // --- NAVIGASI KE HALAMAN DASHBOARD GRAFIK ---
   void _goToDashboard() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DashboardPage(allJemaat: _allJemaat),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => DashboardPage(allJemaat: _allJemaat)));
   }
 
   // --- DETAIL JEMAAT (BOTTOM SHEET) ---
@@ -94,7 +92,6 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Garis handle atas
               Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
               const SizedBox(height: 20),
               CircleAvatar(
@@ -153,17 +150,13 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     subtitle: Text(label),
   );
 
-  // 👇 FUNGSI INI SUDAH DIROMBAK UNTUK BUKA HALAMAN ANGGOTA KELUARGA 👇
   void _showKeluarga(String? idKK, String? nama) {
     if (idKK == null || idKK.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data Keluarga tidak ditemukan")));
       return;
     }
     
-    // 1. Tutup dulu BottomSheet (Detail Jemaat) yang sedang terbuka
     Navigator.pop(context);
-
-    // 2. Lempar ke halaman AnggotaKeluargaPage
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -200,7 +193,18 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               });
             },
           ),
+          
+          // 👇 TOMBOL BARU UNTUK MASUK KE DAFTAR KELUARGA 👇
           IconButton(
+            tooltip: "Daftar Keluarga",
+            icon: const Icon(Icons.family_restroom),
+            onPressed: () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const DaftarKeluargaPage()));
+            },
+          ),
+
+          IconButton(
+            tooltip: "Dashboard Statistik",
             onPressed: _goToDashboard, 
             icon: const Icon(Icons.dashboard_customize_rounded)
           ),

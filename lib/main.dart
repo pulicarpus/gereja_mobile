@@ -31,7 +31,7 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 
-// 👇 1. KUNCI NAVIGASI GLOBAL UNTUK MENANGKAP KLIK NOTIFIKASI 👇
+// 👇 KUNCI NAVIGASI GLOBAL UNTUK KLIK NOTIFIKASI 👇
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
@@ -47,7 +47,8 @@ void _initOneSignal() {
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
 
-OneSignal.Notifications.addClickListener((event) {
+  // 👇 PENANGKAP KLIK NOTIFIKASI 👇
+  OneSignal.Notifications.addClickListener((event) {
     final data = event.notification.additionalData;
     
     if (data != null && data['type'] != null) {
@@ -55,17 +56,22 @@ OneSignal.Notifications.addClickListener((event) {
       
       if (type == 'chat') {
         String? namaKategorial = data['kategorial']; 
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial)));
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial))
+        );
       } else if (type == 'doa') {
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => const DoaPage()));
-      } 
-      // 👇 TAMBAHKAN BAGIAN INI UNTUK MENANGKAP TIKET JADWAL 👇
-      else if (type == 'jadwal') {
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (context) => const DoaPage())
+        );
+      } else if (type == 'jadwal') {
         String? namaKategorial = data['kategorial'];
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial)));
+        navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial))
+        );
       }
     }
   });
+}
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -73,10 +79,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      // 👇 3. PASANG KUNCI NAVIGASINYA DI SINI 👇
-      navigatorKey: navigatorKey, 
+      navigatorKey: navigatorKey, // 👇 PASANG KUNCI NAVIGASI DI SINI 👇
       debugShowCheckedModeBanner: false,
-      title: 'GKII_DEV',
+      title: 'GKII SILOAM',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
         useMaterial3: true,
@@ -377,7 +382,7 @@ class _MainActivityState extends State<MainActivity> {
                           child: _fotoGerejaUrl != null 
                               ? CachedNetworkImage(
                                   imageUrl: _fotoGerejaUrl!,
-                                  fit: BoxFit.contain,
+                                  fit: BoxFit.contain, // Gambar Utuh
                                   placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
                                   errorWidget: (context, url, error) => const Icon(Icons.error),
                                 )

@@ -73,14 +73,6 @@ dependency_overrides:
   # 👇 MANTRA IKON APLIKASI 👇
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
+  ios: false
   image_path: "assets/images/icon.png"
   min_sdk_android: 21 # Sesuaikan jika min_sdk Bos berbeda
-
-# 👇 MANTRA SPLASH SCREEN 👇
-flutter_native_splash:
-  color: "#FFFFFF" # Warna background layarnya (ini Putih, bisa diganti kode hex lain)
-  image: "assets/images/splash.png"
-  android_12:
-    image: "assets/images/splash.png"
-    icon_background_color: "#FFFFFF"

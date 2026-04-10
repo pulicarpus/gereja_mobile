@@ -57,15 +57,18 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
     super.dispose();
   }
 
-  @override
+ @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, 
+      backgroundColor: Colors.white, // Background warna putih supaya nyambung sama videonya
       body: Center(
         child: _controller.value.isInitialized
-            ? SizedBox.expand( // Memaksa video agar memenuhi layar
+            ? SizedBox(
+                width: double.infinity,
+                height: double.infinity,
+                // 👇 INI KUNCINYA BOS, JANGAN PAKAI COVER TAPI PAKAI CONTAIN 👇
                 child: FittedBox(
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain, 
                   child: SizedBox(
                     width: _controller.value.size.width,
                     height: _controller.value.size.height,

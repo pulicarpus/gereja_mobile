@@ -15,7 +15,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      # 1. Cache Gradle untuk mempercepat kompilasi Android (INI AMAN)
+      # 1. Cache Gradle untuk mempercepat kompilasi Android
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
@@ -33,12 +33,10 @@ jobs:
           channel: 'stable'
           cache: true 
 
-      # 👇 3. CACHE PUB SAYA HAPUS BIAR SERVER GAK INGAT MASA LALU 👇
-      
       - name: Decode Keystore
         run: echo "${{ secrets.APP_KEYSTORE_BASE64 }}" | base64 --decode > android/app/gereja-app.jks
 
-      # 👇 JURUS SAPU JAGAT: Bersihkan memori mesin GitHub sampai ke akar 👇
+      # JURUS SAPU JAGAT: Bersihkan memori mesin GitHub sampai ke akar
       - name: Bersihkan Ingatan Server
         run: |
           flutter clean
@@ -48,14 +46,20 @@ jobs:
         run: flutter pub get
         working-directory: . 
 
-      # 👇 JURUS SAKTI PENYUNTIK BRANKAS LENGKAP 👇
+      # 👇 INI DIA MANTRA BARU KITA BOS: EKSEKUSI IKON & SPLASH SCREEN 👇
+      - name: Generate Icon & Splash Screen
+        run: |
+          dart run flutter_launcher_icons
+          dart run flutter_native_splash:create
+        working-directory: . 
+
+      # JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
       - name: Create Secrets File
         run: |
           mkdir -p lib
           echo "const String geminiApiKey = '${{ secrets.GEMINI_API_KEY }}';" > lib/secrets.dart
           echo "const String teleBotTokenSecret = '${{ secrets.TELE_BOT_TOKEN }}';" >> lib/secrets.dart
           echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
-      # 👆 ========================================= 👆
       
       - name: Build APK
         run: flutter build apk --release

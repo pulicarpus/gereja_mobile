@@ -30,6 +30,7 @@ import 'pengurus_page.dart';
 import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
+import 'video_splash_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -77,9 +78,9 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
-      title: 'GKII SILOAM',
+      title: 'GKII Mobile',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo), useMaterial3: true),
-      home: FirebaseAuth.instance.currentUser == null ? const LoginPage() : const MainActivity(),
+      home: const VideoSplashPage(),
       routes: {
         '/home': (context) => const MainActivity(),
         '/login': (context) => const LoginPage(),

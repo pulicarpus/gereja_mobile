@@ -15,7 +15,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
 
     <application
-        android:label="GKII_DEV"
+        android:label="GKII Mobile"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

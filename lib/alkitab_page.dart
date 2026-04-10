@@ -71,30 +71,53 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   // --- AUDIO LOGIC ---
   String _getAudioUrl(int bookNum, int chapter) {
-    // 1. Hitung nomor kitab sesuai rumus database Bos
-    int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
+    int standardBookNum = 0;
 
-    // 2. Cek apakah kitab tersebut ada di daftar audio kita
+    // 👇 1. KAMUS PENERJEMAH NOMOR SQLITE KE NOMOR URUT (1-66) 👇
+    if (bookNum >= 470) {
+      // Khusus Perjanjian Baru (Rumus aman karena tidak ada nomor yang melompat)
+      standardBookNum = (((bookNum - 470) ~/ 10) + 40);
+    } else {
+      // Khusus Perjanjian Lama (Kita petakan manual agar anti-nyasar!)
+      Map<int, int> otTranslator = {
+        10: 1,   20: 2,   30: 3,   40: 4,   50: 5,
+        60: 6,   70: 7,   80: 8,   90: 9,   100: 10,
+        110: 11, 120: 12, 130: 13, 140: 14, 150: 15,
+        160: 16, 
+        190: 17, // Ester (Melompat dari 160)
+        220: 18, // Ayub (Melompat dari 190)
+        230: 19, // Mazmur
+        240: 20, 250: 21, 260: 22, 
+        290: 23, // Yesaya (Melompat dari 260)
+        300: 24, 310: 25, 
+        330: 26, // Yehezkiel (Melompat dari 310)
+        340: 27, 350: 28, 360: 29, 370: 30,
+        380: 31, 390: 32, 400: 33, 410: 34, 420: 35,
+        430: 36, 440: 37, 450: 38, 460: 39
+      };
+      
+      // Jika nomornya ada di kamus, pakai nomor urutnya. Kalau tidak, pakai rumus dasar.
+      standardBookNum = otTranslator[bookNum] ?? (bookNum ~/ 10);
+    }
+
+    // 👇 2. LOGIKA PEMANGGILAN FILE AUDIO 👇
     if (_bibleAudioMap.containsKey(standardBookNum)) {
       String folder = _bibleAudioMap[standardBookNum]!["folder"]!;
       String prefix = _bibleAudioMap[standardBookNum]!["file"]!;
       
-      // 3. LOGIKA BARU: Cek berdasarkan nama folder!
       String chapterStr;
       if (folder == "mazmur") {
-        // Kalau foldernya "mazmur", paksa pakai 3 digit (001, 002)
+        // Khusus Mazmur pakai format 3 digit (contoh: 001)
         chapterStr = chapter.toString().padLeft(3, '0');
       } else {
-        // Selain itu (kejadian, keluaran, dll), pakai 2 digit (01, 02)
+        // Kitab lain tetap pakai 2 digit (contoh: 01)
         chapterStr = chapter.toString().padLeft(2, '0');
       }
 
-      // 4. Susun link lengkap ke GitHub
       return "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/${prefix}${chapterStr}.mp3";
     }
     
-    // Kalau kitab belum ada audionya, kembalikan kosong
-    return "";
+    return ""; // Kembalikan kosong jika audio belum tersedia
   }
 
   Future<void> _playPauseAudio() async {

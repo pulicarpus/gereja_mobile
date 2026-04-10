@@ -72,7 +72,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
   // --- AUDIO LOGIC ---
   String _getAudioUrl(int bookNum, int chapter) {
     int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
-    String chapterStr = chapter.toString().padLeft(2, '0');
+    // 👇 GANTI BARIS 75 DENGAN LOGIKA INI BOS 👇
+    String chapterStr;
+    if (standardBookNum == 19) {
+      // Khusus Mazmur (Kitab ke-19), panggil file dengan 3 digit (001, 002, dst)
+      chapterStr = chapter.toString().padLeft(3, '0'); 
+    } else {
+      // Kitab lainnya tetap pakai 2 digit (01, 02, dst)
+      chapterStr = chapter.toString().padLeft(2, '0'); 
+    }
     if (_bibleAudioMap.containsKey(standardBookNum)) {
       String folder = _bibleAudioMap[standardBookNum]!["folder"]!;
       String prefix = _bibleAudioMap[standardBookNum]!["file"]!;

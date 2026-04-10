@@ -71,21 +71,29 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   // --- AUDIO LOGIC ---
   String _getAudioUrl(int bookNum, int chapter) {
+    // 1. Hitung nomor kitab sesuai rumus database Bos
     int standardBookNum = bookNum < 400 ? (bookNum ~/ 10) : (((bookNum - 470) ~/ 10) + 40);
-    // 👇 GANTI BARIS 75 DENGAN LOGIKA INI BOS 👇
-    String chapterStr;
-    if (standardBookNum == 19) {
-      // Khusus Mazmur (Kitab ke-19), panggil file dengan 3 digit (001, 002, dst)
-      chapterStr = chapter.toString().padLeft(3, '0'); 
-    } else {
-      // Kitab lainnya tetap pakai 2 digit (01, 02, dst)
-      chapterStr = chapter.toString().padLeft(2, '0'); 
-    }
+
+    // 2. Cek apakah kitab tersebut ada di daftar audio kita
     if (_bibleAudioMap.containsKey(standardBookNum)) {
       String folder = _bibleAudioMap[standardBookNum]!["folder"]!;
       String prefix = _bibleAudioMap[standardBookNum]!["file"]!;
-      return "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/$prefix$chapterStr.mp3";
+      
+      // 3. LOGIKA BARU: Cek berdasarkan nama folder!
+      String chapterStr;
+      if (folder == "mazmur") {
+        // Kalau foldernya "mazmur", paksa pakai 3 digit (001, 002)
+        chapterStr = chapter.toString().padLeft(3, '0');
+      } else {
+        // Selain itu (kejadian, keluaran, dll), pakai 2 digit (01, 02)
+        chapterStr = chapter.toString().padLeft(2, '0');
+      }
+
+      // 4. Susun link lengkap ke GitHub
+      return "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/${prefix}${chapterStr}.mp3";
     }
+    
+    // Kalau kitab belum ada audionya, kembalikan kosong
     return "";
   }
 

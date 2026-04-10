@@ -54,6 +54,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.0
 
 flutter:
   uses-material-design: true
@@ -66,3 +68,18 @@ flutter:
 # 👇 KUNCI KESELAMATAN SEJATI (TURUN KE 1.2.0) 👇
 dependency_overrides:
   record_platform_interface: 1.2.0
+  
+  # 👇 MANTRA IKON APLIKASI 👇
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/icon.png"
+  min_sdk_android: 21 # Sesuaikan jika min_sdk Bos berbeda
+
+# 👇 MANTRA SPLASH SCREEN 👇
+flutter_native_splash:
+  color: "#FFFFFF" # Warna background layarnya (ini Putih, bisa diganti kode hex lain)
+  image: "assets/images/splash.png"
+  android_12:
+    image: "assets/images/splash.png"
+    icon_background_color: "#FFFFFF"

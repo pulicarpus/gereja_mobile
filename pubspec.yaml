@@ -61,6 +61,7 @@ flutter:
   assets:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
+    - assets/videos/splash_video.mp4
 
 # 👇 KUNCI KESELAMATAN SEJATI (TURUN KE 1.2.0) 👇
 dependency_overrides:

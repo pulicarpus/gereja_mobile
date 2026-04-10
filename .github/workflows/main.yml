@@ -50,7 +50,6 @@ jobs:
       - name: Generate Icon & Splash Screen
         run: |
           dart run flutter_launcher_icons
-          dart run flutter_native_splash:create
         working-directory: . 
 
       # JURUS SAKTI PENYUNTIK BRANKAS LENGKAP

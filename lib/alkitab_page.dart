@@ -116,20 +116,63 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _playPauseAudio() async {
-    String audioUrl = _getAudioUrl(_currentBookNum, _currentChapter);
-    if (audioUrl.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio belum tersedia di folder GitHub."))); return; }
+    int standardBookNum = 0;
+    if (_currentBookNum >= 470) {
+      standardBookNum = (((_currentBookNum - 470) ~/ 10) + 40);
+    } else {
+      Map<int, int> otTranslator = {
+        10: 1, 20: 2, 30: 3, 40: 4, 50: 5, 60: 6, 70: 7, 80: 8, 90: 9, 100: 10,
+        110: 11, 120: 12, 130: 13, 140: 14, 150: 15, 160: 16, 190: 17, 220: 18, 230: 19,
+        240: 20, 250: 21, 260: 22, 290: 23, 300: 24, 310: 25, 330: 26, 340: 27, 350: 28, 
+        360: 29, 370: 30, 380: 31, 390: 32, 400: 33, 410: 34, 420: 35, 430: 36, 440: 37, 
+        450: 38, 460: 39
+      };
+      standardBookNum = otTranslator[_currentBookNum] ?? (_currentBookNum ~/ 10);
+    }
+
+    if (!_bibleAudioMap.containsKey(standardBookNum)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio belum tersedia.")));
+      return;
+    }
+
+    String folder = _bibleAudioMap[standardBookNum]!["folder"]!;
+    String prefix = _bibleAudioMap[standardBookNum]!["file"]!;
+    String chapterStr = (folder == "mazmur") ? _currentChapter.toString().padLeft(3, '0') : _currentChapter.toString().padLeft(2, '0');
+    String fileName = "$prefix$chapterStr.mp3";
+
     try {
-      if (_isPlaying) { await _audioPlayer.pause(); } 
-      else {
+      if (_isPlaying) { 
+        await _audioPlayer.pause(); 
+      } else {
         setState(() => _isAudioLoading = true);
-        await _audioPlayer.setAudioContext(AudioContext(
-          android: const AudioContextAndroid(isSpeakerphoneOn: true, stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.gain),
-          iOS: const AudioContextIOS(category: AVAudioSessionCategory.playback, options: [AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers]),
+        
+        await _audioPlayer.setAudioContext(const AudioContext(
+          android: AudioContextAndroid(isSpeakerphoneOn: true, stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.gain),
+          iOS: AudioContextIOS(category: AVAudioSessionCategory.playback, options: [AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers]),
         ));
-        await _audioPlayer.play(UrlSource(audioUrl));
+
+        // 👇 LOGIKA RADAR: CEK MEMORI HP DULU! 👇
+        final dir = await getApplicationDocumentsDirectory();
+        File localFile = File('${dir.path}/audio/$folder/$fileName');
+        
+        Source audioSource;
+        if (await localFile.exists()) {
+          // BINGO! File ada di HP. Putar tanpa kuota internet!
+          audioSource = DeviceFileSource(localFile.path);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memutar audio offline 🎧")));
+        } else {
+          // Tidak ada di HP? Terpaksa streaming dari GitHub
+          String onlineUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/$fileName";
+          audioSource = UrlSource(onlineUrl);
+        }
+
+        await _audioPlayer.play(audioSource);
         setState(() => _isAudioLoading = false);
       }
-    } catch (e) { setState(() => _isAudioLoading = false); }
+    } catch (e) { 
+      setState(() => _isAudioLoading = false); 
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal memutar audio: $e")));
+    }
   }
 
   void _resetAudio() { _audioPlayer.stop(); setState(() { _isPlaying = false; _position = Duration.zero; }); }

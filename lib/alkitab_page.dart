@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart'; 
 import 'package:firebase_auth/firebase_auth.dart';     
 import 'package:audioplayers/audioplayers.dart'; 
+import 'package:path_provider/path_provider.dart';
 
 import 'bible_models.dart';
 import 'notes_pages.dart';

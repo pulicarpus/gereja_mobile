@@ -24,74 +24,9 @@ class _OfflineAudioPageState extends State<OfflineAudioPage> {
     "1 Petrus", "2 Petrus", "1 Yohanes", "2 Yohanes", "3 Yohanes", "Yudas", "Wahyu"
   ];
 
-  // 👇 INI DATA AUDIO FULL 66 KITAB HASIL REKAPAN DARI SCREENSHOT BOS 👇
   final Map<int, Map<String, String>> _bibleAudioMap = {
-    1: {"folder": "kejadian", "file": "01_kej"},
-    2: {"folder": "keluaran", "file": "02_kel"},
-    3: {"folder": "imamat", "file": "03_ima"},
-    4: {"folder": "bilangan", "file": "04_bil"},
-    5: {"folder": "ulangan", "file": "05_ula"},
-    6: {"folder": "yosua", "file": "06_yos"},
-    7: {"folder": "hakim-hakim", "file": "07_hak"},
-    8: {"folder": "rut", "file": "08_rut"},
-    9: {"folder": "1samuel", "file": "09_1sa"},
-    10: {"folder": "2samuel", "file": "10_2sa"},
-    11: {"folder": "1raja-raja", "file": "11_1ra"},
-    12: {"folder": "2raja-raja", "file": "12_2ra"},
-    13: {"folder": "1tawarikh", "file": "13_1ta"},
-    14: {"folder": "2tawarikh", "file": "14_2ta"},
-    15: {"folder": "ezra", "file": "15_ezr"},
-    16: {"folder": "nehemia", "file": "16_neh"},
-    17: {"folder": "ester", "file": "17_est"},
-    18: {"folder": "ayub", "file": "18_ayu"},
-    19: {"folder": "mazmur", "file": "19_mzm"},
-    20: {"folder": "amsal", "file": "20_ams"},
-    21: {"folder": "pengkhotbah", "file": "21_pen"},
-    22: {"folder": "kidungagung", "file": "22_kid"},
-    23: {"folder": "yesaya", "file": "23_yes"},
-    24: {"folder": "yeremia", "file": "24_yer"},
-    25: {"folder": "ratapan", "file": "25_rat"},
-    26: {"folder": "yehezkiel", "file": "26_yeh"},
-    27: {"folder": "daniel", "file": "27_dan"},
-    28: {"folder": "hosea", "file": "28_hos"},
-    29: {"folder": "yoel", "file": "29_yoe"},
-    30: {"folder": "amos", "file": "30_amo"},
-    31: {"folder": "obaja", "file": "31_oba"},
-    32: {"folder": "yunus", "file": "32_yun"},
-    33: {"folder": "mikha", "file": "33_mik"},
-    34: {"folder": "nahum", "file": "34_nah"},
-    35: {"folder": "habakuk", "file": "35_hab"},
-    36: {"folder": "zefanya", "file": "36_zef"},
-    37: {"folder": "hagai", "file": "37_hag"},
-    38: {"folder": "zakharia", "file": "38_zak"},
-    39: {"folder": "maleakhi", "file": "39_mal"},
-    40: {"folder": "matius", "file": "01_mat"},
-    41: {"folder": "markus", "file": "02_mar"},
-    42: {"folder": "lukas", "file": "03_luk"},
-    43: {"folder": "yohanes", "file": "04_yoh"},
-    44: {"folder": "kisahpararasul", "file": "05_kis"},
-    45: {"folder": "roma", "file": "06_rom"},
-    46: {"folder": "1korintus", "file": "07_1ko"},
-    47: {"folder": "2korintus", "file": "08_2ko"},
-    48: {"folder": "galatia", "file": "09_gal"},
-    49: {"folder": "efesus", "file": "10_efe"},
-    50: {"folder": "filipi", "file": "11_flp"},
-    51: {"folder": "kolose", "file": "12_kol"},
-    52: {"folder": "1tesalonika", "file": "13_1te"},
-    53: {"folder": "2tesalonika", "file": "14_2te"},
-    54: {"folder": "1timotius", "file": "15_1ti"},
-    55: {"folder": "2timotius", "file": "16_2ti"},
-    56: {"folder": "titus", "file": "17_tit"},
-    57: {"folder": "filemon", "file": "18_fil"},
-    58: {"folder": "ibrani", "file": "19_ibr"},
-    59: {"folder": "yakobus", "file": "20_yak"},
-    60: {"folder": "1petrus", "file": "21_1pe"},
-    61: {"folder": "2petrus", "file": "22_2pe"},
-    62: {"folder": "1yohanes", "file": "23_1yo"},
-    63: {"folder": "2yohanes", "file": "24_2yo"},
-    64: {"folder": "3yohanes", "file": "25_3yo"},
-    65: {"folder": "yudas", "file": "26_yud"},
-    66: {"folder": "wahyu", "file": "27_wah"},
+    1: {"folder": "kejadian", "file": "01_kej"}, 2: {"folder": "keluaran", "file": "02_kel"}, 3: {"folder": "imamat", "file": "03_ima"}, 4: {"folder": "bilangan", "file": "04_bil"}, 5: {"folder": "ulangan", "file": "05_ula"}, 6: {"folder": "yosua", "file": "06_yos"}, 7: {"folder": "hakim-hakim", "file": "07_hak"}, 8: {"folder": "rut", "file": "08_rut"}, 9: {"folder": "1samuel", "file": "09_1sa"}, 10: {"folder": "2samuel", "file": "10_2sa"}, 11: {"folder": "1raja-raja", "file": "11_1ra"}, 12: {"folder": "2raja-raja", "file": "12_2ra"}, 13: {"folder": "1tawarikh", "file": "13_1ta"}, 14: {"folder": "2tawarikh", "file": "14_2ta"}, 15: {"folder": "ezra", "file": "15_ezr"}, 16: {"folder": "nehemia", "file": "16_neh"}, 17: {"folder": "ester", "file": "17_est"}, 18: {"folder": "ayub", "file": "18_ayu"}, 19: {"folder": "mazmur", "file": "19_mzm"}, 20: {"folder": "amsal", "file": "20_ams"}, 21: {"folder": "pengkhotbah", "file": "21_pen"}, 22: {"folder": "kidungagung", "file": "22_kid"}, 23: {"folder": "yesaya", "file": "23_yes"}, 24: {"folder": "yeremia", "file": "24_yer"}, 25: {"folder": "ratapan", "file": "25_rat"}, 26: {"folder": "yehezkiel", "file": "26_yeh"}, 27: {"folder": "daniel", "file": "27_dan"}, 28: {"folder": "hosea", "file": "28_hos"}, 29: {"folder": "yoel", "file": "29_yoe"}, 30: {"folder": "amos", "file": "30_amo"}, 31: {"folder": "obaja", "file": "31_oba"}, 32: {"folder": "yunus", "file": "32_yun"}, 33: {"folder": "mikha", "file": "33_mik"}, 34: {"folder": "nahum", "file": "34_nah"}, 35: {"folder": "habakuk", "file": "35_hab"}, 36: {"folder": "zefanya", "file": "36_zef"}, 37: {"folder": "hagai", "file": "37_hag"}, 38: {"folder": "zakharia", "file": "38_zak"}, 39: {"folder": "maleakhi", "file": "39_mal"},
+    40: {"folder": "matius", "file": "01_mat"}, 41: {"folder": "markus", "file": "02_mar"}, 42: {"folder": "lukas", "file": "03_luk"}, 43: {"folder": "yohanes", "file": "04_yoh"}, 44: {"folder": "kisahpararasul", "file": "05_kis"}, 45: {"folder": "roma", "file": "06_rom"}, 46: {"folder": "1korintus", "file": "07_1ko"}, 47: {"folder": "2korintus", "file": "08_2ko"}, 48: {"folder": "galatia", "file": "09_gal"}, 49: {"folder": "efesus", "file": "10_efe"}, 50: {"folder": "filipi", "file": "11_flp"}, 51: {"folder": "kolose", "file": "12_kol"}, 52: {"folder": "1tesalonika", "file": "13_1te"}, 53: {"folder": "2tesalonika", "file": "14_2te"}, 54: {"folder": "1timotius", "file": "15_1ti"}, 55: {"folder": "2timotius", "file": "16_2ti"}, 56: {"folder": "titus", "file": "17_tit"}, 57: {"folder": "filemon", "file": "18_fil"}, 58: {"folder": "ibrani", "file": "19_ibr"}, 59: {"folder": "yakobus", "file": "20_yak"}, 60: {"folder": "1petrus", "file": "21_1pe"}, 61: {"folder": "2petrus", "file": "22_2pe"}, 62: {"folder": "1yohanes", "file": "23_1yo"}, 63: {"folder": "2yohanes", "file": "24_2yo"}, 64: {"folder": "3yohanes", "file": "25_3yo"}, 65: {"folder": "yudas", "file": "26_yud"}, 66: {"folder": "wahyu", "file": "27_wah"},
   };
 
   final Map<int, int> _chaptersPerBook = {
@@ -110,14 +45,28 @@ class _OfflineAudioPageState extends State<OfflineAudioPage> {
     _checkDownloadedFiles();
   }
 
+  // 👇 PENGECEK FILE ASLI DI MEMORI HP 👇
   Future<void> _checkDownloadedFiles() async {
-    // (Tahap 3: Logika Cek file lokal akan kita masukkan sini nanti)
-    setState(() {}); 
+    final dir = await getApplicationDocumentsDirectory();
+    for (int bookNum in _bibleAudioMap.keys) {
+      String folder = _bibleAudioMap[bookNum]!["folder"]!;
+      String prefix = _bibleAudioMap[bookNum]!["file"]!;
+      
+      // Kita cek file pasal 1 sebagai perwakilan (kalau pasal 1 ada, anggap sudah diunduh)
+      String chapterStr = (folder == "mazmur") ? "001" : "01";
+      File testFile = File('${dir.path}/audio/$folder/$prefix$chapterStr.mp3');
+      
+      if (await testFile.exists()) {
+        if (mounted) {
+          setState(() { _isDownloaded[bookNum] = true; });
+        }
+      }
+    }
   }
 
+  // 👇 MESIN PENYEDOT ASLI 👇
   Future<void> _downloadBook(int index) async {
     int bookNum = index + 1; 
-
     if (!_bibleAudioMap.containsKey(bookNum)) {
       _showSnackBar("Maaf, format audio kitab ini belum didaftarkan.");
       return;
@@ -125,58 +74,75 @@ class _OfflineAudioPageState extends State<OfflineAudioPage> {
 
     String folder = _bibleAudioMap[bookNum]!["folder"]!;
     String prefix = _bibleAudioMap[bookNum]!["file"]!;
-    
-    // Intip Pasal 1 saja untuk mengecek keberadaan file di GitHub
-    String testChapter = (folder == "mazmur") ? "001" : "01";
-    String testUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/${prefix}${testChapter}.mp3";
+    int totalChapters = _chaptersPerBook[bookNum] ?? 1;
 
-    // Nyalakan animasi loading (muter-muter)
     setState(() { _downloadProgress[bookNum] = 0.01; });
 
     try {
-      // KIRIM RADAR KE GITHUB 
-      final response = await http.head(Uri.parse(testUrl));
-
-      if (response.statusCode == 200) {
-        // File ada di GitHub! Mulai proses download simulasi
-        int totalChapters = _chaptersPerBook[bookNum] ?? 1;
-        
-        for (int i = 1; i <= totalChapters; i++) {
-          // (Simulasi download Tahap 1 & 2)
-          await Future.delayed(const Duration(milliseconds: 200)); 
-          setState(() { _downloadProgress[bookNum] = i / totalChapters; });
-        }
-
-        // Selesai Download
-        setState(() {
-          _downloadProgress.remove(bookNum);
-          _isDownloaded[bookNum] = true;
-        });
-        _showSnackBar("${_bookNames[index]} berhasil diunduh!");
-
-      } else {
-        // FILE TIDAK DITEMUKAN (404)
-        setState(() { _downloadProgress.remove(bookNum); });
-        _showSnackBar("Audio ${_bookNames[index]} belum diunggah. Akan segera hadir!");
+      final dir = await getApplicationDocumentsDirectory();
+      final bookDir = Directory('${dir.path}/audio/$folder');
+      
+      // Buat folder kitab di memori HP jika belum ada
+      if (!await bookDir.exists()) {
+        await bookDir.create(recursive: true);
       }
 
+      for (int i = 1; i <= totalChapters; i++) {
+        String chapterStr = (folder == "mazmur") ? i.toString().padLeft(3, '0') : i.toString().padLeft(2, '0');
+        String fileName = "$prefix$chapterStr.mp3";
+        String onlineUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/$fileName";
+        File localFile = File('${bookDir.path}/$fileName');
+
+        // Proses sedot MP3 dari GitHub lalu di-save ke HP
+        final response = await http.get(Uri.parse(onlineUrl));
+        
+        if (response.statusCode == 200) {
+          await localFile.writeAsBytes(response.bodyBytes);
+          setState(() { _downloadProgress[bookNum] = i / totalChapters; });
+        } else {
+          // Kalau file tidak ada di server, hentikan
+          if (i == 1) {
+            throw Exception("Belum diunggah"); 
+          }
+        }
+      }
+
+      setState(() {
+        _downloadProgress.remove(bookNum);
+        _isDownloaded[bookNum] = true;
+      });
+      _showSnackBar("${_bookNames[index]} berhasil diunduh ke HP!");
+
     } catch (e) {
-      // ERROR INTERNET
       setState(() { _downloadProgress.remove(bookNum); });
-      _showSnackBar("Gagal mengecek server. Periksa koneksi internet.");
+      if (e.toString().contains("Belum diunggah")) {
+        _showSnackBar("Audio ${_bookNames[index]} belum ada di server. Akan segera hadir!");
+      } else {
+        _showSnackBar("Gagal mengunduh. Periksa koneksi internet.");
+      }
     }
+  }
+
+  // 👇 FUNGSI HAPUS FILE FISIK DARI HP 👇
+  Future<void> _deleteBook(int index) async {
+    int bookNum = index + 1;
+    if (!_bibleAudioMap.containsKey(bookNum)) return;
+
+    String folder = _bibleAudioMap[bookNum]!["folder"]!;
+    final dir = await getApplicationDocumentsDirectory();
+    final bookDir = Directory('${dir.path}/audio/$folder');
+
+    // Hapus foldernya dari memori HP
+    if (await bookDir.exists()) {
+      await bookDir.delete(recursive: true);
+    }
+
+    setState(() { _isDownloaded[bookNum] = false; });
+    _showSnackBar("Data offline ${_bookNames[index]} berhasil dihapus.");
   }
 
   void _showSnackBar(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-    }
-  }
-
-  Future<void> _deleteBook(int index) async {
-    int bookNum = index + 1;
-    setState(() { _isDownloaded[bookNum] = false; });
-    _showSnackBar("Audio ${_bookNames[index]} dihapus.");
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -220,17 +186,14 @@ class _OfflineAudioPageState extends State<OfflineAudioPage> {
                 _showSnackBar("Audio kitab ini belum siap. Akan segera hadir!");
                 return; 
               }
-
               if (!isDownloaded && progress == null) {
                 _downloadBook(index);
               } else if (isDownloaded) {
-                _showSnackBar("Sudah diunduh. Tahan lama untuk menghapus.");
+                _showSnackBar("Sudah diunduh. Tahan lama untuk menghapus dari HP.");
               }
             },
             onLongPress: () {
-              if (isAvailableOnServer && isDownloaded) {
-                _deleteBook(index);
-              }
+              if (isAvailableOnServer && isDownloaded) _deleteBook(index);
             },
           );
         },

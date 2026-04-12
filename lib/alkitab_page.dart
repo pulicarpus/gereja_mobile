@@ -454,7 +454,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
           if (_isSyncing) 
             const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))),
           
-          // 👇 MENU HAMBURGER YANG SUDAH DIPERBAIKI STRUKTURNYA 👇
           PopupMenuButton<String>(
             icon: const Icon(Icons.menu), 
             onSelected: _onMenuSelected, 
@@ -497,25 +496,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
         onScaleStart: (d) {
           _baseFontSize = _fontSize;
-          _horizontalDragDistance = 0; // Reset jarak geser saat jari menyentuh layar
+          _horizontalDragDistance = 0; 
         },
         onScaleUpdate: (d) {
           if (d.pointerCount == 1) {
-            // Jika jari yang menempel cuma 1, berarti jemaat sedang menggeser (Swipe)
             _horizontalDragDistance += d.focalPointDelta.dx;
           } else if (d.pointerCount >= 2) {
-            // Jika jari yang menempel 2, berarti jemaat sedang Zoom huruf
             setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0));
           }
         },
         onScaleEnd: (d) {
           _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
           
-          // Mengeksekusi perpindahan pasal jika geseran jari cukup jauh
           if (_horizontalDragDistance > 100) {
-            _goToPrevChapter(); // Geser ke Kanan -> Pasal Sebelumnya
+            _goToPrevChapter(); 
           } else if (_horizontalDragDistance < -100) {
-            _goToNextChapter(); // Geser ke Kiri -> Pasal Selanjutnya
+            _goToNextChapter(); 
           }
         },
         child: ListView(
@@ -530,6 +526,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ],
         ),
       ),
+    ); // <--- INI DIA SI BIANG KEROK YANG TADI HILANG BOS 😂
   }
 
   List<Widget> _buildContent() {

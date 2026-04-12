@@ -31,10 +31,10 @@ class TentangAplikasiPage extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // 👇 LOGO DAN VERSI APLIKASI 👇
+// 👇 LOGO DAN VERSI APLIKASI 👇
             const SizedBox(height: 20),
             Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(5), // Padding dikecilkan supaya gambar lebih penuh
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
@@ -42,13 +42,26 @@ class TentangAplikasiPage extends StatelessWidget {
                   BoxShadow(color: Colors.indigo.withOpacity(0.1), blurRadius: 20, spreadRadius: 5)
                 ],
               ),
-              child: Icon(Icons.church, size: 80, color: Colors.indigo.shade800),
+              // 👇 MENGGUNAKAN GAMBAR LOGO DARI FOLDER ASSETS 👇
+              child: ClipOval(
+                child: Image.asset(
+                  'assets/icon.png', // PASTIKAN NAMANYA SAMA DENGAN NAMA FILE BOS
+                  width: 100, // Ukuran gambar bisa diatur
+                  height: 100,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Padding(
+                      padding: const EdgeInsets.all(15.0),
+                      child: Icon(Icons.church, size: 70, color: Colors.indigo.shade800),
+                    );
+                  },
+                ),
+              ),
             ),
             const SizedBox(height: 20),
             const Text("GKII mobile", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo, letterSpacing: 1.5)),
             const SizedBox(height: 5),
             Text("Versi 2.0.0 (Flutter Edition)", style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-            
             const SizedBox(height: 40),
 
             // 👇 KARTU DESKRIPSI APLIKASI 👇

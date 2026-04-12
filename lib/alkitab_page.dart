@@ -396,31 +396,52 @@ class _AlkitabPageState extends State<AlkitabPage> {
   // 👇 VARIABEL UNTUK MELACAK GESERAN JARI 👇
   double _horizontalDragDistance = 0;
 
-  // 👇 FUNGSI PINDAH KE PASAL BERIKUTNYA 👇
+// 👇 FUNGSI PINDAH KE PASAL BERIKUTNYA (VERSI REVISI ANTI BLANK) 👇
   void _goToNextChapter() {
-    int maxChapter = _chaptersPerBook[_currentBookNum] ?? 1;
+    if (_allBooks.isEmpty) return;
+    
+    // Cari urutan kitab saat ini (0 sampai 65)
+    int currentIndex = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum);
+    if (currentIndex == -1) return;
+
+    int standardBookNum = currentIndex + 1; // 1 sampai 66
+    int maxChapter = _chaptersPerBook[standardBookNum] ?? 1;
+
     if (_currentChapter < maxChapter) {
       _currentChapter++;
-    } else if (_currentBookNum < 66) {
-      _currentBookNum++; // Lompat ke kitab berikutnya
+    } else if (currentIndex < _allBooks.length - 1) {
+      // Lompat ke kitab berikutnya pakai data dari _allBooks
+      _currentBookNum = _allBooks[currentIndex + 1].bookNumber;
       _currentChapter = 1;
     } else {
-      return; // Mentok di Wahyu 22
+      return; // Mentok di Wahyu
     }
-    _resetAudio(); _saveLastPosition(); _loadContent();
+    
+    // Tambahan scrollToVerse: 1 supaya setelah geser, otomatis balik ke atas!
+    setState(() => _isLoading = true);
+    _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: 1);
   }
 
-  // 👇 FUNGSI PINDAH KE PASAL SEBELUMNYA 👇
+  // 👇 FUNGSI PINDAH KE PASAL SEBELUMNYA (VERSI REVISI ANTI BLANK) 👇
   void _goToPrevChapter() {
+    if (_allBooks.isEmpty) return;
+    
+    int currentIndex = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum);
+    if (currentIndex == -1) return;
+
     if (_currentChapter > 1) {
       _currentChapter--;
-    } else if (_currentBookNum > 1) {
-      _currentBookNum--; // Mundur ke kitab sebelumnya
-      _currentChapter = _chaptersPerBook[_currentBookNum] ?? 1; // Langsung ke pasal terakhir
+    } else if (currentIndex > 0) {
+      // Mundur ke kitab sebelumnya
+      _currentBookNum = _allBooks[currentIndex - 1].bookNumber;
+      int prevStandardNum = currentIndex; // Nomor 1-66 kitab sebelumnya
+      _currentChapter = _chaptersPerBook[prevStandardNum] ?? 1; 
     } else {
       return; // Mentok di Kejadian 1
     }
-    _resetAudio(); _saveLastPosition(); _loadContent();
+    
+    setState(() => _isLoading = true);
+    _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: 1);
   }
 
 // --- UI BUILDING ---

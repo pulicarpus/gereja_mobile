@@ -312,7 +312,6 @@ class _MainActivityState extends State<MainActivity> {
     bool isSuperAdmin = user.isSuperAdmin();
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
-    // 👇 AMBIL UKURAN LAYAR HP SAAT INI 👇
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
@@ -361,28 +360,43 @@ class _MainActivityState extends State<MainActivity> {
                       ),
                     ),
 
-                  GestureDetector(
-                    onTap: (isAdmin || isSuperAdmin) ? _ubahFotoGereja : null,
-                    child: Stack(
-                      children: [
-                        // 👇 TINGGI FOTO OTOMATIS MENYESUAIKAN 25% TINGGI LAYAR 👇
-                        Container(
-                          width: double.infinity, 
-                          height: screenHeight * 0.25, 
-                          decoration: BoxDecoration(color: Colors.indigo.shade50),
-                          child: _fotoGerejaUrl != null 
-                              ? CachedNetworkImage(
-                                  imageUrl: _fotoGerejaUrl!,
-                                  fit: BoxFit.contain, 
-                                  placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                                  errorWidget: (context, url, error) => const Icon(Icons.error),
-                                )
-                              : Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)),
+                  // 👇 BAGIAN HEADER GEREJA SUDAH DIBUAT FULLSCREEN & TOMBOL EDIT DIPISAH 👇
+                  Stack(
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          if (_fotoGerejaUrl != null && _fotoGerejaUrl!.isNotEmpty) {
+                            Navigator.push(context, MaterialPageRoute(
+                              builder: (context) => FullScreenImagePage(
+                                imageUrl: _fotoGerejaUrl!, 
+                                heroTag: 'header_gereja'
+                              )
+                            ));
+                          }
+                        },
+                        child: Hero(
+                          tag: 'header_gereja',
+                          child: Container(
+                            width: double.infinity, 
+                            height: screenHeight * 0.25, 
+                            decoration: BoxDecoration(color: Colors.indigo.shade50),
+                            child: _fotoGerejaUrl != null 
+                                ? CachedNetworkImage(
+                                    imageUrl: _fotoGerejaUrl!,
+                                    fit: BoxFit.contain, 
+                                    placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+                                    errorWidget: (context, url, error) => const Icon(Icons.error),
+                                  )
+                                : Icon(Icons.church, size: 80, color: Colors.indigo.withOpacity(0.3)),
+                          ),
                         ),
-                        
-                        if (isAdmin || isSuperAdmin)
-                          Positioned(
-                            bottom: 10, right: 10,
+                      ),
+                      
+                      if (isAdmin || isSuperAdmin)
+                        Positioned(
+                          bottom: 10, right: 10,
+                          child: GestureDetector(
+                            onTap: _ubahFotoGereja,
                             child: Container(
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
@@ -394,9 +408,9 @@ class _MainActivityState extends State<MainActivity> {
                                 ],
                               ),
                             ),
-                          )
-                      ],
-                    ),
+                          ),
+                        )
+                    ],
                   ),
                   
                   Container(
@@ -418,7 +432,6 @@ class _MainActivityState extends State<MainActivity> {
                   ),
                   const Divider(height: 1, color: Color(0xFFEEEEEE)),
                   
-                  // 👇 PADDING & SPASI BAWAH DIATUR DINAMIS 👇
                   Padding(
                     padding: EdgeInsets.all(screenWidth * 0.05),
                     child: Column(
@@ -454,7 +467,7 @@ class _MainActivityState extends State<MainActivity> {
                           ),
                         ),
                         
-                        SizedBox(height: screenHeight * 0.04), // Jarak Dinamis
+                        SizedBox(height: screenHeight * 0.04), 
                         
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -481,10 +494,26 @@ class _MainActivityState extends State<MainActivity> {
                             children: [
                               Row(
                                 children: [
-                                  CircleAvatar(
-                                    radius: 35, backgroundColor: Colors.indigo.shade100,
-                                    backgroundImage: _fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null,
-                                    child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
+                                  // 👇 FOTO GEMBALA SUDAH BISA DIKLIK FULLSCREEN 👇
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (_fotoGembalaUrl != null && _fotoGembalaUrl!.isNotEmpty) {
+                                        Navigator.push(context, MaterialPageRoute(
+                                          builder: (context) => FullScreenImagePage(
+                                            imageUrl: _fotoGembalaUrl!, 
+                                            heroTag: 'foto_gembala'
+                                          )
+                                        ));
+                                      }
+                                    },
+                                    child: Hero(
+                                      tag: 'foto_gembala',
+                                      child: CircleAvatar(
+                                        radius: 35, backgroundColor: Colors.indigo.shade100,
+                                        backgroundImage: _fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null,
+                                        child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
+                                      ),
+                                    ),
                                   ),
                                   const SizedBox(width: 20),
                                   Expanded(
@@ -516,7 +545,7 @@ class _MainActivityState extends State<MainActivity> {
                           ),
                         ),
                         
-                        SizedBox(height: screenHeight * 0.04), // Jarak Dinamis
+                        SizedBox(height: screenHeight * 0.04), 
                         
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),
@@ -817,6 +846,43 @@ class _MainActivityState extends State<MainActivity> {
             const SizedBox(height: 12),
             Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// 👇 HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN 👇
+class FullScreenImagePage extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+
+  const FullScreenImagePage({super.key, required this.imageUrl, required this.heroTag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black, // Background gelap
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          minScale: 0.5,
+          maxScale: 4, // Bisa dizoom sampai 4x
+          child: Hero(
+            tag: heroTag,
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, size: 100, color: Colors.white),
+            ),
+          ),
         ),
       ),
     );

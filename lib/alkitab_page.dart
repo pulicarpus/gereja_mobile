@@ -381,6 +381,47 @@ class _AlkitabPageState extends State<AlkitabPage> {
     String? raw = _prefs.getString(k);
     if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then(_handleNavResult);
   }
+  
+  // 👇 KAMUS JUMLAH PASAL (Agar aplikasi tahu kapan harus pindah kitab) 👇
+  final Map<int, int> _chaptersPerBook = {
+    1: 50,  2: 40,  3: 27,  4: 36,  5: 34,  6: 24,  7: 21,  8: 4,   9: 31,  10: 24, 
+    11: 22, 12: 25, 13: 29, 14: 36, 15: 10, 16: 13, 17: 10, 18: 42, 19: 150, 20: 31, 
+    21: 12, 22: 8,  23: 66, 24: 52, 25: 5,  26: 48, 27: 12, 28: 14, 29: 3,   30: 9,  
+    31: 1,  32: 4,  33: 7,  34: 3,  35: 3,  36: 3,  37: 2,  38: 14, 39: 4,
+    40: 28, 41: 16, 42: 24, 43: 21, 44: 28, 45: 16, 46: 16, 47: 13, 48: 6,   49: 6,
+    50: 4,  51: 4,  52: 5,  53: 3,  54: 6,  55: 4,  56: 3,  57: 1,  58: 13,  59: 5,
+    60: 5,  61: 3,  62: 5,  63: 1,  64: 1,  65: 1,  66: 22
+  };
+
+  // 👇 VARIABEL UNTUK MELACAK GESERAN JARI 👇
+  double _horizontalDragDistance = 0;
+
+  // 👇 FUNGSI PINDAH KE PASAL BERIKUTNYA 👇
+  void _goToNextChapter() {
+    int maxChapter = _chaptersPerBook[_currentBookNum] ?? 1;
+    if (_currentChapter < maxChapter) {
+      _currentChapter++;
+    } else if (_currentBookNum < 66) {
+      _currentBookNum++; // Lompat ke kitab berikutnya
+      _currentChapter = 1;
+    } else {
+      return; // Mentok di Wahyu 22
+    }
+    _resetAudio(); _saveLastPosition(); _loadContent();
+  }
+
+  // 👇 FUNGSI PINDAH KE PASAL SEBELUMNYA 👇
+  void _goToPrevChapter() {
+    if (_currentChapter > 1) {
+      _currentChapter--;
+    } else if (_currentBookNum > 1) {
+      _currentBookNum--; // Mundur ke kitab sebelumnya
+      _currentChapter = _chaptersPerBook[_currentBookNum] ?? 1; // Langsung ke pasal terakhir
+    } else {
+      return; // Mentok di Kejadian 1
+    }
+    _resetAudio(); _saveLastPosition(); _loadContent();
+  }
 
 // --- UI BUILDING ---
   @override
@@ -454,9 +495,29 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ) : null,
       ),
       body: _isLoading ? const Center(child: CircularProgressIndicator()) : GestureDetector(
-        onScaleStart: (d) => _baseFontSize = _fontSize,
-        onScaleUpdate: (d) => setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0)),
-        onScaleEnd: (d) => _prefs.setDouble('LAST_FONT_SIZE', _fontSize),
+        onScaleStart: (d) {
+          _baseFontSize = _fontSize;
+          _horizontalDragDistance = 0; // Reset jarak geser saat jari menyentuh layar
+        },
+        onScaleUpdate: (d) {
+          if (d.pointerCount == 1) {
+            // Jika jari yang menempel cuma 1, berarti jemaat sedang menggeser (Swipe)
+            _horizontalDragDistance += d.focalPointDelta.dx;
+          } else if (d.pointerCount >= 2) {
+            // Jika jari yang menempel 2, berarti jemaat sedang Zoom huruf
+            setState(() => _fontSize = (_baseFontSize * d.scale).clamp(12.0, 40.0));
+          }
+        },
+        onScaleEnd: (d) {
+          _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
+          
+          // Mengeksekusi perpindahan pasal jika geseran jari cukup jauh
+          if (_horizontalDragDistance > 100) {
+            _goToPrevChapter(); // Geser ke Kanan -> Pasal Sebelumnya
+          } else if (_horizontalDragDistance < -100) {
+            _goToNextChapter(); // Geser ke Kiri -> Pasal Selanjutnya
+          }
+        },
         child: ListView(
           controller: _scrollController, 
           padding: const EdgeInsets.all(15),
@@ -469,7 +530,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ],
         ),
       ),
-    );
   }
 
   List<Widget> _buildContent() {

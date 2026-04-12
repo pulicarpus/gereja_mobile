@@ -531,31 +531,48 @@ class _AlkitabPageState extends State<AlkitabPage> {
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
-        centerTitle: true, 
+        automaticallyImplyLeading: false, // 👇 MANTRA MENGHILANGKAN TOMBOL BACK BAWAAN
+        titleSpacing: 10, // Sedikit jarak dari pinggir kiri layar
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // 👇 TOMBOL PREV 👇
             IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.chevron_left, size: 32, color: Colors.white),
               onPressed: _goToPrevChapter,
             ),
-            InkWell(
-              onTap: _showNavigation, 
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min, 
-                  children: [
-                    Text(
-                      "$bName $_currentChapter", 
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
-                    ), 
-                    const Icon(Icons.arrow_drop_down)
-                  ]
-                ),
-              )
+            const SizedBox(width: 4),
+            
+            // 👇 JUDUL KITAB BISA MENGKERUT (FLEXIBLE) 👇
+            Flexible(
+              child: InkWell(
+                onTap: _showNavigation, 
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min, 
+                    children: [
+                      Flexible(
+                        child: Text(
+                          "$bName $_currentChapter", 
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                          overflow: TextOverflow.ellipsis, // Otomatis jadi titik-titik kalau kepanjangan
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down)
+                    ]
+                  ),
+                )
+              ),
             ),
+            const SizedBox(width: 4),
+            
+            // 👇 TOMBOL NEXT 👇
             IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
               icon: const Icon(Icons.chevron_right, size: 32, color: Colors.white),
               onPressed: _goToNextChapter,
             ),

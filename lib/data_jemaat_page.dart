@@ -5,7 +5,7 @@ import 'user_manager.dart';
 import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
 import 'anggota_keluarga_page.dart'; 
-import 'daftar_keluarga_page.dart'; // 👇 IMPORT HALAMAN DAFTAR KELUARGA BARU BOS
+import 'daftar_keluarga_page.dart';
 
 class DataJemaatPage extends StatefulWidget {
   final String? filterKategorial;
@@ -94,11 +94,33 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
             children: [
               Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
               const SizedBox(height: 20),
-              CircleAvatar(
-                radius: 50,
-                backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?", style: const TextStyle(fontSize: 30)) : null,
+              
+              // 👇 FOTO PROFIL BISA DIKLIK JADI FULL SCREEN 👇
+              GestureDetector(
+                onTap: () {
+                  // Hanya bisa diklik kalau orangnya punya foto beneran
+                  if (j['fotoProfil'] != null && j['fotoProfil'] != "") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => FullScreenImagePage(
+                          imageUrl: j['fotoProfil'],
+                          heroTag: 'foto_${j['id']}', // Tag unik untuk animasi
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: Hero(
+                  tag: 'foto_${j['id']}',
+                  child: CircleAvatar(
+                    radius: 50,
+                    backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
+                    child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?", style: const TextStyle(fontSize: 30)) : null,
+                  ),
+                ),
               ),
+
               const SizedBox(height: 15),
               Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               Text("${j['statusKeluarga']} • ${j['kelompok']}", style: const TextStyle(color: Colors.grey)),
@@ -194,7 +216,6 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
             },
           ),
           
-          // 👇 TOMBOL BARU UNTUK MASUK KE DAFTAR KELUARGA 👇
           IconButton(
             tooltip: "Daftar Keluarga",
             icon: const Icon(Icons.family_restroom),
@@ -225,10 +246,13 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                   elevation: 2,
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
-                    leading: CircleAvatar(
-                      radius: 25,
-                      backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                      child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?") : null,
+                    leading: Hero(
+                      tag: 'foto_list_${j['id']}', // Tag beda buat list view supaya ga bentrok
+                      child: CircleAvatar(
+                        radius: 25,
+                        backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
+                        child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?") : null,
+                      ),
                     ),
                     title: Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("${j['statusKeluarga']} • ${j['kelompok']}"),
@@ -268,6 +292,44 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           const SizedBox(height: 20),
         ]
       )
+    );
+  }
+}
+
+// 👇 HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN 👇
+class FullScreenImagePage extends StatelessWidget {
+  final String imageUrl;
+  final String heroTag;
+
+  const FullScreenImagePage({super.key, required this.imageUrl, required this.heroTag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black, // Background gelap ala aplikasi premium
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
+      ),
+      body: Center(
+        // InteractiveViewer membuat foto bisa di-zoom pakai 2 jari!
+        child: InteractiveViewer(
+          panEnabled: true,
+          minScale: 0.5,
+          maxScale: 4,
+          child: Hero(
+            tag: heroTag,
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.contain,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 100, color: Colors.white),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

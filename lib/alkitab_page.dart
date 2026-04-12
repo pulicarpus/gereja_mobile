@@ -399,6 +399,28 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
+// 👇 FUNGSI PINTAR UNTUK MENYINGKAT AYAT BERURUTAN 👇
+  String _formatVerses(List<int> verses) {
+    if (verses.isEmpty) return "";
+    List<String> groups = [];
+    int start = verses.first;
+    int end = verses.first;
+
+    for (int i = 1; i < verses.length; i++) {
+      if (verses[i] == end + 1) {
+        end = verses[i]; // Angka berurutan, lanjutkan rentangnya
+      } else {
+        // Angka terputus, simpan grup sebelumnya
+        groups.add(start == end ? "$start" : "$start-$end");
+        start = verses[i];
+        end = verses[i];
+      }
+    }
+    // Simpan grup yang paling terakhir
+    groups.add(start == end ? "$start" : "$start-$end");
+    return groups.join(", ");
+  }
+
   void _showActionMenu() {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();

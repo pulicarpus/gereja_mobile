@@ -85,7 +85,7 @@ class TentangAplikasiPage extends StatelessWidget {
                   ),
                   const Divider(height: 25),
                   const Text(
-                    "Aplikasi ini dirancang secara khusus untuk memudahkan pelayanan jemaat, manajemen kategorial yang terstruktur, dan mewujudkan transparansi keuangan gereja yang lebih baik.",
+                    "Aplikasi ini dirancang secara khusus untuk memudahkan pelayanan jemaat, manajemen kategorial yang terstruktur, dan mewujudkan transparansi keuangan gereja yang lebih baik di era digital.",
                     style: TextStyle(fontSize: 14, height: 1.6, color: Colors.black54),
                     textAlign: TextAlign.justify,
                   ),

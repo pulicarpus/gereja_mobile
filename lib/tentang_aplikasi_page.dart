@@ -45,7 +45,7 @@ class TentangAplikasiPage extends StatelessWidget {
               // 👇 MENGGUNAKAN GAMBAR LOGO DARI FOLDER ASSETS 👇
               child: ClipOval(
                 child: Image.asset(
-                  'assets/icon.png', // PASTIKAN NAMANYA SAMA DENGAN NAMA FILE BOS
+                  'assets/images/icon.png', // PASTIKAN NAMANYA SAMA DENGAN NAMA FILE BOS
                   width: 100, // Ukuran gambar bisa diatur
                   height: 100,
                   fit: BoxFit.cover,

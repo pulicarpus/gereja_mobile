@@ -425,7 +425,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (_selectedVerses.isEmpty) return;
     List<int> sorted = _selectedVerses.toList()..sort();
     String bName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
-    String nas = "$bName $_currentChapter:${sorted.join(",")}";
+    
+    // 👇 INI DIA PAHLAWANNYA 👇
+    String nas = "$bName $_currentChapter:${_formatVerses(sorted)}";
+    
     showModalBottomSheet(context: context, builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [
       Padding(padding: const EdgeInsets.all(16), child: Text(nas, style: const TextStyle(fontWeight: FontWeight.bold))),
       ListTile(leading: const Icon(Icons.copy), title: const Text("Salin Ayat"), onTap: () {

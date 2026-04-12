@@ -454,12 +454,35 @@ class _AlkitabPageState extends State<AlkitabPage> {
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
-        title: InkWell(
-          onTap: _showNavigation, 
-          child: Row(
-            mainAxisSize: MainAxisSize.min, 
-            children: [Text("$bName $_currentChapter"), const Icon(Icons.arrow_drop_down)]
-          )
+        centerTitle: true, 
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left, size: 32, color: Colors.white),
+              onPressed: _goToPrevChapter,
+            ),
+            InkWell(
+              onTap: _showNavigation, 
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min, 
+                  children: [
+                    Text(
+                      "$bName $_currentChapter", 
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)
+                    ), 
+                    const Icon(Icons.arrow_drop_down)
+                  ]
+                ),
+              )
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right, size: 32, color: Colors.white),
+              onPressed: _goToNextChapter,
+            ),
+          ],
         ),
         actions: [
           IconButton(

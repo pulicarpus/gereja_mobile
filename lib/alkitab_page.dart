@@ -330,21 +330,73 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _syncCloud(bool isBackup) async {
-    final user = FirebaseAuth.instance.currentUser; if (user == null) return;
+    final user = FirebaseAuth.instance.currentUser; 
+    
+    // 👇 1. CEK LOGIN STATUS DULU 👇
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Gagal: Fitur Cloud butuh Login. Silakan Login dulu Bos!"),
+          backgroundColor: Colors.redAccent,
+        )
+      );
+      return; 
+    }
+
     setState(() => _isSyncing = true);
+    
     try {
       if (isBackup) {
         final allKeys = _prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+        if (allKeys.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan masih kosong, tidak ada yang di-backup.")));
+          setState(() => _isSyncing = false);
+          return;
+        }
+
         WriteBatch batch = FirebaseFirestore.instance.batch();
-        for (var key in allKeys) { String? d = _prefs.getString(key); if (d != null) batch.set(FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").doc(key), {"content": d, "updatedAt": FieldValue.serverTimestamp()}); }
+        for (var key in allKeys) { 
+          String? d = _prefs.getString(key); 
+          if (d != null) {
+            batch.set(
+              FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").doc(key), 
+              {"content": d, "updatedAt": FieldValue.serverTimestamp()}
+            ); 
+          }
+        }
         await batch.commit();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Backup ke Cloud Berhasil! ☁️✅")));
+
       } else {
         var snap = await FirebaseFirestore.instance.collection("users").doc(user.uid).collection("notes").get();
-        List<String> keys = []; for (var d in snap.docs) { await _prefs.setString(d.id, d.data()['content']); keys.add(d.id); }
-        await _prefs.setStringList("ALL_NOTE_KEYS", keys); await _loadContent();
+        
+        if (snap.docs.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Belum ada data backup di Cloud.")));
+          setState(() => _isSyncing = false);
+          return;
+        }
+
+        List<String> keys = []; 
+        for (var d in snap.docs) { 
+          await _prefs.setString(d.id, d.data()['content']); 
+          keys.add(d.id); 
+        }
+        await _prefs.setStringList("ALL_NOTE_KEYS", keys); 
+        await _loadContent();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Restore dari Cloud Berhasil! 📥✅")));
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isBackup ? "Backup Berhasil" : "Restore Berhasil")));
-    } catch (e) {} finally { setState(() => _isSyncing = false); }
+
+    } catch (e) {
+      // 👇 2. LAPORKAN JIKA ADA ERROR DATABASE 👇
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Error Cloud: $e"),
+          backgroundColor: Colors.red,
+        )
+      );
+    } finally { 
+      setState(() => _isSyncing = false); 
+    }
   }
 
   void _showActionMenu() {

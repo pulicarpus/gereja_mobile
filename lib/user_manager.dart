@@ -13,6 +13,9 @@ class UserManager {
   static const String _keyOriginalChurchName = "original_church_name";
   static const String _keyActiveChurchId = "active_church_id";
   static const String _keyActiveChurchName = "active_church_name";
+  
+  // 👇 KUNCI BARU UNTUK PENGURUS 👇
+  static const String _keyIsPengurus = "is_pengurus";
 
   // Variabel Data
   String? userRole;
@@ -24,14 +27,15 @@ class UserManager {
   String? originalChurchName;
   String? activeChurchId;
   String? activeChurchName;
+  
+  // 👇 VARIABEL BARU UNTUK PENGURUS 👇
+  bool isPengurus = false;
 
   // Singleton pattern
   static final UserManager _instance = UserManager._internal();
   factory UserManager() => _instance;
   UserManager._internal();
 
-  // --- TAMBAHAN KHUSUS UNTUK FIX ERROR LOGIN ---
-  // Fungsi ini menerima String agar sinkron dengan panggilan di login_page.dart
   Future<void> saveToPrefsWithId(String uId) async {
     userId = uId;
     await saveToPrefs();
@@ -46,6 +50,7 @@ class UserManager {
     required String? uNama,
     String? uFoto,
     String uKomisi = "Umum",
+    bool uIsPengurus = false, // 👈 PARAMETER BARU (Default false)
   }) async {
     userRole = role;
     userId = uId;
@@ -56,6 +61,7 @@ class UserManager {
     originalChurchName = churchName;
     activeChurchId = churchId;
     activeChurchName = churchName;
+    isPengurus = uIsPengurus; // 👈 SIMPAN STATUS
     await saveToPrefs();
   }
 
@@ -71,6 +77,7 @@ class UserManager {
     await prefs.setString(_keyOriginalChurchName, originalChurchName ?? "");
     await prefs.setString(_keyActiveChurchId, activeChurchId ?? "");
     await prefs.setString(_keyActiveChurchName, activeChurchName ?? "");
+    await prefs.setBool(_keyIsPengurus, isPengurus); // 👈 SIMPAN KE MEMORI HP
   }
 
   // Load data saat aplikasi baru dibuka
@@ -88,6 +95,7 @@ class UserManager {
     originalChurchName = prefs.getString(_keyOriginalChurchName);
     activeChurchId = prefs.getString(_keyActiveChurchId);
     activeChurchName = prefs.getString(_keyActiveChurchName);
+    isPengurus = prefs.getBool(_keyIsPengurus) ?? false; // 👈 BACA DARI MEMORI HP
     
     return true;
   }
@@ -135,6 +143,7 @@ class UserManager {
     originalChurchName = null;
     activeChurchId = null;
     activeChurchName = null;
+    isPengurus = false; // 👈 RESET STATUS PENGURUS
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }

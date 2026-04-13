@@ -99,14 +99,17 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       // --- SINKRONISASI ONESIGNAL (Add Tag) ---
       OneSignal.User.addTagWithKey("active_church", churchId);
 
+      // 👇 INI DIA TERSANGKANYA YANG SUDAH DIPERBAIKI BOS 👇
       // Simpan ke SharedPreferences via UserManager
       final userManager = UserManager();
       await userManager.setUser(
         role: "user",
         churchId: churchId,
         churchName: churchName,
-        uid: widget.userUid,
-        name: widget.userName,
+        uId: widget.userUid, // 👈 Sudah diganti jadi uId
+        uNama: widget.userName, // 👈 Sudah diganti jadi uNama
+        uFoto: null, // Default kosong untuk user baru
+        uKomisi: "Umum", // Default komisi
       );
 
       if (mounted) {

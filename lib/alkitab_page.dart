@@ -16,6 +16,7 @@ import 'notes_pages.dart';
 import 'search_page.dart';
 // 👇 IMPORT HALAMAN BARU KITA BOS 👇
 import 'offline_audio_page.dart';
+import 'kamus_page.dart';
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});

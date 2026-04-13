@@ -102,7 +102,7 @@ class SubKategorialPage extends StatelessWidget {
                     String komisiJemaat = userManager.userKomisi ?? "Umum";
 
                     // Cek apakah dia Admin/Superadmin ATAU anggota komisi yang sesuai
-                    if (isAdmin || komisiJemaat == namaKomisi) {
+                    if (isAdmin || (komisiJemaat == namaKomisi && userManager.isPengurus)) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(

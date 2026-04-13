@@ -6,7 +6,9 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 import 'secrets.dart';
 
 class KamusPage extends StatefulWidget {
-  const KamusPage({super.key});
+  final String? kataBawaan; // 👇 TIKET MASUK KATA DARI ALKITAB
+
+  const KamusPage({super.key, this.kataBawaan});
 
   @override
   State<KamusPage> createState() => _KamusPageState();
@@ -19,11 +21,28 @@ class _KamusPageState extends State<KamusPage> {
   String _hasilArti = "";
   bool _isSearching = false;
 
-  // 👇 AMBIL KUNCI GEMINI DARI BRANKAS RAHASIA & PAKAI MESIN 2.5 FLASH 👇
   final _model = GenerativeModel(
     model: 'gemini-2.5-flash',
     apiKey: geminiApiKey, 
   );
+
+  // 👇 TAMBAHKAN BLOK INI (AUTO-JALAN SAAT HALAMAN DIBUKA) 👇
+  @override
+  void initState() {
+    super.initState();
+    // Kalau ada kata yang dikirim dari Alkitab, langsung tembak!
+    if (widget.kataBawaan != null && widget.kataBawaan!.isNotEmpty) {
+      _searchController.text = widget.kataBawaan!;
+      
+      // Kasih jeda sedikit biar UI-nya selesai dimuat dulu
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _cariKamus(widget.kataBawaan!);
+      });
+    }
+  }
+  // 👆 SAMPAI SINI 👆
+
+  // ... (Sisa kodenya _cariKamus dll biarkan sama persis seperti sebelumnya)
 
   Future<void> _cariKamus(String kata) async {
     String kataQuery = kata.trim().toLowerCase();

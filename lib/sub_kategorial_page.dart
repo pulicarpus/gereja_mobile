@@ -7,6 +7,9 @@ import 'data_jemaat_page.dart';
 import 'chatroom_page.dart'; 
 import 'jadwal_page.dart';      
 
+// 👇 IMPORT SANG SATPAM (USER MANAGER) 👇
+import 'user_manager.dart';
+
 class SubKategorialPage extends StatelessWidget {
   final String namaKomisi;
 
@@ -70,9 +73,9 @@ class SubKategorialPage extends StatelessWidget {
               crossAxisCount: 2,
               crossAxisSpacing: 15,
               mainAxisSpacing: 15,
-              childAspectRatio: 1.1, // Agar kotak tidak terlalu tinggi
+              childAspectRatio: 1.1, 
               children: [
-                // 1. DATA ANGGOTA (TERHUBUNG KE DATA JEMAAT DENGAN FILTER)
+                // 1. DATA ANGGOTA 
                 _buildMenuCard(
                   context,
                   "Data Anggota",
@@ -86,21 +89,40 @@ class SubKategorialPage extends StatelessWidget {
                   ),
                 ),
 
-                // 2. CHAT GROUP (TERHUBUNG KE CHATROOM DENGAN FILTER)
+                // 2. CHAT GROUP (SATPAM DIAKTIFKAN DI SINI 🔒)
                 _buildMenuCard(
                   context,
                   "Chat Group",
                   Icons.chat_bubble_rounded,
                   Colors.green,
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ChatroomPage(filterKategorial: namaKomisi),
-                    ),
-                  ),
+                  () {
+                    // Ambil buku panduan data jemaat
+                    final userManager = UserManager();
+                    bool isAdmin = userManager.isAdmin();
+                    String komisiJemaat = userManager.userKomisi ?? "Umum";
+
+                    // Cek apakah dia Admin/Superadmin ATAU anggota komisi yang sesuai
+                    if (isAdmin || komisiJemaat == namaKomisi) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatroomPage(filterKategorial: namaKomisi),
+                        ),
+                      );
+                    } else {
+                      // Kalau nyasar, tolak dengan halus
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text("Maaf, Chat Group ini khusus internal anggota $namaKomisi."),
+                          backgroundColor: Colors.redAccent,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
                 ),
 
-                // 3. KEGIATAN (TERHUBUNG KE JADWAL DENGAN FILTER)
+                // 3. KEGIATAN 
                 _buildMenuCard(
                   context,
                   "Kegiatan",
@@ -114,7 +136,7 @@ class SubKategorialPage extends StatelessWidget {
                   ),
                 ),
 
-                // 4. KEUANGAN (TERHUBUNG KE LAPORAN TRANSAKSI DENGAN FILTER)
+                // 4. KEUANGAN 
                 _buildMenuCard(
                   context,
                   "Keuangan",
@@ -128,7 +150,7 @@ class SubKategorialPage extends StatelessWidget {
                   ),
                 ),
 
-                // 5. GALERI FOTO (TERHUBUNG KE GALLERY DENGAN FILTER)
+                // 5. GALERI FOTO 
                 _buildMenuCard(
                   context,
                   "Galeri Foto",

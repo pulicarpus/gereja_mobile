@@ -17,8 +17,11 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
 
   Map<String, dynamic>? _targetUserData;
   String _churchName = "(Belum diatur)";
-  // 👇 NAMA VARIABEL TETAP KATEGORIAL DI UI, TAPI NANTI DISIMPAN SEBAGAI 'kelompok' 👇
   String _kategorial = "Umum / Belum diatur"; 
+  
+  // 👇 TAMBAHAN STATE UNTUK STATUS PENGURUS 👇
+  bool _isPengurus = false; 
+  
   bool _isLoading = true;
 
   @override
@@ -34,8 +37,10 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
       if (doc.exists) {
         _targetUserData = doc.data();
         
-        // 👇 MENGAMBIL DATA MENGGUNAKAN KATA KUNCI 'kelompok' (SESUAI APLIKASI LAMA) 👇
         _kategorial = _targetUserData?['kelompok'] ?? "Umum / Belum diatur";
+        
+        // 👇 BACA STATUS PENGURUS DARI FIREBASE 👇
+        _isPengurus = _targetUserData?['isPengurus'] ?? false;
         
         String? targetChurchId = _targetUserData?['churchId'];
         if (targetChurchId != null && targetChurchId.isNotEmpty) {
@@ -53,6 +58,23 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
       debugPrint("Gagal memuat data: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // 👇 FUNGSI BARU: MENGUBAH STATUS PENGURUS KOMISI 👇
+  Future<void> _togglePengurusStatus() async {
+    setState(() => _isLoading = true);
+    try {
+      bool statusBaru = !_isPengurus;
+      await _db.collection("users").doc(widget.userId).update({"isPengurus": statusBaru});
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(statusBaru ? "Berhasil diangkat menjadi Pengurus $_kategorial." : "Status Pengurus dicabut."))
+      );
+      await _loadUserData();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengubah status: $e")));
+      setState(() => _isLoading = false);
     }
   }
 
@@ -77,13 +99,15 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     }
   }
 
-  // 👇 FUNGSI UPDATE MENGGUNAKAN KEY 'kelompok' BUKAN 'kategorial' 👇
   Future<void> _assignUserToKategorial(String kategorialPilihan) async {
     setState(() => _isLoading = true);
     try {
-      // 🔥 PERBAIKAN KRUSIAL: Menggunakan 'kelompok' agar sama dengan AddEditJemaatPage
-      await _db.collection("users").doc(widget.userId).update({"kelompok": kategorialPilihan});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Jemaat dimasukkan ke kelompok $kategorialPilihan.")));
+      // 🔥 FITUR SAFETY: Kalau pindah komisi, status pengurus lama otomatis dicabut!
+      await _db.collection("users").doc(widget.userId).update({
+        "kelompok": kategorialPilihan,
+        "isPengurus": false 
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Jemaat dipindah ke $kategorialPilihan. Status pengurus di-reset.")));
       await _loadUserData();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menetapkan kategorial: $e")));
@@ -134,7 +158,6 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
   }
 
   void _showKategorialSelectionDialog() {
-    // 👇 DAFTAR SUDAH 100% SAMA DENGAN ADD EDIT JEMAAT PAGE 👇
     final List<String> daftarKategorial = [
       "Sekolah Minggu",
       "AMKI",
@@ -241,8 +264,13 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                   _buildProfileRow(Icons.church, "Gereja Terdaftar", _churchName, Colors.blue),
                   const SizedBox(height: 16),
                   
-                  // INFO KATEGORIAL
-                  _buildProfileRow(Icons.category, "Kategorial", _kategorial, Colors.purple),
+                  // INFO KATEGORIAL (BERUBAH JIKA DIA PENGURUS)
+                  _buildProfileRow(
+                    Icons.category, 
+                    "Kategorial", 
+                    _isPengurus ? "$_kategorial (PENGURUS)" : _kategorial, 
+                    _isPengurus ? Colors.teal : Colors.purple
+                  ),
                   const SizedBox(height: 16),
                   
                   // INFO ROLE
@@ -264,8 +292,17 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
 
               _buildActionButton("Atur Kategorial", Icons.category, Colors.purple, _showKategorialSelectionDialog),
 
+              // 👇 TOMBOL ANGKAT/CABUT PENGURUS MUNCUL JIKA SUDAH PUNYA KOMISI 👇
+              if (_kategorial != "Umum / Belum diatur" && role != "admin" && role != "superadmin")
+                _buildActionButton(
+                  _isPengurus ? "Cabut Status Pengurus" : "Jadikan Pengurus $_kategorial", 
+                  _isPengurus ? Icons.person_remove : Icons.person_add_alt_1, 
+                  _isPengurus ? Colors.redAccent : Colors.teal, 
+                  _togglePengurusStatus
+                ),
+
               if (role == "user")
-                _buildActionButton("Jadikan Admin", Icons.arrow_upward, Colors.orange, () => _updateUserRole("admin")),
+                _buildActionButton("Jadikan Admin Gereja", Icons.arrow_upward, Colors.orange, () => _updateUserRole("admin")),
               
               if (role == "admin" && !isSuperAdmin) 
                 _buildActionButton("Turunkan ke Jemaat Biasa", Icons.arrow_downward, Colors.grey.shade700, () => _updateUserRole("user")),

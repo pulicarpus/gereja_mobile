@@ -71,11 +71,24 @@ class _KamusPageState extends State<KamusPage> {
         setState(() => _hasilArti = "Kata baru! Meminta bantuan AI Gemini...");
         
         // 👇 PROMPT SATPAM (Mencegah kata ngawur atau umpatan masuk database) 👇
+        // 👇 PROMPT ENSIKLOPEDIA MENDALAM 👇
         final prompt = """
-        Saya sedang membuat Kamus Alkitab untuk aplikasi gereja. 
-        Tolong jelaskan arti kata '$kata' dalam konteks Alkitab atau Kekristenan. 
-        SYARAT SANGAT PENTING: Jika kata tersebut sama sekali BUKAN istilah Alkitab, BUKAN nama tokoh/tempat di Alkitab, merupakan kata acak (typo), atau kata yang tidak pantas, kamu WAJIB membalas HANYA dengan teks persis seperti ini: "KATA_TIDAK_VALID". Jangan tambahkan penjelasan apapun jika tidak valid.
-        Jika valid, jelaskan maksimal 2 paragraf, singkat, padat, dan mudah dimengerti jemaat.
+        Saya sedang membuat Kamus Ensiklopedia Alkitab untuk aplikasi gereja GKII. 
+        Tolong jelaskan kata '$kata' secara MENDALAM, teologis, dan komprehensif. 
+        SYARAT SANGAT PENTING: Jika kata tersebut sama sekali BUKAN istilah Alkitab, BUKAN nama tokoh/tempat di Alkitab, kata acak, atau tidak pantas, WAJIB membalas HANYA dengan teks: "KATA_TIDAK_VALID".
+        Jika valid, berikan penjelasan TANPA format markdown (jangan pakai tanda bintang ** atau pagar #, karena aplikasi tidak bisa membacanya). Susun dengan struktur yang rapi seperti ini:
+
+        DEFINISI SINGKAT:
+        (Jelaskan siapa/apa itu secara singkat)
+
+        LATAR BELAKANG & SEJARAH:
+        (Jelaskan konteks sejarah, kisah utama, atau asal-usulnya)
+
+        MAKNA TEOLOGIS (PENERAPAN):
+        (Jelaskan arti rohaninya, perannya dalam keselamatan, pelajaran yang bisa diambil jemaat, atau kaitannya dengan Kristus)
+
+        REFERENSI AYAT KUNCI:
+        (Sebutkan 2-3 ayat utama lengkap dengan bunyi ayatnya secara singkat)
         """;
         
         final content = [Content.text(prompt)];

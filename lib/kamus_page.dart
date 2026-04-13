@@ -70,25 +70,30 @@ class _KamusPageState extends State<KamusPage> {
         // JIKA TIDAK ADA: Panggil Gemini dengan PROMPT SATPAM
         setState(() => _hasilArti = "Kata baru! Meminta bantuan AI Gemini...");
         
-        // 👇 PROMPT SATPAM (Mencegah kata ngawur atau umpatan masuk database) 👇
-        // 👇 PROMPT ENSIKLOPEDIA MENDALAM 👇
+// 👇 PROMPT ENSIKLOPEDIA + TAFSIRAN INJILI 👇
         final prompt = """
-        Saya sedang membuat Kamus Ensiklopedia Alkitab untuk aplikasi gereja GKII. 
+        Saya sedang membuat Kamus Ensiklopedia dan Tafsiran Alkitab untuk aplikasi gereja GKII (beraliran Kristen Injili). 
         Tolong jelaskan kata '$kata' secara MENDALAM, teologis, dan komprehensif. 
         SYARAT SANGAT PENTING: Jika kata tersebut sama sekali BUKAN istilah Alkitab, BUKAN nama tokoh/tempat di Alkitab, kata acak, atau tidak pantas, WAJIB membalas HANYA dengan teks: "KATA_TIDAK_VALID".
-        Jika valid, berikan penjelasan TANPA format markdown (jangan pakai tanda bintang ** atau pagar #, karena aplikasi tidak bisa membacanya). Susun dengan struktur yang rapi seperti ini:
+        Jika valid, berikan penjelasan TANPA format markdown (jangan pakai tanda bintang ** atau pagar #, karena aplikasi tidak bisa membacanya). Susun dengan struktur yang rapi persis seperti ini:
+
+        ETIMOLOGI & BAHASA ASLI:
+        (Sebutkan asal kata ini dalam bahasa Ibrani/Yunani/Aram beserta arti harfiahnya)
 
         DEFINISI SINGKAT:
-        (Jelaskan siapa/apa itu secara singkat)
+        (Jelaskan siapa/apa itu secara ringkas)
 
         LATAR BELAKANG & SEJARAH:
-        (Jelaskan konteks sejarah, kisah utama, atau asal-usulnya)
+        (Jelaskan konteks sejarah, budaya, atau asal-usulnya di masa Alkitab)
 
-        MAKNA TEOLOGIS (PENERAPAN):
-        (Jelaskan arti rohaninya, perannya dalam keselamatan, pelajaran yang bisa diambil jemaat, atau kaitannya dengan Kristus)
+        TAFSIRAN & MAKNA ROHANI:
+        (Berikan tafsiran teologis yang mendalam berdasarkan pandangan Kristen Injili. Jelaskan nubuatan, bayangan akan Kristus (tipologi), atau makna keselamatan di baliknya)
+
+        APLIKASI PRAKTIS UNTUK JEMAAT:
+        (Apa pelajaran konkret yang bisa diterapkan oleh jemaat Kristen di masa kini dari kata/tokoh ini?)
 
         REFERENSI AYAT KUNCI:
-        (Sebutkan 2-3 ayat utama lengkap dengan bunyi ayatnya secara singkat)
+        (Sebutkan 2-3 ayat utama lengkap dengan bunyi ayatnya secara ringkas)
         """;
         
         final content = [Content.text(prompt)];

@@ -324,8 +324,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _showDictionary() {
-    final sc = TextEditingController();
-    showDialog(context: context, builder: (c) => AlertDialog(title: const Text("Kamus Alkitab"), content: TextField(controller: sc, autofocus: true, decoration: const InputDecoration(hintText: "Cari kata...")), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")), ElevatedButton(onPressed: () { Navigator.pop(c); launchUrl(Uri.parse("https://alkitab.sabda.org/dictionary.php?word=${sc.text}"), mode: LaunchMode.inAppBrowserView); }, child: const Text("Cari"))]));
+    // Langsung buka halaman Kamus Pintar yang baru
+    Navigator.push(
+      context, 
+      MaterialPageRoute(builder: (context) => const KamusPage())
+    );
   }
 
   void _showNotesManager() {

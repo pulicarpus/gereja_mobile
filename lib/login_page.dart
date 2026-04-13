@@ -5,6 +5,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 
+// 👇 IMPORT HALAMAN VALIDASI GEREJA 👇
+import 'validasi_gereja_page.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -81,15 +84,22 @@ class _LoginPageState extends State<LoginPage> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         String role = data['role'] ?? "user";
-        String? churchId = data['churchId'] ?? "";
+        String? churchId = data['churchId']; // Sengaja tanpa default biar ketahuan kalau kosong
         String churchName = data['churchName'] ?? "";
         String nama = data['namaLengkap'] ?? user.displayName ?? "Jemaat";
         String? foto = data['photoUrl'] ?? user.photoURL;
 
+        // 👇 SATPAM CEGATAN 👇
+        // Kalau dia user lama tapi belum punya gereja (atau gerejanya string kosong), TENDANG ke validasi!
+        if (role != "superadmin" && (churchId == null || churchId.trim().isEmpty)) {
+          _goToValidasiManual(user);
+          return; // Stop proses masuk ke Main Activity
+        }
+
         // MENGGUNAKAN LOGIKA BOS: setUser
         await UserManager().setUser(
           role: role,
-          churchId: churchId,
+          churchId: churchId ?? "",
           churchName: churchName,
           uId: user.uid,
           uNama: nama,
@@ -119,7 +129,7 @@ class _LoginPageState extends State<LoginPage> {
       "uid": user.uid,
       "email": user.email,
       "namaLengkap": user.displayName,
-      "photoUrl": user.photoURL, // Menggunakan properti photoURL yang benar
+      "photoUrl": user.photoURL, 
       "role": "user",
       "isBlocked": false,
       "churchId": "",
@@ -136,8 +146,19 @@ class _LoginPageState extends State<LoginPage> {
 
   void _goToValidasiManual(User user) {
     setState(() => _isLoading = false);
-    _showToast("Akun perlu divalidasi admin gereja.");
-    // Navigator.pushReplacementNamed(context, '/validasi'); 
+    _showToast("Silakan masukkan kode undangan gereja Anda.");
+    
+    // 👇 NAVIGASI YANG BENAR DENGAN MEMBAWA KOPER DATA 👇
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ValidasiGerejaPage(
+          userUid: user.uid,
+          userName: user.displayName ?? "Jemaat Baru",
+          userEmail: user.email ?? "",
+        ),
+      ),
+    );
   }
 
   void _goToMainActivity() {

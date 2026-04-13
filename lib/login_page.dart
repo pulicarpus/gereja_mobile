@@ -5,7 +5,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 
-// 👇 IMPORT HALAMAN VALIDASI GEREJA 👇
 import 'validasi_gereja_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -84,19 +83,21 @@ class _LoginPageState extends State<LoginPage> {
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
         String role = data['role'] ?? "user";
-        String? churchId = data['churchId']; // Sengaja tanpa default biar ketahuan kalau kosong
+        String? churchId = data['churchId']; 
         String churchName = data['churchName'] ?? "";
         String nama = data['namaLengkap'] ?? user.displayName ?? "Jemaat";
         String? foto = data['photoUrl'] ?? user.photoURL;
+        
+        // 👇 AMBIL STATUS PENGURUS DARI FIREBASE 👇
+        bool statusPengurus = data['isPengurus'] ?? false;
 
-        // 👇 SATPAM CEGATAN 👇
-        // Kalau dia user lama tapi belum punya gereja (atau gerejanya string kosong), TENDANG ke validasi!
+        // SATPAM CEGATAN
         if (role != "superadmin" && (churchId == null || churchId.trim().isEmpty)) {
           _goToValidasiManual(user);
-          return; // Stop proses masuk ke Main Activity
+          return; 
         }
 
-        // MENGGUNAKAN LOGIKA BOS: setUser
+        // MENGGUNAKAN LOGIKA BOS: setUser DENGAN PARAMETER BARU
         await UserManager().setUser(
           role: role,
           churchId: churchId ?? "",
@@ -105,6 +106,7 @@ class _LoginPageState extends State<LoginPage> {
           uNama: nama,
           uFoto: foto,
           uKomisi: data['kelompok'] ?? "Umum",
+          uIsPengurus: statusPengurus, // 👈 SUNTIKKAN KE USER MANAGER
         );
 
         // Jika Superadmin, beri Tag khusus di OneSignal
@@ -133,7 +135,8 @@ class _LoginPageState extends State<LoginPage> {
       "role": "user",
       "isBlocked": false,
       "churchId": "",
-      "churchName": ""
+      "churchName": "",
+      "isPengurus": false // 👈 USER BARU DEFAULT BUKAN PENGURUS
     };
 
     try {
@@ -148,7 +151,6 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = false);
     _showToast("Silakan masukkan kode undangan gereja Anda.");
     
-    // 👇 NAVIGASI YANG BENAR DENGAN MEMBAWA KOPER DATA 👇
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(

@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'user_manager.dart';
 import 'laporan_transaksi_page.dart';
 import 'laporan_perpuluhan_page.dart';
+import 'loading_sultan.dart';
 
 class KeuanganPage extends StatefulWidget {
   final String? filterKategorial;
@@ -167,7 +168,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Color(0xFF075E54))) 
+        ? const LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(

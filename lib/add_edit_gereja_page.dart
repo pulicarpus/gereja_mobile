@@ -103,7 +103,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         foregroundColor: Colors.white,
       ),
       body: _isLoading
-          ? const LoadingSultan(size: 80)
+          ? LoadingSultan(size: 80)
           : Form(
               key: _formKey,
               child: ListView(

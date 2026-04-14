@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
+import 'loading_sultan.dart';
 
 class ProfilPage extends StatefulWidget {
   const ProfilPage({super.key});
@@ -137,7 +138,7 @@ class _ProfilPageState extends State<ProfilPage> {
         elevation: 0,
       ),
       body: _isLoading 
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingSultan(size: 80)
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(

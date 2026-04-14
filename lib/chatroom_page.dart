@@ -48,6 +48,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
   bool _isTyping = false;
   bool _isUploading = false;
   
+  // 👇 STATUS MODERATOR (PENGURUS) 👇
+  bool _isModerator = false;
+
   Map<String, dynamic>? _replyMessage;
   String? _editingMessageId;
 
@@ -62,9 +65,17 @@ class _ChatroomPageState extends State<ChatroomPage> {
     _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     
+    // 👇 CEK APAKAH DIA ADMIN ATAU PENGURUS KOMISI INI 👇
+    final userManager = UserManager();
+    bool isGlobalAdmin = userManager.isAdmin();
+    bool isPengurusKomisiIni = false;
+    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
+      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+    }
+    _isModerator = isGlobalAdmin || isPengurusKomisiIni;
+    
     _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
     
-    // Listener untuk Audio Player (Spektrum Berjalan)
     _audioPlayer.onPositionChanged.listen((pos) {
       if (mounted) setState(() => _currentPosition = pos);
     });
@@ -90,8 +101,33 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return DateFormat('HH:mm').format(date);
   }
 
+  // 👇 FUNGSI CEGAH JEMAAT RUSUH (CEK MUTE) 👇
+  Future<bool> _checkIfMuted() async {
+    String? churchId = UserManager().activeChurchId;
+    if (churchId == null) return true;
+    
+    var muteDoc = await _db.collection("churches").doc(churchId)
+        .collection("muted_$_collectionPath").doc(_auth.currentUser?.uid).get();
+        
+    if (muteDoc.exists) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: const Row(children: [Icon(Icons.gavel, color: Colors.red), SizedBox(width: 8), Text("Akses Dibatasi")]),
+          content: const Text("Mohon maaf, Anda telah di-Mute (dibisukan) oleh Pengurus. Anda tetap bisa membaca pesan, tapi tidak bisa mengirim pesan saat ini."),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Mengerti"))],
+        )
+      );
+      return true; // Berarti dia kena Mute!
+    }
+    return false; // Aman, silakan lanjut!
+  }
+
   // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
   Future<void> _uploadImage() async {
+    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM UPLOAD
+    
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
 
@@ -150,6 +186,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 2. UPLOAD FILE DOKUMEN ---
   Future<void> _uploadFile() async {
+    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM UPLOAD
+    
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
     File file = File(result.files.single.path!);
@@ -174,8 +212,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  // --- 3. VOICE NOTE DEWA (GETAR + SPEKTRUM + KOMPRESI) ---
+  // --- 3. VOICE NOTE DEWA ---
   Future<void> _startRecording() async {
+    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM RECORDING
+    
     try {
       if (await _audioRecorder.hasPermission()) {
         HapticFeedback.heavyImpact(); 
@@ -191,9 +231,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<void> _stopRecording() async {
+    if (!_isRecording) return; // Mencegah crash jika distop sebelum mulai karena Mute
+    
     HapticFeedback.mediumImpact(); 
     
-    // PENGAMBILAN DATA VERSI 1.3.0
     final rawWaveData = List<double>.from(_recorderController.waveData);
     List<double> compressedData = [];
     
@@ -238,7 +279,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<void> _playAudio(String url, String id) async {
-    // Jika memainkan lagu yang berbeda, stop dulu lagu sebelumnya
     if (_playingId != id && _playingId != null) {
       await _audioPlayer.stop();
       if (mounted) setState(() => _currentPosition = Duration.zero);
@@ -255,6 +295,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
   Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
+    if (tipe == "text") {
+      if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM KIRIM TEKS
+    }
+    
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
     
@@ -285,14 +329,11 @@ class _ChatroomPageState extends State<ChatroomPage> {
     setState(() { _replyMessage = null; _etPesan.clear(); });
   }
 
-  // 👇 FUNGSI NOTIFIKASI DENGAN TIKET KATEGORIAL 👇
   Future<void> _kirimNotif(String pesan) async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null || osRestKey.isEmpty) return;
     
     try {
-      print("MENGIRIM NOTIF KE GEREJA: $churchId"); 
-      
       var response = await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
         headers: {
@@ -304,16 +345,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
           "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
           "headings": {"en": "Chat: ${UserManager().userNama}"},
           "contents": {"en": pesan},
-          // 👇 INI DIA TIKETNYA! 👇
           "data": {
              "type": "chat",
              "kategorial": widget.filterKategorial 
           }
         }),
       );
-      
-      print("HASIL ONESIGNAL: ${response.statusCode} - ${response.body}");
-      
     } catch (e) {
       print("ERROR FATAL NOTIF: $e");
     }
@@ -341,8 +378,55 @@ class _ChatroomPageState extends State<ChatroomPage> {
     showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       ListTile(leading: const Icon(Icons.reply), title: const Text("Balas"), onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }),
       if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit Pesan"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _replyMessage = null; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
-      if (isMe || UserManager().isAdmin()) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
+      // 👇 PERBAIKAN: HANYA SAYA ATAU MODERATOR YANG BISA MENGHAPUS 👇
+      if (isMe || _isModerator) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
     ])));
+  }
+
+  // 👇 MENU MODERASI: KETIKA PENGURUS KLIK FOTO PROFIL JEMAAT 👇
+  void _showModerationMenu(String targetUid, String targetName) async {
+    if (!_isModerator || targetUid == _auth.currentUser?.uid) return;
+
+    String? churchId = UserManager().activeChurchId;
+    if (churchId == null) return;
+
+    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
+    var doc = await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).get();
+    Navigator.pop(context); // Tutup loading
+
+    bool isMuted = doc.exists;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text("Moderasi: $targetName", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: Icon(isMuted ? Icons.volume_up : Icons.volume_off, color: isMuted ? Colors.green : Colors.red),
+              title: Text(isMuted ? "Unmute (Buka Suara)" : "Mute (Bungkam)"),
+              subtitle: Text(isMuted ? "Izinkan $targetName mengirim pesan lagi." : "Cegah $targetName mengirim pesan di grup ini."),
+              onTap: () async {
+                Navigator.pop(context);
+                if (isMuted) {
+                  await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).delete();
+                  _showSnack("$targetName berhasil di-unmute.");
+                } else {
+                  await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).set({"muted": true, "timestamp": FieldValue.serverTimestamp()});
+                  _showSnack("$targetName berhasil dibungkam (mute).");
+                }
+              }
+            )
+          ]
+        )
+      )
+    );
   }
 
   void _showFullImage(String url) {
@@ -391,7 +475,16 @@ class _ChatroomPageState extends State<ChatroomPage> {
             mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, 
             crossAxisAlignment: CrossAxisAlignment.start, 
             children: [
-              if (!isMe) CircleAvatar(radius: 16, backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null),
+              // 👇 FOTO PROFIL BISA DIKLIK OLEH MODERATOR 👇
+              if (!isMe) 
+                GestureDetector(
+                  onTap: () => _showModerationMenu(chat['pengirimId'], chat['pengirimNama'] ?? "Jemaat"),
+                  child: CircleAvatar(
+                    radius: 16, 
+                    backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, 
+                    child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null
+                  ),
+                ),
               
               Container(
                 constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
@@ -479,7 +572,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
       samples = List<double>.from((chat['waveData'] as List).map((e) => e.toDouble()));
     }
     
-    // MENGHITUNG PROGRESS UNTUK SPEKTRUM DINAMIS
     double currentProgress = 0.0;
     if (isPlaying && _totalDuration.inMilliseconds > 0) {
       currentProgress = _currentPosition.inMilliseconds / _totalDuration.inMilliseconds;

@@ -4,10 +4,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:convert';
-import 'secrets.dart'; // 👈 Tambah ini di paling atas
+import 'secrets.dart'; 
 
 import 'user_manager.dart';
-import 'detail_folder_page.dart'; // Kabel navigasi disambung!
+import 'detail_folder_page.dart'; 
 
 class GalleryFolder {
   final String id;
@@ -26,18 +26,32 @@ class GalleryPage extends StatefulWidget {
 
 class _GalleryPageState extends State<GalleryPage> {
   final _db = FirebaseFirestore.instance;
-  // Ganti hardcode jadi variabel dari secrets.dart
   final String _botToken = teleBotTokenSecret;
 
   List<GalleryFolder> _folderList = [];
   bool _isLoading = false;
   late String _collectionPath;
   String? _churchId;
+  
+  // 👇 SATPAM SAKTI KITA 👇
+  bool canEdit = false;
 
   @override
   void initState() {
     super.initState();
-    _churchId = UserManager().activeChurchId;
+    final userManager = UserManager();
+    _churchId = userManager.activeChurchId;
+    
+    // 👇 LOGIKA CEK HAK AKSES PENGURUS 👇
+    bool isGlobalAdmin = userManager.isAdmin();
+    bool isPengurusKomisiIni = false;
+    
+    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
+      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+    }
+    
+    // Izinkan edit jika Admin Global ATAU Pengurus Komisi ini
+    canEdit = isGlobalAdmin || isPengurusKomisiIni;
     
     _collectionPath = (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) 
         ? "gallery_folders" 
@@ -196,7 +210,6 @@ class _GalleryPageState extends State<GalleryPage> {
 
   @override
   Widget build(BuildContext context) {
-    bool isAdmin = UserManager().isAdmin();
     String title = (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) 
         ? "Galeri Foto" 
         : "Galeri ${widget.filterKategorial}";
@@ -243,7 +256,8 @@ class _GalleryPageState extends State<GalleryPage> {
                         filterKategorial: widget.filterKategorial,
                       )));
                     },
-                    onLongPress: isAdmin ? () => _showDeleteFolderDialog(folder) : null,
+                    // 👇 HAPUS FOLDER HANYA BISA OLEH ADMIN / PENGURUS 👇
+                    onLongPress: canEdit ? () => _showDeleteFolderDialog(folder) : null,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -282,7 +296,8 @@ class _GalleryPageState extends State<GalleryPage> {
               },
             ),
             
-      floatingActionButton: !isAdmin ? null : FloatingActionButton(
+      // 👇 TOMBOL BIKIN FOLDER BARU HANYA MUNCUL UNTUK ADMIN / PENGURUS 👇
+      floatingActionButton: !canEdit ? null : FloatingActionButton(
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
         child: const Icon(Icons.create_new_folder),

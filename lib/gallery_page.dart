@@ -230,7 +230,7 @@ class _GalleryPageState extends State<GalleryPage> {
         ],
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : _folderList.isEmpty
           ? Center(child: Text("Belum ada folder.", style: TextStyle(color: Colors.grey[600])))
           : GridView.builder(

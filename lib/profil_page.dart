@@ -138,7 +138,7 @@ class _ProfilPageState extends State<ProfilPage> {
         elevation: 0,
       ),
       body: _isLoading 
-          ? const LoadingSultan(size: 80)
+          ? LoadingSultan(size: 80)
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(

@@ -168,7 +168,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(

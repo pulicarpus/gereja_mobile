@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'user_manager.dart';
 import 'secrets.dart'; 
+import 'loading_sultan.dart';
 
 class AddEditJadwalPage extends StatefulWidget {
   final String? jadwalId;
@@ -252,7 +253,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
+        ? const LoadingSultan(size: 80)
         : Form(
             key: _formKey,
             child: ListView(

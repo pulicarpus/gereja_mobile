@@ -152,7 +152,7 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Form(

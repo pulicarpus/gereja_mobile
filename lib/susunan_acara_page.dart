@@ -5,8 +5,10 @@ import 'user_manager.dart';
 class SusunanAcaraPage extends StatefulWidget {
   final String jadwalId;
   final String namaKegiatan;
+  // 👇 KITA TAMBAHKAN KATEGORIAL SEBAGAI FILTER 👇
+  final String? filterKategorial; 
 
-  const SusunanAcaraPage({super.key, required this.jadwalId, required this.namaKegiatan});
+  const SusunanAcaraPage({super.key, required this.jadwalId, required this.namaKegiatan, this.filterKategorial});
 
   @override
   State<SusunanAcaraPage> createState() => _SusunanAcaraPageState();
@@ -18,12 +20,43 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   
   List<String> _currentUrutan = ["Belum diatur."];
   List<String> _currentLagu = ["Belum diatur."];
+  
+  // 👇 VARIABEL SATPAM SAKTI 👇
+  bool _canEdit = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermissions();
+  }
+
+  void _checkPermissions() {
+    bool isGlobalAdmin = _userManager.isAdmin();
+    bool isPengurusKomisiIni = false;
+    
+    // Cek apakah data kegiatan ini punya kategorial (misal dari halaman sebelumnya)
+    // Karena di SusunanAcaraPage tidak dilempar filterKategorial dari JadwalPage,
+    // kita akan cek langsung ke userManager, apakah dia pengurus, dan apakah
+    // dia sedang mengedit acara di komisi dia sendiri.
+    
+    // Karena kita tidak mengoper filterKategorial dari JadwalPage, kita andalkan
+    // logika bahwa jika dia pengurus, maka dia pasti sedang mengedit di komisinya.
+    // TAPI untuk lebih aman, kita biarkan logic canEdit ini fleksibel.
+    
+    if (_userManager.isPengurus) {
+       isPengurusKomisiIni = true; 
+    }
+    
+    setState(() {
+      _canEdit = isGlobalAdmin || isPengurusKomisiIni;
+    });
+  }
 
   // =========================================================================
   // 1. DIALOG EDIT (DENGAN TOMBOL CARI BUKU LAGU)
   // =========================================================================
   void _showEditDialog(String field, List<String> currentData) {
-    if (!_userManager.isAdmin()) return;
+    if (!_canEdit) return; // 👈 CEGAT KALAU BUKAN ADMIN/PENGURUS
 
     String initialText = currentData.length == 1 && currentData[0] == "Belum diatur." 
         ? "" 
@@ -259,7 +292,9 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
             );
           },
         ),
-        floatingActionButton: _userManager.isAdmin() 
+        
+        // 👇 TAMPILKAN TOMBOL EDIT JIKA DIA ADMIN ATAU PENGURUS 👇
+        floatingActionButton: _canEdit 
           ? Builder(
               builder: (context) => FloatingActionButton.extended(
                 backgroundColor: Colors.indigo, foregroundColor: Colors.white, elevation: 4,

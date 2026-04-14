@@ -6,6 +6,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 
 import 'validasi_gereja_page.dart';
+import 'loading_sultan.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -176,7 +177,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(30),
             child: Column(

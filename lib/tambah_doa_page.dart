@@ -6,6 +6,7 @@ import 'dart:convert';
 
 import 'user_manager.dart';
 import 'secrets.dart'; // 👇 Pastikan ini di-import untuk membaca osRestKeySecret
+import 'loading_sultan.dart';
 
 class TambahDoaPage extends StatefulWidget {
   final String? doaId;
@@ -151,7 +152,7 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
+        ? const LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(24.0),
             child: Form(

@@ -47,8 +47,40 @@ class _PengurusPageState extends State<PengurusPage> {
     }
   }
 
-  // 👇 BOTTOM SHEET DETAIL PENGURUS (DENGAN TOMBOL WA) 👇
-  void _showDetailBottomSheet(String nama, String jabatan, String? fotoUrl, String wa) {
+  // 👇 FITUR FOTO FULLSCREEN SULTAN 👇
+  void _showFullScreenImage(String imageUrl, String heroTag) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(
+          child: InteractiveViewer(
+            clipBehavior: Clip.none,
+            minScale: 1.0,
+            maxScale: 4.0,
+            child: Hero(
+              tag: heroTag,
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.contain,
+                width: double.infinity,
+                placeholder: (context, url) => const CircularProgressIndicator(color: Colors.white),
+                errorWidget: (context, url, error) => const Icon(Icons.error, color: Colors.white, size: 50),
+              ),
+            ),
+          ),
+        ),
+      );
+    }));
+  }
+
+  // 👇 BOTTOM SHEET DETAIL PENGURUS (DENGAN TOMBOL WA & FOTO CLICKABLE) 👇
+  void _showDetailBottomSheet(String nama, String jabatan, String? fotoUrl, String wa, String roleIdOrDocId) {
+    String heroTag = "foto_pengurus_$roleIdOrDocId";
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
@@ -57,11 +89,22 @@ class _PengurusPageState extends State<PengurusPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundColor: Colors.indigo.shade50,
-              backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? CachedNetworkImageProvider(fotoUrl) : null,
-              child: fotoUrl == null || fotoUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.indigo) : null,
+            // FOTO BISA DIKLIK JADI FULLSCREEN
+            GestureDetector(
+              onTap: () {
+                if (fotoUrl != null && fotoUrl.isNotEmpty) {
+                  _showFullScreenImage(fotoUrl, heroTag);
+                }
+              },
+              child: Hero(
+                tag: heroTag,
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundColor: Colors.indigo.shade50,
+                  backgroundImage: fotoUrl != null && fotoUrl.isNotEmpty ? CachedNetworkImageProvider(fotoUrl) : null,
+                  child: fotoUrl == null || fotoUrl.isEmpty ? const Icon(Icons.person, size: 50, color: Colors.indigo) : null,
+                ),
+              ),
             ),
             const SizedBox(height: 16),
             Text(nama, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.indigo)),
@@ -260,7 +303,7 @@ class _PengurusPageState extends State<PengurusPage> {
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, elevation: 0,
       ),
       body: _isLoading 
-        ? LoadingSultan(size: 80)
+        ? const LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -293,7 +336,7 @@ class _PengurusPageState extends State<PengurusPage> {
 
                         return _buildPengurusCard(
                           nama, item['jabatan'], img, wa,
-                          () => _showDetailBottomSheet(nama, item['jabatan'], img, wa),
+                          () => _showDetailBottomSheet(nama, item['jabatan'], img, wa, r), // Kirim roleId sbg HeroTag
                           () => _showEditDialog(title: "Edit ${item['jabatan']}", isHarian: true, roleId: r, initialNama: nama, initialWa: wa, initialFotoUrl: img),
                         );
                       }).toList(),
@@ -330,7 +373,7 @@ class _PengurusPageState extends State<PengurusPage> {
 
                         return _buildPengurusCard(
                           nama, seksi, img, wa,
-                          () => _showDetailBottomSheet(nama, seksi, img, wa),
+                          () => _showDetailBottomSheet(nama, seksi, img, wa, doc.id), // Kirim docId sbg HeroTag
                           () => _showEditDialog(title: "Edit Seksi", isHarian: false, docId: doc.id, initialSeksi: seksi, initialNama: nama, initialWa: wa, initialFotoUrl: img),
                         );
                       }).toList(),

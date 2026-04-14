@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'user_manager.dart';
+import 'loading_sultan.dart';
 
 class PengurusPage extends StatefulWidget {
   const PengurusPage({super.key});
@@ -259,7 +260,7 @@ class _PengurusPageState extends State<PengurusPage> {
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, elevation: 0,
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
+        ? const LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(

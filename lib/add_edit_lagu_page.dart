@@ -249,7 +249,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         ],
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : Form(
             key: _formKey,
             child: ListView(

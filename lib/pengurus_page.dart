@@ -260,7 +260,7 @@ class _PengurusPageState extends State<PengurusPage> {
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, elevation: 0,
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(

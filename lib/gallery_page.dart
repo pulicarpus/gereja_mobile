@@ -8,6 +8,7 @@ import 'secrets.dart';
 
 import 'user_manager.dart';
 import 'detail_folder_page.dart'; 
+import 'loading_sultan.dart';
 
 class GalleryFolder {
   final String id;
@@ -229,7 +230,7 @@ class _GalleryPageState extends State<GalleryPage> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const LoadingSultan(size: 80)
         : _folderList.isEmpty
           ? Center(child: Text("Belum ada folder.", style: TextStyle(color: Colors.grey[600])))
           : GridView.builder(

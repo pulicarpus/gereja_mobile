@@ -20,13 +20,27 @@ class JadwalPage extends StatefulWidget {
 class _JadwalPageState extends State<JadwalPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String? churchId;
-  bool isAdmin = false;
+  
+  // 👇 INI DIA SATPAM SAKTINYA BOS 👇
+  bool canEdit = false;
 
   @override
   void initState() {
     super.initState();
-    churchId = UserManager().activeChurchId;
-    isAdmin = UserManager().isAdmin();
+    final userManager = UserManager();
+    churchId = userManager.activeChurchId;
+    
+    // Cek apakah dia Admin/Superadmin Global
+    bool isGlobalAdmin = userManager.isAdmin();
+    
+    // Cek apakah dia Pengurus di Komisi yang sedang dibuka ini
+    bool isPengurusKomisiIni = false;
+    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
+      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+    }
+    
+    // Jika salah satu true, maka tombol edit & tambah akan MUNCUL!
+    canEdit = isGlobalAdmin || isPengurusKomisiIni;
   }
 
   String _formatTanggalSultan(String rawDate) {
@@ -127,7 +141,9 @@ class _JadwalPageState extends State<JadwalPage> {
           );
         },
       ),
-      floatingActionButton: isAdmin ? FloatingActionButton(
+      
+      // 👇 TOMBOL TAMBAH HANYA MUNCUL JIKA canEdit == true 👇
+      floatingActionButton: canEdit ? FloatingActionButton(
         onPressed: () => _navigasiTambahEdit(null),
         backgroundColor: Colors.indigo,
         elevation: 4,
@@ -141,23 +157,19 @@ class _JadwalPageState extends State<JadwalPage> {
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).snapshots(),
       builder: (context, snapshot) {
-        // 👇 PERBAIKAN ERROR ABU-ABU DI SINI BOS 👇
         String teks = "Tidak ada pengumuman khusus.";
         
-        // Cek dulu apakah datanya ada di Firestore
         if (snapshot.hasData && snapshot.data!.exists) {
-          // Ambil datanya dengan aman sebagai Map
           Map<String, dynamic>? dataMap = snapshot.data!.data() as Map<String, dynamic>?;
           
-          // Kalau field 'teks' memang ada, baru kita pakai
           if (dataMap != null && dataMap.containsKey('teks')) {
             teks = dataMap['teks'];
           }
         }
-        // 👆 ----------------------------------- 👆
 
         return GestureDetector(
-          onLongPress: isAdmin ? () => _showEditPengumumanDialog(docId, teks) : null,
+          // 👇 PENGUMUMAN BISA DIEDIT JIKA canEdit == true 👇
+          onLongPress: canEdit ? () => _showEditPengumumanDialog(docId, teks) : null,
           child: Container(
             margin: const EdgeInsets.only(bottom: 16),
             padding: const EdgeInsets.all(16),
@@ -210,7 +222,8 @@ class _JadwalPageState extends State<JadwalPage> {
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
       child: InkWell(
-        onLongPress: isAdmin ? () => _showEditDeleteDialog(doc.id, namaKeg) : null,
+        // 👇 JADWAL BISA DIHAPUS/EDIT JIKA canEdit == true 👇
+        onLongPress: canEdit ? () => _showEditDeleteDialog(doc.id, namaKeg) : null,
         child: Container(
           decoration: BoxDecoration(
             color: Colors.white, 
@@ -322,7 +335,8 @@ class _JadwalPageState extends State<JadwalPage> {
                         ),
                       ),
                     ),
-                    if (isAdmin) ...[
+                    // 👇 TOMBOL EDIT MUNCUL JIKA canEdit == true 👇
+                    if (canEdit) ...[
                       const SizedBox(width: 10),
                       OutlinedButton.icon(
                         onPressed: () => _navigasiTambahEdit(doc.id), 
@@ -442,6 +456,7 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   void _navigasiTambahEdit(String? jadwalId) {
+    // Karena ini di dalam halaman Kategorial, saat menambah jadwal baru, kita passing filterKategorial-nya
     Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditJadwalPage(jadwalId: jadwalId, filterKategorial: widget.filterKategorial)));
   }
 }

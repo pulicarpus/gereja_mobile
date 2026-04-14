@@ -6,6 +6,7 @@ import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
 import 'anggota_keluarga_page.dart'; 
 import 'daftar_keluarga_page.dart';
+import 'loading_sultan.dart';
 
 class DataJemaatPage extends StatefulWidget {
   final String? filterKategorial;
@@ -232,7 +233,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
+        ? const LoadingSultan(size: 80)
         : RefreshIndicator(
             onRefresh: _loadJemaat,
             child: ListView.builder(

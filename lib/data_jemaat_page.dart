@@ -233,7 +233,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         ],
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : RefreshIndicator(
             onRefresh: _loadJemaat,
             child: ListView.builder(

@@ -194,6 +194,9 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   @override
   Widget build(BuildContext context) {
     if (_churchId == null) return const Scaffold(body: Center(child: Text("Data gereja tidak valid.")));
+    
+    // 👇 AMBIL STATUS ADMIN UNTUK SATPAM 👇
+    bool isAdmin = _userManager.isAdmin();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
@@ -261,10 +264,11 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
                       style: TextStyle(color: isKepala ? Colors.indigo.shade800 : Colors.orange.shade800, fontSize: 12, fontWeight: FontWeight.w600)
                     ),
                   ),
-                  trailing: IconButton(
+                  // 👇 HANYA ADMIN YANG BISA LIHAT TOMBOL TITIK TIGA INI 👇
+                  trailing: isAdmin ? IconButton(
                     icon: const Icon(Icons.more_vert),
                     onPressed: () => _showMemberActionDialog(data, doc.id),
-                  ),
+                  ) : null,
                   onTap: () {
                     // 👇 TOMBOL DETAIL SUDAH DISAMBUNG 👇
                     Navigator.push(context, MaterialPageRoute(
@@ -277,12 +281,13 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      // 👇 HANYA ADMIN YANG BISA LIHAT TOMBOL TAMBAH ANGGOTA INI 👇
+      floatingActionButton: isAdmin ? FloatingActionButton.extended(
         onPressed: _showAddMemberOptionsDialog,
         backgroundColor: Colors.indigo,
         icon: const Icon(Icons.add, color: Colors.white),
         label: const Text("Tambah Anggota", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
+      ) : null,
     );
   }
 }

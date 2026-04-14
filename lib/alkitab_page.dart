@@ -646,7 +646,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ) : null,
       ),
       body: _isLoading 
-      ? const LoadingSultan(size: 80) 
+      ? LoadingSultan(size: 80) 
       : GestureDetector(
         onScaleStart: (d) {
           _baseFontSize = _fontSize;

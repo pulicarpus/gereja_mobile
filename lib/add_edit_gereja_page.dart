@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math';
+import 'loading_sultan.dart';
 
 class AddEditGerejaPage extends StatefulWidget {
   final String? gerejaId;
@@ -102,7 +103,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         foregroundColor: Colors.white,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const LoadingSultan(size: 80)
           : Form(
               key: _formKey,
               child: ListView(

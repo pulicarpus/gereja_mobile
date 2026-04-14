@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 // 👇 IMPORT BRANKAS RAHASIA KITA 👇
 import 'secrets.dart';
+import 'loading_sultan.dart';
 
 class AddEditLaguPage extends StatefulWidget {
   final String? songId;
@@ -248,7 +249,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
         ],
       ),
       body: _isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.indigo))
+        ? const LoadingSultan(size: 80)
         : Form(
             key: _formKey,
             child: ListView(

@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'user_manager.dart';
 import 'full_image_slider_page.dart'; // Kabel navigasi disambung!
 import 'secrets.dart'; // 👈 Tambah ini
+import 'loading_sultan.dart';
 
 class GalleryImage {
   final String docId;
@@ -214,7 +215,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
               : null,
         ),
         body: _isLoading
-            ? const Center(child: CircularProgressIndicator())
+            ? const LoadingSultan(size: 80)
             : _imageList.isEmpty
                 ? const Center(child: Text("Folder kosong. Tambahkan foto!"))
                 : GridView.builder(

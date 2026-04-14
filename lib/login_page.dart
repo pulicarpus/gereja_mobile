@@ -177,7 +177,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : SingleChildScrollView(
             padding: const EdgeInsets.all(30),
             child: Column(

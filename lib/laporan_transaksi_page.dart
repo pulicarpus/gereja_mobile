@@ -226,7 +226,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     );
   }
 
-  // 👇 NAVIGASI EDIT SUDAH DIBUKA & DATA KATEGORI DIKIRIM 👇
   void _navigateToEdit(TransaksiItem trx) {
     if (trx.sumber == "perpuluhan") {
       Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage(
@@ -356,7 +355,18 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
   @override
   Widget build(BuildContext context) {
-    bool isAdmin = UserManager().isAdmin();
+    // 👇 SATPAM PENJAGA PRIVASI & HAK EDIT 👇
+    final userManager = UserManager();
+    bool isGlobalAdmin = userManager.isAdmin();
+    bool isPengurusKomisiIni = false;
+    
+    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
+      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+    }
+    
+    // Jika dia Admin Global ATAU Pengurus Komisi tersebut, izinkan Edit & Export!
+    bool canEdit = isGlobalAdmin || isPengurusKomisiIni;
+
     String label = widget.filterKategorial == null || widget.filterKategorial!.isEmpty ? "Umum" : widget.filterKategorial!;
     String titleText = "Laporan ${widget.tipeFilter ?? 'Keuangan'} ($label)";
 
@@ -367,7 +377,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
         actions: [
-          if (isAdmin)
+          // 👇 EXPORT PDF/CSV HANYA UNTUK YANG BERHAK 👇
+          if (canEdit)
             PopupMenuButton<String>(
               onSelected: (val) {
                 if (val == 'pdf') _exportToPdf();
@@ -456,7 +467,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         child: InkWell(
                           borderRadius: BorderRadius.circular(10),
-                          onTap: isAdmin ? () => _showOptionsDialog(t) : null,
+                          // 👇 HANYA BISA DIKLIK (EDIT/HAPUS) OLEH YANG BERHAK 👇
+                          onTap: canEdit ? () => _showOptionsDialog(t) : null,
                           child: Padding(
                             padding: const EdgeInsets.all(15),
                             child: Row(
@@ -494,8 +506,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         ],
       ),
       
-      // 👇 NAVIGASI TAMBAH TRANSAKSI DIBUKA 👇
-      floatingActionButton: !isAdmin ? null : FloatingActionButton(
+      // 👇 TOMBOL TAMBAH TRANSAKSI MUNCUL JIKA canEdit == true 👇
+      floatingActionButton: !canEdit ? null : FloatingActionButton(
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),

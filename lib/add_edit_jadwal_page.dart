@@ -253,7 +253,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         elevation: 0,
       ),
       body: _isLoading 
-        ? const LoadingSultan(size: 80)
+        ? LoadingSultan(size: 80)
         : Form(
             key: _formKey,
             child: ListView(

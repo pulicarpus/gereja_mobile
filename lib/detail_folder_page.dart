@@ -215,7 +215,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
               : null,
         ),
         body: _isLoading
-            ? const LoadingSultan(size: 80)
+            ? LoadingSultan(size: 80)
             : _imageList.isEmpty
                 ? const Center(child: Text("Folder kosong. Tambahkan foto!"))
                 : GridView.builder(

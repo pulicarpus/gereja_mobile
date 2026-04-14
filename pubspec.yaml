@@ -64,6 +64,7 @@ flutter:
   assets:
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
+    - assets/icon.png
     - assets/videos/splash_video.mp4
 
 # 👇 KUNCI KESELAMATAN SEJATI (TURUN KE 1.2.0) 👇

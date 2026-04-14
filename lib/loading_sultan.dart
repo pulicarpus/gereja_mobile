@@ -69,9 +69,9 @@ class _LoadingSultanState extends State<LoadingSultan> with SingleTickerProvider
                 // Nanti kalau Bos sudah punya file gambar logo, 
                 // hapus baris Icon(...) di bawah ini, lalu aktifkan baris Image.asset(...)
                 
-                child: Icon(Icons.church, size: widget.size, color: const Color(0xFF075E54)),
+                //child: Icon(Icons.church, size: widget.size, color: const Color(0xFF075E54)),
                 
-                // child: Image.asset('assets/logo_aplikasi.png', width: widget.size, height: widget.size),
+                 child: Image.asset('assets/icon.png', width: widget.size, height: widget.size),
               ),
             ),
           );

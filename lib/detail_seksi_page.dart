@@ -109,7 +109,7 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     );
   }
 
-  // 👇 DIALOG EDIT ORANG (DI PINDAH KESINI AGAR BISA EDIT DARI DETAIL) 👇
+  // 👇 DIALOG EDIT PENGURUS INTI (Ketua, Sek, Bend) 👇
   void _showEditPersonDialog(String title, String roleId, String initialNama, String initialWa, String? initialFotoUrl) {
     if (!_userManager.isAdmin()) return;
 
@@ -191,7 +191,120 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     );
   }
 
-  // 👇 TILE ORANG (BISA DIKLIK EDIT) 👇
+  // 👇 DIALOG TAMBAH/EDIT ANGGOTA DENGAN FOTO & WA 👇
+  void _showAddEditAnggotaDialog(String churchId, List<dynamic> currentList, {int? indexToEdit}) {
+    if (!_userManager.isAdmin()) return;
+
+    File? imageFile;
+    
+    // Siapkan data kalau lagi mode edit
+    Map<String, dynamic> existingData = {};
+    if (indexToEdit != null && currentList[indexToEdit] is Map) {
+      existingData = Map<String, dynamic>.from(currentList[indexToEdit]);
+    } else if (indexToEdit != null && currentList[indexToEdit] is String) {
+      // Fallback kalau data lama cuma teks
+      existingData = {"nama": currentList[indexToEdit], "wa": "", "img": ""};
+    }
+
+    String? initialFotoUrl = existingData['img'];
+    final etNama = TextEditingController(text: existingData['nama'] ?? "");
+    final etWa = TextEditingController(text: existingData['wa'] ?? "");
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(indexToEdit == null ? "Tambah Anggota" : "Edit Anggota", style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                    if (pickedFile != null) setStateDialog(() => imageFile = File(pickedFile.path));
+                  },
+                  child: CircleAvatar(
+                    radius: 40, backgroundColor: Colors.grey.shade200,
+                    backgroundImage: imageFile != null 
+                        ? FileImage(imageFile!) 
+                        : (initialFotoUrl != null && initialFotoUrl.isNotEmpty ? CachedNetworkImageProvider(initialFotoUrl) : null) as ImageProvider?,
+                    child: (imageFile == null && (initialFotoUrl == null || initialFotoUrl.isEmpty))
+                        ? const Icon(Icons.camera_alt, color: Colors.grey) : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text("Ketuk foto untuk mengubah", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 20),
+                
+                TextField(controller: etNama, decoration: const InputDecoration(labelText: "Nama Anggota", hintText: "Nama Lengkap")),
+                const SizedBox(height: 10),
+                TextField(controller: etWa, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Nomor WhatsApp", hintText: "Cth: 08123456789")),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (etNama.text.trim().isEmpty) return;
+                
+                setState(() => _isLoading = true);
+                Navigator.pop(context); 
+
+                String? uploadedUrl = initialFotoUrl;
+
+                try {
+                  if (imageFile != null) {
+                    String fileName = "anggota_${widget.docId}_${DateTime.now().millisecondsSinceEpoch}";
+                    Reference ref = _storage.ref().child("gereja/$churchId/pengurus/$fileName.jpg");
+                    await ref.putFile(imageFile!);
+                    uploadedUrl = await ref.getDownloadURL();
+                  }
+
+                  Map<String, dynamic> newAnggota = {
+                    "nama": etNama.text.trim(),
+                    "wa": etWa.text.trim(),
+                    "img": uploadedUrl ?? "",
+                  };
+
+                  List<dynamic> updatedList = List<dynamic>.from(currentList);
+                  if (indexToEdit == null) {
+                    updatedList.add(newAnggota); // Tambah baru
+                  } else {
+                    updatedList[indexToEdit] = newAnggota; // Timpa yang lama
+                  }
+
+                  await _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(widget.docId).update({
+                    "anggota": updatedList
+                  });
+
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data anggota disimpan!")));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                } finally {
+                  if (mounted) setState(() => _isLoading = false);
+                }
+              },
+              child: const Text("Simpan"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 👇 FUNGSI HAPUS ANGGOTA 👇
+  void _removeAnggota(String churchId, List<dynamic> currentList, int indexToRemove) {
+    List<dynamic> newList = List<dynamic>.from(currentList);
+    newList.removeAt(indexToRemove);
+    _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(widget.docId).update({"anggota": newList});
+  }
+
+  // 👇 TILE ORANG (UNTUK KETUA, SEK, BEND) 👇
   Widget _buildPersonTile(String jabatan, String roleId, String nama, String wa, String? img) {
     bool isEmpty = nama.trim().isEmpty;
     bool isAdmin = _userManager.isAdmin();
@@ -240,58 +353,6 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     );
   }
 
-  // 👇 FUNGSI TAMBAH/HAPUS ANGGOTA 👇
-  void _showAddAnggotaDialog(String churchId, List<dynamic> currentList) {
-    final etName = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Tambah Anggota", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        content: TextField(controller: etName, decoration: const InputDecoration(hintText: "Nama Anggota")),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-            onPressed: () {
-              if (etName.text.isEmpty) return;
-              List<String> newList = List<String>.from(currentList);
-              newList.add(etName.text.trim());
-              _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(widget.docId).update({"anggota": newList});
-              Navigator.pop(c);
-            },
-            child: const Text("Simpan"),
-          )
-        ],
-      )
-    );
-  }
-
-  void _removeAnggota(String churchId, List<dynamic> currentList, String target) {
-    List<String> newList = List<String>.from(currentList);
-    newList.remove(target);
-    _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(widget.docId).update({"anggota": newList});
-  }
-
-  Widget _buildAnggotaList(String churchId, List<dynamic> anggota) {
-    if (anggota.isEmpty) return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Belum ada anggota.", style: TextStyle(color: Colors.grey, fontSize: 13))));
-    
-    return Column(
-      children: anggota.map((nama) => Card(
-        margin: const EdgeInsets.only(bottom: 8),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        child: ListTile(
-          dense: true,
-          leading: const Icon(Icons.person_outline, size: 20, color: Colors.grey),
-          title: Text(nama.toString(), style: const TextStyle(fontWeight: FontWeight.w500)),
-          trailing: _userManager.isAdmin() ? IconButton(
-            icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-            onPressed: () => _removeAnggota(churchId, anggota, nama.toString()),
-          ) : null,
-        ),
-      )).toList(),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final String churchId = _userManager.getChurchIdForCurrentView()!;
@@ -311,9 +372,9 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
               if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
               var data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
-              // Cek apakah data Sek/Bend ada isinya
               bool hasSek = data['sek_nama'] != null && data['sek_nama'].toString().trim().isNotEmpty;
               bool hasBend = data['bend_nama'] != null && data['bend_nama'].toString().trim().isNotEmpty;
+              List<dynamic> daftarAnggota = data['anggota'] ?? [];
 
               return ListView(
                 padding: const EdgeInsets.all(16),
@@ -322,10 +383,8 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
                   const Text("PENGURUS HARIAN", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 10),
                   
-                  // KETUA (Support format lama & format baru)
                   _buildPersonTile("KETUA", "ketua", data['ketua_nama'] ?? data['namaPengurus'] ?? "", data['ketua_wa'] ?? data['telepon'] ?? "", data['ketua_img'] ?? data['fotoUrl']),
                   
-                  // 👇 HANYA TAMPIL JIKA ADA ISINYA ATAU JIKA DIA ADMIN 👇
                   if (hasSek || isAdmin)
                     _buildPersonTile("SEKRETARIS", "sek", data['sek_nama'] ?? "", data['sek_wa'] ?? "", data['sek_img']),
                     
@@ -341,7 +400,7 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
                       const Text("ANGGOTA", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12)),
                       if (isAdmin)
                         TextButton.icon(
-                          onPressed: () => _showAddAnggotaDialog(churchId, data['anggota'] ?? []),
+                          onPressed: () => _showAddEditAnggotaDialog(churchId, daftarAnggota),
                           icon: const Icon(Icons.add, size: 16),
                           label: const Text("Tambah"),
                         )
@@ -349,7 +408,66 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
                   ),
                   const SizedBox(height: 10),
                   
-                  _buildAnggotaList(churchId, data['anggota'] ?? []),
+                  if (daftarAnggota.isEmpty)
+                    const Center(child: Padding(padding: EdgeInsets.all(20), child: Text("Belum ada anggota.", style: TextStyle(color: Colors.grey, fontSize: 13))))
+                  else
+                    Column(
+                      children: List.generate(daftarAnggota.length, (index) {
+                        var item = daftarAnggota[index];
+                        // Fallback handling: Ubah string lama jadi map biar tidak error
+                        String namaAnggota = item is Map ? (item['nama'] ?? "") : item.toString();
+                        String waAnggota = item is Map ? (item['wa'] ?? "") : "";
+                        String? imgAnggota = item is Map ? item['img'] : null;
+
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () {
+                              _showDetailBottomSheet(namaAnggota, "Anggota ${widget.namaSeksi}", imgAnggota, waAnggota, "anggota_${widget.docId}_$index");
+                            },
+                            onLongPress: () {
+                              if (isAdmin) _showAddEditAnggotaDialog(churchId, daftarAnggota, indexToEdit: index);
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12.0),
+                              child: Row(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 25, backgroundColor: Colors.indigo.shade50,
+                                    backgroundImage: imgAnggota != null && imgAnggota.isNotEmpty ? CachedNetworkImageProvider(imgAnggota) : null,
+                                    child: imgAnggota == null || imgAnggota.isEmpty ? const Icon(Icons.person, color: Colors.indigo) : null,
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(namaAnggota, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)),
+                                        const SizedBox(height: 4),
+                                        const Text("Anggota", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isAdmin) ...[
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
+                                      onPressed: () => _showAddEditAnggotaDialog(churchId, daftarAnggota, indexToEdit: index),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                                      onPressed: () => _removeAnggota(churchId, daftarAnggota, index),
+                                    ),
+                                  ]
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
                 ],
               );
             },

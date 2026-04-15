@@ -49,16 +49,36 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
 
   bool _isSelectionMode = false;
   final Set<int> _selectedPositions = {};
+  
+  // Variabel untuk menyimpan hak akses
+  bool _canEdit = false;
 
   @override
   void initState() {
     super.initState();
+    _checkAccessRights(); // Cek hak akses saat halaman dibuka
+    
     _churchId = UserManager().activeChurchId;
     _collectionPath = (widget.filterKategorial == null || widget.filterKategorial!.isEmpty)
         ? "gallery_folders"
         : "gallery_folders_${widget.filterKategorial}";
 
     _loadImages();
+  }
+
+  // 👇 SATPAM BARU: NGECEK APAKAH DIA ADMIN ATAU PENGURUS SEKSI INI 👇
+  void _checkAccessRights() {
+    final userManager = UserManager();
+    bool isGlobalAdmin = userManager.isAdmin();
+    bool isPengurusKomisiIni = false;
+    
+    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
+      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+    }
+    
+    setState(() {
+      _canEdit = isGlobalAdmin || isPengurusKomisiIni;
+    });
   }
 
   void _loadImages() {
@@ -175,7 +195,9 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
   }
 
   void _enterSelectionMode(int index) {
-    if (!UserManager().isAdmin()) return;
+    // 👇 PASTIKAN HANYA YANG PUNYA HAK AKSES YANG BISA HAPUS FOTO 👇
+    if (!_canEdit) return; 
+    
     setState(() {
       _isSelectionMode = true;
       _selectedPositions.add(index);
@@ -195,8 +217,6 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
 
   @override
   Widget build(BuildContext context) {
-    bool isAdmin = UserManager().isAdmin();
-
     return PopScope(
       canPop: !_isSelectionMode,
       onPopInvoked: (didPop) {
@@ -215,7 +235,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
               : null,
         ),
         body: _isLoading
-            ? LoadingSultan(size: 80)
+            ? const LoadingSultan(size: 80)
             : _imageList.isEmpty
                 ? const Center(child: Text("Folder kosong. Tambahkan foto!"))
                 : GridView.builder(
@@ -258,7 +278,8 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
                     },
                   ),
                   
-        floatingActionButton: !isAdmin ? null : FloatingActionButton(
+        // 👇 SEKARANG TOMBOL INI MUNCUL JIKA `_canEdit` TRUE (ADMIN ATAU PENGURUS SEKSI) 👇
+        floatingActionButton: !_canEdit ? null : FloatingActionButton(
           backgroundColor: _isSelectionMode ? Colors.red : const Color(0xFF075E54),
           foregroundColor: Colors.white,
           onPressed: _isSelectionMode ? _showDeleteConfirmation : _pickAndUploadImages,

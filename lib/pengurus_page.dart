@@ -8,7 +8,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'user_manager.dart';
 import 'loading_sultan.dart';
-// 👇 IMPORT HALAMAN DETAIL SEKSI BARU 👇
 import 'detail_seksi_page.dart';
 
 class PengurusPage extends StatefulWidget {
@@ -67,7 +66,7 @@ class _PengurusPageState extends State<PengurusPage> {
     }));
   }
 
-  // 👇 BOTTOM SHEET DETAIL PENGURUS 👇
+  // 👇 BOTTOM SHEET DETAIL PENGURUS INTI 👇
   void _showDetailBottomSheet(String nama, String jabatan, String? fotoUrl, String wa, String heroTag) {
     showModalBottomSheet(
       context: context,
@@ -117,7 +116,7 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 DIALOG TAMBAH/EDIT NAMA SEKSI (Grupnya) 👇
+  // 👇 DIALOG NAMA SEKSI 👇
   void _showSeksiNameDialog({String? docId, String initialName = ""}) {
     if (!_userManager.isAdmin()) return;
     final etSeksi = TextEditingController(text: initialName);
@@ -164,12 +163,10 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 DIALOG EDIT ORANG (Untuk Inti & Kursi di Seksi) 👇
-  void _showEditPersonDialog({
+  // 👇 DIALOG EDIT PENGURUS INTI (Harian Saja) 👇
+  void _showEditIntiDialog({
     required String title,
-    required bool isHarian,
     required String roleId, 
-    String? docId,  
     String initialNama = "",
     String initialWa = "",
     String? initialFotoUrl,
@@ -228,25 +225,18 @@ class _PengurusPageState extends State<PengurusPage> {
 
                 try {
                   if (imageFile != null) {
-                    String fileName = isHarian ? "harian_$roleId" : "seksi_${docId}_$roleId";
+                    String fileName = "harian_$roleId";
                     Reference ref = _storage.ref().child("gereja/$churchId/pengurus/$fileName.jpg");
                     await ref.putFile(imageFile!);
                     uploadedUrl = await ref.getDownloadURL();
                   }
 
-                  if (isHarian) {
-                    await _db.collection("churches").doc(churchId).update({
-                      "bpj_$roleId": etNama.text.trim(),
-                      "wa_$roleId": etWa.text.trim(),
-                      if (uploadedUrl != null) "img_$roleId": uploadedUrl,
-                    });
-                  } else {
-                    await _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(docId).update({
-                      "${roleId}_nama": etNama.text.trim(),
-                      "${roleId}_wa": etWa.text.trim(),
-                      "${roleId}_img": uploadedUrl ?? "",
-                    });
-                  }
+                  await _db.collection("churches").doc(churchId).update({
+                    "bpj_$roleId": etNama.text.trim(),
+                    "wa_$roleId": etWa.text.trim(),
+                    if (uploadedUrl != null) "img_$roleId": uploadedUrl,
+                  });
+                  
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data berhasil disimpan!")));
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
@@ -262,7 +252,7 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 WIDGET KARTU GRUP (KINI MENDUKUNG ON TAP CARD) 👇
+  // 👇 WIDGET KARTU GRUP 👇
   Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle, VoidCallback? onTapCard}) {
     List<Widget> cardContent = [
       Container(
@@ -291,7 +281,7 @@ class _PengurusPageState extends State<PengurusPage> {
     }
 
     return GestureDetector(
-      onTap: onTapCard, // Bikin seluruh kartu seksi bisa diklik
+      onTap: onTapCard, 
       child: Card(
         elevation: 2,
         margin: const EdgeInsets.only(bottom: 16),
@@ -302,10 +292,10 @@ class _PengurusPageState extends State<PengurusPage> {
   }
 
   // 👇 WIDGET BARIS ORANG 👇
-  Widget _buildPersonRow(String jabatan, String nama, String? fotoUrl, String wa, VoidCallback onTap, VoidCallback onLongPress) {
+  Widget _buildPersonRow(String jabatan, String nama, String? fotoUrl, VoidCallback onTap, VoidCallback onLongPress, {bool showEditIcon = true}) {
     bool isEmpty = nama.isEmpty || nama == "-";
     return InkWell(
-      onTap: isEmpty && _userManager.isAdmin() ? onLongPress : onTap,
+      onTap: onTap,
       onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -327,7 +317,7 @@ class _PengurusPageState extends State<PengurusPage> {
                 ],
               ),
             ),
-            if (_userManager.isAdmin()) const Icon(Icons.edit, size: 16, color: Colors.grey),
+            if (_userManager.isAdmin() && showEditIcon) const Icon(Icons.edit, size: 16, color: Colors.grey),
           ],
         ),
       ),
@@ -364,9 +354,15 @@ class _PengurusPageState extends State<PengurusPage> {
                       String wa = data["wa_$roleId"] ?? "";
                       String? img = data["img_$roleId"];
                       return _buildPersonRow(
-                        jabatan, nama, img, wa,
-                        () => _showDetailBottomSheet(nama, jabatan, img, wa, "inti_$roleId"),
-                        () => _showEditPersonDialog(title: "Edit $jabatan", isHarian: true, roleId: roleId, initialNama: nama, initialWa: wa, initialFotoUrl: img),
+                        jabatan, nama, img,
+                        () {
+                           if (nama.isEmpty && _userManager.isAdmin()) {
+                              _showEditIntiDialog(title: "Edit $jabatan", roleId: roleId, initialNama: nama, initialWa: wa, initialFotoUrl: img);
+                           } else if (nama.isNotEmpty) {
+                              _showDetailBottomSheet(nama, jabatan, img, wa, "inti_$roleId");
+                           }
+                        },
+                        () => _showEditIntiDialog(title: "Edit $jabatan", roleId: roleId, initialNama: nama, initialWa: wa, initialFotoUrl: img),
                       );
                     }
 
@@ -395,30 +391,36 @@ class _PengurusPageState extends State<PengurusPage> {
                         var data = doc.data() as Map<String, dynamic>;
                         String seksiName = data['namaSeksi'] ?? "Seksi";
 
-                        Widget buildSeksiRow(String roleId, String jabatanTitle, String fallbackNama, String fallbackWa, String? fallbackImg) {
+                        Widget buildSeksiRow(String roleId, String jabatanTitle, String fallbackNama, String? fallbackImg) {
                           String nama = data['${roleId}_nama'] ?? fallbackNama;
-                          String wa = data['${roleId}_wa'] ?? fallbackWa;
                           String? img = data['${roleId}_img'] ?? fallbackImg;
                           
+                          // 👇 KETIKA BARIS INI DIKLIK, LANGSUNG BUKA HALAMAN DETAIL SEKSI 👇
                           return _buildPersonRow(
-                            jabatanTitle, nama, img, wa,
-                            () => _showDetailBottomSheet(nama, "$jabatanTitle $seksiName", img, wa, "seksi_${doc.id}_$roleId"),
-                            () => _showEditPersonDialog(title: "Edit $jabatanTitle", isHarian: false, roleId: roleId, docId: doc.id, initialNama: nama, initialWa: wa, initialFotoUrl: img),
+                            jabatanTitle, nama, img,
+                            () {
+                               Navigator.push(context, MaterialPageRoute(
+                                 builder: (context) => DetailSeksiPage(docId: doc.id, namaSeksi: seksiName)
+                               ));
+                            },
+                            () {
+                               Navigator.push(context, MaterialPageRoute(
+                                 builder: (context) => DetailSeksiPage(docId: doc.id, namaSeksi: seksiName)
+                               ));
+                            },
+                            showEditIcon: false // Ikon pensil dihilangkan untuk baris ini
                           );
                         }
 
                         String oldNama = data['namaPengurus'] ?? "";
-                        String oldWa = data['telepon'] ?? "";
                         String? oldImg = data['fotoUrl'];
 
                         return _buildGroupCard(
                           seksiName,
                           [
-                            // 👇 CUKUP KETUA SAJA YANG TAMPIL DI DEPAN 👇
-                            buildSeksiRow("ketua", "KETUA", oldNama, oldWa, oldImg),
+                            buildSeksiRow("ketua", "KETUA", oldNama, oldImg),
                           ],
                           onEditTitle: () => _showSeksiNameDialog(docId: doc.id, initialName: seksiName),
-                          // 👇 INI YANG BIKIN BISA DIKLIK PINDAH HALAMAN 👇
                           onTapCard: () {
                             Navigator.push(context, MaterialPageRoute(
                               builder: (context) => DetailSeksiPage(docId: doc.id, namaSeksi: seksiName)

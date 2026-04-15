@@ -56,6 +56,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   
   int _totalPemasukan = 0;
   int _totalPengeluaran = 0;
+  int _totalSaldoTahunan = 0; // 👇 VARIABEL BARU UNTUK KARTU SULTAN 👇
 
   late int _selectedMonth;
   late int _selectedYear;
@@ -88,39 +89,60 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       return;
     }
 
-    DateTime startDate = DateTime(_selectedYear, _selectedMonth + 1, 1);
-    DateTime endDate = DateTime(_selectedYear, _selectedMonth + 2, 0, 23, 59, 59);
+    // Rentang Waktu Bulanan (Untuk List Bawah)
+    DateTime startDateBulanan = DateTime(_selectedYear, _selectedMonth + 1, 1);
+    DateTime endDateBulanan = DateTime(_selectedYear, _selectedMonth + 2, 0, 23, 59, 59);
+
+    // Rentang Waktu Tahunan (Untuk Kartu Sultan Atas)
+    DateTime startDateTahunan = DateTime(_selectedYear, 1, 1);
+    DateTime endDateTahunan = DateTime(_selectedYear, 12, 31, 23, 59, 59);
 
     bool isModeUmum = widget.filterKategorial == null || widget.filterKategorial!.isEmpty;
 
     try {
       var churchRef = _db.collection("churches").doc(churchId);
 
-      var trxQuery = churchRef.collection("transaksi")
-          .where("tanggal", isGreaterThanOrEqualTo: startDate)
-          .where("tanggal", isLessThanOrEqualTo: endDate);
+      // --- MENGAMBIL DATA UNTUK BULAN INI (Untuk List) ---
+      var trxQueryBulanan = churchRef.collection("transaksi")
+          .where("tanggal", isGreaterThanOrEqualTo: startDateBulanan)
+          .where("tanggal", isLessThanOrEqualTo: endDateBulanan);
           
       if (widget.tipeFilter != null) {
-        trxQuery = trxQuery.where("jenis", isEqualTo: widget.tipeFilter);
+        trxQueryBulanan = trxQueryBulanan.where("jenis", isEqualTo: widget.tipeFilter);
       }
 
-      List<Future<QuerySnapshot<Map<String, dynamic>>>> tasksToRun = [trxQuery.get()];
+      List<Future<QuerySnapshot<Map<String, dynamic>>>> tasksToRun = [trxQueryBulanan.get()];
 
       bool fetchPerpuluhan = isModeUmum && (widget.tipeFilter == "Pemasukan" || widget.tipeFilter == null);
       if (fetchPerpuluhan) {
-        var perpQuery = churchRef.collection("perpuluhan")
-            .where("tanggal", isGreaterThanOrEqualTo: startDate)
-            .where("tanggal", isLessThanOrEqualTo: endDate);
-        tasksToRun.add(perpQuery.get());
+        var perpQueryBulanan = churchRef.collection("perpuluhan")
+            .where("tanggal", isGreaterThanOrEqualTo: startDateBulanan)
+            .where("tanggal", isLessThanOrEqualTo: endDateBulanan);
+        tasksToRun.add(perpQueryBulanan.get());
       }
 
+      // --- MENGAMBIL DATA UNTUK TAHUN INI (Hanya Total Saldo) ---
+      var trxQueryTahunan = churchRef.collection("transaksi")
+          .where("tanggal", isGreaterThanOrEqualTo: startDateTahunan)
+          .where("tanggal", isLessThanOrEqualTo: endDateTahunan);
+      tasksToRun.add(trxQueryTahunan.get());
+
+      if (fetchPerpuluhan) {
+        var perpQueryTahunan = churchRef.collection("perpuluhan")
+            .where("tanggal", isGreaterThanOrEqualTo: startDateTahunan)
+            .where("tanggal", isLessThanOrEqualTo: endDateTahunan);
+        tasksToRun.add(perpQueryTahunan.get());
+      }
+
+      // Eksekusi semua tugas sekaligus
       var results = await Future.wait(tasksToRun);
       
       List<TransaksiItem> combinedList = [];
-      int tempMasuk = 0;
-      int tempKeluar = 0;
+      int tempMasukBulan = 0;
+      int tempKeluarBulan = 0;
+      int tempSaldoTahunan = 0;
 
-      // PROSES TRANSAKSI
+      // 1. PROSES TRANSAKSI BULANAN (Untuk List)
       for (var doc in results[0].docs) {
         var data = doc.data();
         String kat = (data['kategori'] as String?)?.trim() ?? "";
@@ -142,12 +164,13 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         );
         
         combinedList.add(trx);
-        if (trx.jenis == "Pemasukan") tempMasuk += trx.jumlah;
-        else tempKeluar += trx.jumlah;
+        if (trx.jenis == "Pemasukan") tempMasukBulan += trx.jumlah;
+        else tempKeluarBulan += trx.jumlah;
       }
 
-      // PROSES PERPULUHAN (Jika Ada)
-      if (fetchPerpuluhan && results.length > 1) {
+      // 2. PROSES PERPULUHAN BULANAN (Jika Ada)
+      int offset = fetchPerpuluhan ? 1 : 0;
+      if (fetchPerpuluhan) {
         for (var doc in results[1].docs) {
           var data = doc.data();
           var trx = TransaksiItem(
@@ -161,16 +184,44 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           );
           
           combinedList.add(trx);
-          tempMasuk += trx.jumlah;
+          tempMasukBulan += trx.jumlah;
         }
+      }
+
+      // 3. PROSES TOTAL SALDO TAHUNAN
+      var docTahunan = results[1 + offset].docs;
+      for (var doc in docTahunan) {
+          var data = doc.data();
+          String kat = (data['kategori'] as String?)?.trim() ?? "";
+          
+          if (isModeUmum) {
+            if (kat.isNotEmpty && kat.toLowerCase() != "umum") continue;
+          } else {
+            if (kat.toLowerCase() != widget.filterKategorial?.trim().toLowerCase()) continue;
+          }
+
+          int jml = (data['jumlah'] ?? 0) as int;
+          String jns = data['jenis'] ?? "Pemasukan";
+          
+          if (jns == "Pemasukan") tempSaldoTahunan += jml;
+          else tempSaldoTahunan -= jml;
+      }
+
+      if (fetchPerpuluhan) {
+         var docPerpTahunan = results[2 + offset].docs;
+         for (var doc in docPerpTahunan) {
+            int jml = (doc.data()['jumlah'] ?? 0) as int;
+            tempSaldoTahunan += jml;
+         }
       }
 
       combinedList.sort((a, b) => b.tanggal.compareTo(a.tanggal));
 
       setState(() {
         _transaksiList = combinedList;
-        _totalPemasukan = tempMasuk;
-        _totalPengeluaran = tempKeluar;
+        _totalPemasukan = tempMasukBulan;
+        _totalPengeluaran = tempKeluarBulan;
+        _totalSaldoTahunan = tempSaldoTahunan;
       });
 
     } catch (e) {
@@ -355,7 +406,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 👇 SATPAM PENJAGA PRIVASI & HAK EDIT 👇
     final userManager = UserManager();
     bool isGlobalAdmin = userManager.isAdmin();
     bool isPengurusKomisiIni = false;
@@ -364,20 +414,18 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
     }
     
-    // Jika dia Admin Global ATAU Pengurus Komisi tersebut, izinkan Edit & Export!
     bool canEdit = isGlobalAdmin || isPengurusKomisiIni;
-
     String label = widget.filterKategorial == null || widget.filterKategorial!.isEmpty ? "Umum" : widget.filterKategorial!;
     String titleText = "Laporan ${widget.tipeFilter ?? 'Keuangan'} ($label)";
 
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: const Color(0xFFF5F7FA), // Ubah background jadi abu-abu bersih
       appBar: AppBar(
-        title: Text(titleText, style: const TextStyle(fontSize: 18)),
+        title: Text(titleText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
-          // 👇 EXPORT PDF/CSV HANYA UNTUK YANG BERHAK 👇
           if (canEdit)
             PopupMenuButton<String>(
               onSelected: (val) {
@@ -393,70 +441,103 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       ),
       body: Column(
         children: [
+          // 👇 INI DIA KARTU SULTAN TAMPILAN BARU 👇
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(20), bottomRight: Radius.circular(20)),
+              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(0, 5))]
+            ),
+            child: Column(
               children: [
-                Expanded(
-                  child: DropdownButton<int>(
-                    isExpanded: true,
-                    value: _selectedMonth,
-                    items: List.generate(12, (index) => DropdownMenuItem(value: index, child: Text(_bulanArray[index]))),
-                    onChanged: (val) { if (val != null) { setState(() => _selectedMonth = val); _loadData(); } },
-                  ),
+                // DROPDOWN BULAN & TAHUN
+                Row(
+                  children: [
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            isExpanded: true,
+                            value: _selectedMonth,
+                            items: List.generate(12, (index) => DropdownMenuItem(value: index, child: Text(_bulanArray[index]))),
+                            onChanged: (val) { if (val != null) { setState(() => _selectedMonth = val); _loadData(); } },
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            isExpanded: true,
+                            value: _selectedYear,
+                            items: _tahunArray.map((year) => DropdownMenuItem(value: year, child: Text(year.toString()))).toList(),
+                            onChanged: (val) { if (val != null) { setState(() => _selectedYear = val); _loadData(); } },
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: DropdownButton<int>(
-                    isExpanded: true,
-                    value: _selectedYear,
-                    items: _tahunArray.map((year) => DropdownMenuItem(value: year, child: Text(year.toString()))).toList(),
-                    onChanged: (val) { if (val != null) { setState(() => _selectedYear = val); _loadData(); } },
-                  ),
+                const SizedBox(height: 20),
+                
+                // TOTAL SALDO TAHUNAN
+                const Text("Total Saldo Tahun Ini", style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                Text(formatRupiah(_totalSaldoTahunan), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, color: Colors.blue)),
+                
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 15),
+                  child: Divider(),
+                ),
+
+                // RINGKASAN PEMASUKAN & PENGELUARAN BULANAN
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Pemasukan Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          const SizedBox(height: 2),
+                          Text(formatRupiah(_totalPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                    ),
+                    Container(height: 30, width: 1, color: Colors.grey.shade300),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text("Pengeluaran Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                          const SizedBox(height: 2),
+                          Text(formatRupiah(_totalPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
           
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color: Colors.white,
-            child: Row(
-              children: [
-                if (widget.tipeFilter != "Pengeluaran")
-                  Expanded(
-                    child: Column(
-                      children: [
-                        const Text("Pemasukan", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        Text(formatRupiah(_totalPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
-                    ),
-                  ),
-                if (widget.tipeFilter == null)
-                  Container(height: 30, width: 1, color: Colors.grey[300]),
-                if (widget.tipeFilter != "Pemasukan")
-                  Expanded(
-                    child: Column(
-                      children: [
-                        const Text("Pengeluaran", style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        Text(formatRupiah(_totalPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
           const SizedBox(height: 10),
 
+          // 👇 LIST TRANSAKSI BAWAH 👇
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
               : _transaksiList.isEmpty
                 ? const Center(child: Text("Data Kosong", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     itemCount: _transaksiList.length,
                     itemBuilder: (context, index) {
                       var t = _transaksiList[index];
@@ -464,20 +545,22 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                       
                       return Card(
                         elevation: 1,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          // 👇 HANYA BISA DIKLIK (EDIT/HAPUS) OLEH YANG BERHAK 👇
+                          borderRadius: BorderRadius.circular(15),
                           onTap: canEdit ? () => _showOptionsDialog(t) : null,
                           child: Padding(
                             padding: const EdgeInsets.all(15),
                             child: Row(
                               children: [
                                 CircleAvatar(
-                                  backgroundColor: isMasuk ? Colors.green.shade100 : Colors.red.shade100,
+                                  radius: 22,
+                                  backgroundColor: isMasuk ? Colors.green.shade50 : Colors.red.shade50,
                                   child: Icon(
                                     isMasuk ? Icons.arrow_downward : Icons.arrow_upward, 
-                                    color: isMasuk ? Colors.green : Colors.red
+                                    color: isMasuk ? Colors.green : Colors.red,
+                                    size: 20,
                                   ),
                                 ),
                                 const SizedBox(width: 15),
@@ -485,7 +568,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(t.keterangan, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                                      Text(t.keterangan, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)),
                                       const SizedBox(height: 4),
                                       Text(formatTanggal(t.tanggal), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                                     ],
@@ -506,10 +589,11 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         ],
       ),
       
-      // 👇 TOMBOL TAMBAH TRANSAKSI MUNCUL JIKA canEdit == true 👇
       floatingActionButton: !canEdit ? null : FloatingActionButton(
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
         child: const Icon(Icons.add),
         onPressed: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(

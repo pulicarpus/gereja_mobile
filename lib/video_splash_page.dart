@@ -20,10 +20,10 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
   @override
   void initState() {
     super.initState();
-    // 👇 Pastikan jalurnya sesuai dengan video polosan yang baru
+    // Pastikan jalurnya sesuai dengan video polosan Bos
     _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4")
       ..initialize().then((_) {
-        _controller.setVolume(0.0); // 👇 SATPAM AUDIO: Mute suara videonya biar elegan
+        _controller.setVolume(0.0); // SATPAM AUDIO: Mute suara videonya
         setState(() {});
         _controller.play(); 
       });
@@ -62,21 +62,21 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Background warna putih supaya nyambung sama videonya
+      backgroundColor: Colors.white,
       body: Stack(
         fit: StackFit.expand,
         children: [
           // ==========================================
-          // LAYER 1 (PALING BAWAH): VIDEO OMBAK
+          // LAYER 1 (PALING BAWAH): VIDEO OMBAK FULL SCREEN
           // ==========================================
           Center(
             child: _controller.value.isInitialized
                 ? SizedBox(
                     width: double.infinity,
                     height: double.infinity,
-                    // 👇 INI KUNCINYA BOS, TETAP PAKAI CONTAIN SESUAI REQUEST LAMA 👇
+                    // 👇 INI DIA KUNCI SULTANNYA: UBAH JADI COVER 👇
                     child: FittedBox(
-                      fit: BoxFit.contain, 
+                      fit: BoxFit.cover, 
                       child: SizedBox(
                         width: _controller.value.size.width,
                         height: _controller.value.size.height,
@@ -94,7 +94,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.of(context).size.height * 0.35, // Atur ketinggian teks di sini (35% dari bawah)
+              bottom: MediaQuery.of(context).size.height * 0.35, // Ketinggian teks (35% dari bawah)
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -104,18 +104,18 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Colors.indigo.shade800, // Warna biru tua mewah
+                      color: Colors.indigo.shade900, // Warna biru tua
                       shadows: [
                         Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
                       ]
                     ),
                   ),
-                  const SizedBox(height: 5), // Jarak antara baris atas dan bawah
+                  const SizedBox(height: 5), // Jarak baris
                   Text(
                     "GKII Mobile",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 38, // Ukuran lebih besar biar gagah
+                      fontSize: 38, // Ukuran gagah
                       fontWeight: FontWeight.w900, 
                       color: Colors.blue.shade700,
                       shadows: [

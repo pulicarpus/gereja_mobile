@@ -8,6 +8,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'user_manager.dart';
 import 'loading_sultan.dart';
+// 👇 IMPORT HALAMAN DETAIL SEKSI BARU 👇
+import 'detail_seksi_page.dart';
 
 class PengurusPage extends StatefulWidget {
   const PengurusPage({super.key});
@@ -260,8 +262,8 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 WIDGET KARTU GRUP (Membungkus beberapa orang) 👇
-  Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle}) {
+  // 👇 WIDGET KARTU GRUP (KINI MENDUKUNG ON TAP CARD) 👇
+  Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle, VoidCallback? onTapCard}) {
     List<Widget> cardContent = [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -270,8 +272,14 @@ class _PengurusPageState extends State<PengurusPage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(title.toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade900, fontSize: 14)),
-            if (onEditTitle != null && _userManager.isAdmin()) 
-              InkWell(onTap: onEditTitle, child: const Icon(Icons.edit, size: 18, color: Colors.indigo))
+            Row(
+              children: [
+                if (onEditTitle != null && _userManager.isAdmin()) 
+                  InkWell(onTap: onEditTitle, child: const Padding(padding: EdgeInsets.all(4.0), child: Icon(Icons.edit, size: 18, color: Colors.indigo))),
+                if (onTapCard != null)
+                  const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: Colors.indigo)),
+              ],
+            )
           ],
         ),
       )
@@ -282,15 +290,18 @@ class _PengurusPageState extends State<PengurusPage> {
       if (i < members.length - 1) cardContent.add(Divider(height: 1, indent: 70, color: Colors.grey.shade200));
     }
 
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cardContent),
+    return GestureDetector(
+      onTap: onTapCard, // Bikin seluruh kartu seksi bisa diklik
+      child: Card(
+        elevation: 2,
+        margin: const EdgeInsets.only(bottom: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: cardContent),
+      ),
     );
   }
 
-  // 👇 WIDGET BARIS ORANG (Di dalam Grup) 👇
+  // 👇 WIDGET BARIS ORANG 👇
   Widget _buildPersonRow(String jabatan, String nama, String? fotoUrl, String wa, VoidCallback onTap, VoidCallback onLongPress) {
     bool isEmpty = nama.isEmpty || nama == "-";
     return InkWell(
@@ -348,7 +359,6 @@ class _PengurusPageState extends State<PengurusPage> {
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     var data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
-                    // Helper untuk panggil _buildPersonRow khusus Harian
                     Widget buildHarianRow(String roleId, String jabatan) {
                       String nama = data["bpj_$roleId"] ?? "";
                       String wa = data["wa_$roleId"] ?? "";
@@ -385,9 +395,7 @@ class _PengurusPageState extends State<PengurusPage> {
                         var data = doc.data() as Map<String, dynamic>;
                         String seksiName = data['namaSeksi'] ?? "Seksi";
 
-                        // Helper untuk panggil _buildPersonRow khusus Seksi
                         Widget buildSeksiRow(String roleId, String jabatanTitle, String fallbackNama, String fallbackWa, String? fallbackImg) {
-                          // Sistem Fallback: Coba ambil dari format baru (ketua_nama), kalau kosong ambil dari format lama (namaPengurus) supaya data lama selamat
                           String nama = data['${roleId}_nama'] ?? fallbackNama;
                           String wa = data['${roleId}_wa'] ?? fallbackWa;
                           String? img = data['${roleId}_img'] ?? fallbackImg;
@@ -399,7 +407,6 @@ class _PengurusPageState extends State<PengurusPage> {
                           );
                         }
 
-                        // Data lama (sebelum multi-kursi) diselamatkan ke slot Ketua
                         String oldNama = data['namaPengurus'] ?? "";
                         String oldWa = data['telepon'] ?? "";
                         String? oldImg = data['fotoUrl'];
@@ -407,11 +414,16 @@ class _PengurusPageState extends State<PengurusPage> {
                         return _buildGroupCard(
                           seksiName,
                           [
+                            // 👇 CUKUP KETUA SAJA YANG TAMPIL DI DEPAN 👇
                             buildSeksiRow("ketua", "KETUA", oldNama, oldWa, oldImg),
-                            buildSeksiRow("sek", "SEKRETARIS", "", "", null),
-                            buildSeksiRow("bend", "BENDAHARA", "", "", null),
                           ],
-                          onEditTitle: () => _showSeksiNameDialog(docId: doc.id, initialName: seksiName)
+                          onEditTitle: () => _showSeksiNameDialog(docId: doc.id, initialName: seksiName),
+                          // 👇 INI YANG BIKIN BISA DIKLIK PINDAH HALAMAN 👇
+                          onTapCard: () {
+                            Navigator.push(context, MaterialPageRoute(
+                              builder: (context) => DetailSeksiPage(docId: doc.id, namaSeksi: seksiName)
+                            ));
+                          }
                         );
                       }).toList(),
                     );
@@ -422,7 +434,6 @@ class _PengurusPageState extends State<PengurusPage> {
             ),
           ),
           
-      // 👇 TOMBOL TAMBAH SEKSI KHUSUS ADMIN 👇
       floatingActionButton: _userManager.isAdmin()
           ? FloatingActionButton.extended(
               onPressed: () => _showSeksiNameDialog(),

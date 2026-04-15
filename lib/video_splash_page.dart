@@ -20,8 +20,10 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
   @override
   void initState() {
     super.initState();
+    // 👇 Pastikan jalurnya sesuai dengan video polosan yang baru
     _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4")
       ..initialize().then((_) {
+        _controller.setVolume(0.0); // 👇 SATPAM AUDIO: Mute suara videonya biar elegan
         setState(() {});
         _controller.play(); 
       });
@@ -57,26 +59,74 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
     super.dispose();
   }
 
- @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white, // Background warna putih supaya nyambung sama videonya
-      body: Center(
-        child: _controller.value.isInitialized
-            ? SizedBox(
-                width: double.infinity,
-                height: double.infinity,
-                // 👇 INI KUNCINYA BOS, JANGAN PAKAI COVER TAPI PAKAI CONTAIN 👇
-                child: FittedBox(
-                  fit: BoxFit.contain, 
-                  child: SizedBox(
-                    width: _controller.value.size.width,
-                    height: _controller.value.size.height,
-                    child: VideoPlayer(_controller),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // ==========================================
+          // LAYER 1 (PALING BAWAH): VIDEO OMBAK
+          // ==========================================
+          Center(
+            child: _controller.value.isInitialized
+                ? SizedBox(
+                    width: double.infinity,
+                    height: double.infinity,
+                    // 👇 INI KUNCINYA BOS, TETAP PAKAI CONTAIN SESUAI REQUEST LAMA 👇
+                    child: FittedBox(
+                      fit: BoxFit.contain, 
+                      child: SizedBox(
+                        width: _controller.value.size.width,
+                        height: _controller.value.size.height,
+                        child: VideoPlayer(_controller),
+                      ),
+                    ),
+                  )
+                : const CircularProgressIndicator(color: Colors.indigo), 
+          ),
+
+          // ==========================================
+          // LAYER 2 (PALING ATAS): TEKS TAJAM (HD)
+          // ==========================================
+          if (_controller.value.isInitialized)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: MediaQuery.of(context).size.height * 0.35, // Atur ketinggian teks di sini (35% dari bawah)
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Selamat Datang di",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo.shade800, // Warna biru tua mewah
+                      shadows: [
+                        Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
+                      ]
+                    ),
                   ),
-                ),
-              )
-            : const CircularProgressIndicator(color: Colors.indigo), 
+                  const SizedBox(height: 5), // Jarak antara baris atas dan bawah
+                  Text(
+                    "GKII Mobile",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 38, // Ukuran lebih besar biar gagah
+                      fontWeight: FontWeight.w900, 
+                      color: Colors.blue.shade700,
+                      shadows: [
+                        Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
+                      ]
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -3,7 +3,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:audioplayers/audioplayers.dart'; 
 
 class DetailLaguPage extends StatefulWidget {
-  // 👇 SEKARANG MENERIMA SELURUH DAFTAR LAGU 👇
   final List<Map<String, dynamic>> songList;
   final int initialIndex;
 
@@ -14,14 +13,12 @@ class DetailLaguPage extends StatefulWidget {
 }
 
 class _DetailLaguPageState extends State<DetailLaguPage> {
+  //👇 Satu variabel font saja sekarang 👇
   double _fontSize = 20.0; 
-  double _baseFontSize = 20.0;
 
-  // 👇 VARIABEL UNTUK FITUR SWIPE 👇
   late PageController _pageController;
   late int _currentIndex;
 
-  // VARIABEL MESIN AUDIO SULTAN
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
@@ -54,9 +51,8 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
     super.dispose();
   }
 
-  // 👇 FUNGSI SAAT JEMAAT MENGGESER LAYAR 👇
   void _onPageChanged(int index) async {
-    await _audioPlayer.stop(); // Matikan lagu sebelumnya
+    await _audioPlayer.stop(); 
     setState(() {
       _currentIndex = index;
       _isPlaying = false;
@@ -69,7 +65,6 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
     if (_isPlaying) {
       await _audioPlayer.pause();
     } else {
-      // Ambil lagu yang SEDANG TAMPIL di layar saat ini
       Map<String, dynamic> currentSong = widget.songList[_currentIndex];
       String rawNomor = currentSong['nomor'] ?? "";
       String cleanNomor = rawNomor.replaceAll(RegExp(r'[^0-9]'), '');
@@ -94,13 +89,25 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
     }
   }
 
+  // 👇 FUNGSI TOMBOL ZOOM SULTAN 👇
+  void _zoomIn() {
+    setState(() {
+      _fontSize = (_fontSize + 2.0).clamp(14.0, 40.0);
+    });
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _fontSize = (_fontSize - 2.0).clamp(14.0, 40.0);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color mainBgColor = Color(0xFFEFE6D6); 
     const Color paperColor = Color(0xFFFCFBF4); 
     const Color headerIndigo = Color(0xFF1A237E);
 
-    // Ambil data lagu sesuai halaman yang sedang dibuka
     Map<String, dynamic> currentSong = widget.songList[_currentIndex];
     final String judul = currentSong['judul'] ?? "Tanpa Judul";
     final String nomor = currentSong['nomor'] ?? "";
@@ -116,7 +123,6 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text("Lirik Lagu", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            // Tambahan indikator kecil di bawah judul AppBar
             if (isNKI) Text("Lagu ${nomor.isNotEmpty ? nomor : '-'}", style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
         ),
@@ -124,7 +130,6 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
-          // 👇 TOMBOL PLAY SULTAN PINDAH KE SINI 👇
           if (isNKI)
             IconButton(
               icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, size: 32, color: Colors.orangeAccent),
@@ -137,7 +142,6 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
             },
           )
         ],
-        // 👇 SLIDER DURASI NYELIP CANTIK DI BAWAH APPBAR 👇
         bottom: isNKI ? PreferredSize(
           preferredSize: const Size.fromHeight(15),
           child: Container(
@@ -166,13 +170,12 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
           ),
         ) : null,
       ),
-      // 👇 INI DIA MESIN GESER HALAMANNYA (PAGE VIEW) 👇
+      
       body: PageView.builder(
         controller: _pageController,
         onPageChanged: _onPageChanged,
         itemCount: widget.songList.length,
         itemBuilder: (context, index) {
-          // Ambil data lagu untuk halaman yang sedang di-render
           Map<String, dynamic> song = widget.songList[index];
           final String itemJudul = song['judul'] ?? "Tanpa Judul";
           final String itemNomor = song['nomor'] ?? "";
@@ -192,6 +195,7 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
                     ]
+                    
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.center, 
@@ -208,25 +212,16 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                       ),
                       const Divider(height: 40, thickness: 1.2),
 
-                      GestureDetector(
-                        onScaleStart: (details) => _baseFontSize = _fontSize,
-                        onScaleUpdate: (details) {
-                          setState(() {
-                            _fontSize = (_baseFontSize * details.scale).clamp(14.0, 40.0);
-                          });
-                        },
-                        child: Container(
-                          color: Colors.transparent, 
-                          width: double.infinity,
-                          child: Text(
-                            itemLirik,
-                            textAlign: TextAlign.left, 
-                            style: TextStyle(
-                              fontSize: _fontSize,
-                              height: 1.6, 
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w500
-                            ),
+                      SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          itemLirik,
+                          textAlign: TextAlign.left, 
+                          style: TextStyle(
+                            fontSize: _fontSize, // Ukuran dikontrol dari tombol
+                            height: 1.6, 
+                            color: Colors.black87,
+                            fontWeight: FontWeight.w500
                           ),
                         ),
                       ),
@@ -235,7 +230,6 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                 ),
                 const SizedBox(height: 30),
                 
-                // 👇 PETUNJUK GESER ESTETIK 👇
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -246,11 +240,35 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
                     Icon(Icons.swipe_right, color: Colors.grey[400], size: 20),
                   ],
                 ),
-                const SizedBox(height: 50),
+                const SizedBox(height: 80), // Jarak ekstra biar nggak ketutup tombol floating
               ],
             ),
           );
         },
+      ),
+
+      // 👇 TOMBOL ZOOM MELAYANG DI KANAN BAWAH DENGAN IKON BARU 👇
+      floatingActionButton: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: "btnZoomIn",
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.indigo[900],
+            elevation: 4,
+            onPressed: _zoomIn,
+            child: const Icon(Icons.zoom_in), // 👈 Kaca Pembesar Tanda Tambah (+)
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.small(
+            heroTag: "btnZoomOut",
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.indigo[900],
+            elevation: 4,
+            onPressed: _zoomOut,
+            child: const Icon(Icons.zoom_out), // 👈 Kaca Pembesar Tanda Kurang (-)
+          ),
+        ],
       ),
     );
   }

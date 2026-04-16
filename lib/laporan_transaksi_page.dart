@@ -9,18 +9,16 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
-// 👇 KABEL NAVIGASI SUDAH TERSAMBUNG 👇
 import 'tambah_transaksi_page.dart'; 
 import 'tambah_perpuluhan_page.dart'; 
 
-// --- DATA CLASS TRANSAKSI GABUNGAN ---
 class TransaksiItem {
   final String id;
   final String keterangan;
   final int jumlah;
-  final String jenis; // "Pemasukan" atau "Pengeluaran"
+  final String jenis; 
   final DateTime tanggal;
-  final String sumber; // "transaksi" atau "perpuluhan"
+  final String sumber; 
   final String? kategori;
 
   TransaksiItem({
@@ -35,8 +33,8 @@ class TransaksiItem {
 }
 
 class LaporanTransaksiPage extends StatefulWidget {
-  final String? tipeFilter; // "Pemasukan", "Pengeluaran", atau null (Semua)
-  final String? filterKategorial; // "Pemuda", "Sekolah Minggu", atau null (Umum)
+  final String? tipeFilter; 
+  final String? filterKategorial; 
 
   const LaporanTransaksiPage({
     super.key,
@@ -56,7 +54,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   
   int _totalPemasukan = 0;
   int _totalPengeluaran = 0;
-  int _totalSaldoTahunan = 0; // KARTU SULTAN
+  int _totalSaldoTahunan = 0; 
 
   late int _selectedMonth;
   late int _selectedYear;
@@ -275,7 +273,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         perpuluhanEdit: PerpuluhanEditData(
           id: trx.id, 
           jumlah: trx.jumlah, 
-          namaJemaat: trx.keterangan.replaceAll("Perpuluhan: ", ""), // Bersihkan prefix
+          namaJemaat: trx.keterangan.replaceAll("Perpuluhan: ", ""),
           tanggal: trx.tanggal
         )
       ))).then((_) => _loadData());
@@ -287,7 +285,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           jumlah: trx.jumlah, 
           jenis: trx.jenis, 
           tanggal: trx.tanggal,
-          kategori: trx.kategori, // Kategori dikirim agar tidak bocor
+          kategori: trx.kategori,
         ), 
         filterKategorial: widget.filterKategorial,
       ))).then((_) => _loadData());
@@ -433,7 +431,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       ),
       body: Column(
         children: [
-          // 👇 KARTU SULTAN (DITAMPILKAN DI SEMUA MODE) 👇
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
@@ -477,7 +474,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                   ],
                 ),
                 
-                // Jika sedang filter khusus, tidak usah tampilkan total saldo tahunan (biar tidak bingung)
                 if (widget.tipeFilter == null) ...[
                   const SizedBox(height: 20),
                   const Text("Total Saldo Tahun Ini", style: TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.bold)),
@@ -491,32 +487,70 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                   const SizedBox(height: 15),
                 ],
 
-                // RINGKASAN PEMASUKAN & PENGELUARAN BULANAN
+                // 👇 INI DIA DESAIN BARU: MASUK, SALDO, KELUAR 👇
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    // KOLOM KIRI: PEMASUKAN
                     if (widget.tipeFilter != "Pengeluaran")
                       Expanded(
                         child: Column(
                           crossAxisAlignment: widget.tipeFilter == null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                           children: [
-                            const Text("Pemasukan Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                            const SizedBox(height: 2),
-                            Text(formatRupiah(_totalPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                            const Text("Masuk Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                            const SizedBox(height: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(formatRupiah(_totalPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 15)),
+                            ),
                           ],
                         ),
                       ),
+                      
+                    // KOLOM TENGAH: SALDO BULAN INI (Khusus mode laporan gabungan)
                     if (widget.tipeFilter == null)
-                      Container(height: 30, width: 1, color: Colors.grey.shade300),
-                    if (widget.tipeFilter == null)
-                      const SizedBox(width: 15),
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade100, width: 1)
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              const Text("Saldo Bulan Ini", style: TextStyle(color: Colors.blueGrey, fontSize: 10, fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 4),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  formatRupiah(_totalPemasukan - _totalPengeluaran), 
+                                  style: TextStyle(
+                                    color: (_totalPemasukan - _totalPengeluaran) >= 0 ? Colors.blue.shade700 : Colors.red.shade700, 
+                                    fontWeight: FontWeight.w900, 
+                                    fontSize: 14
+                                  )
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                    // KOLOM KANAN: PENGELUARAN
                     if (widget.tipeFilter != "Pemasukan")
                       Expanded(
                         child: Column(
                           crossAxisAlignment: widget.tipeFilter == null ? CrossAxisAlignment.end : CrossAxisAlignment.center,
                           children: [
-                            const Text("Pengeluaran Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                            const SizedBox(height: 2),
-                            Text(formatRupiah(_totalPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                            const Text("Keluar Bulan Ini", style: TextStyle(color: Colors.grey, fontSize: 11)),
+                            const SizedBox(height: 4),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(formatRupiah(_totalPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 15)),
+                            ),
                           ],
                         ),
                       ),
@@ -526,7 +560,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
             ),
           ),
           
-          // 👇 TOMBOL SHORTCUT (HANYA MUNCUL DI MODE SEMUA/UMUM) 👇
           if (widget.tipeFilter == null)
             Padding(
               padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 5),
@@ -589,7 +622,6 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
           const SizedBox(height: 5),
 
-          // 👇 LIST TRANSAKSI BAWAH 👇
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())

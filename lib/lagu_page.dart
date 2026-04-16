@@ -269,8 +269,11 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
                             
                             // MASUK KE DETAIL LIRIK (JEMAAT)
                             onTap: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => DetailLaguPage(songData: song)));
-                            },
+                             Navigator.push(context, MaterialPageRoute(builder: (context) => DetailLaguPage(
+                                songList: _filteredList, 
+                               initialIndex: index
+                                )));
+                               },
                             
                             // MENU EDIT/HAPUS (ADMIN)
                             onLongPress: _isAdmin ? () => _showAdminDialog(song) : null,

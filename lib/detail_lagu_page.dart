@@ -1,22 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:audioplayers/audioplayers.dart'; // 👈 IMPORT AUDIO SULTAN
+import 'package:audioplayers/audioplayers.dart'; 
 
 class DetailLaguPage extends StatefulWidget {
-  final Map<String, dynamic> songData;
+  // 👇 SEKARANG MENERIMA SELURUH DAFTAR LAGU 👇
+  final List<Map<String, dynamic>> songList;
+  final int initialIndex;
 
-  const DetailLaguPage({super.key, required this.songData});
+  const DetailLaguPage({super.key, required this.songList, required this.initialIndex});
 
   @override
   State<DetailLaguPage> createState() => _DetailLaguPageState();
 }
 
 class _DetailLaguPageState extends State<DetailLaguPage> {
-  // Variabel untuk Zoom Huruf
   double _fontSize = 20.0; 
   double _baseFontSize = 20.0;
 
-  // 👇 VARIABEL MESIN AUDIO SULTAN 👇
+  // 👇 VARIABEL UNTUK FITUR SWIPE 👇
+  late PageController _pageController;
+  late int _currentIndex;
+
+  // VARIABEL MESIN AUDIO SULTAN
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
   Duration _duration = Duration.zero;
@@ -25,10 +30,11 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
   @override
   void initState() {
     super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: _currentIndex);
     _setupAudio();
   }
 
-  // Pasang Telinga untuk Durasi dan Status Lagu
   void _setupAudio() {
     _audioPlayer.onPlayerStateChanged.listen((state) {
       if (mounted) setState(() => _isPlaying = state == PlayerState.playing);
@@ -43,18 +49,29 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
 
   @override
   void dispose() {
-    // 👇 SATPAM AUDIO: Wajib dimatikan saat jemaat kembali ke daftar lagu
     _audioPlayer.dispose(); 
+    _pageController.dispose();
     super.dispose();
   }
 
-  // LOGIKA PINTAR PLAY/PAUSE VIA GITHUB STREAMING
+  // 👇 FUNGSI SAAT JEMAAT MENGGESER LAYAR 👇
+  void _onPageChanged(int index) async {
+    await _audioPlayer.stop(); // Matikan lagu sebelumnya
+    setState(() {
+      _currentIndex = index;
+      _isPlaying = false;
+      _position = Duration.zero;
+      _duration = Duration.zero;
+    });
+  }
+
   void _playPauseAudio() async {
     if (_isPlaying) {
       await _audioPlayer.pause();
     } else {
-      String rawNomor = widget.songData['nomor'] ?? "";
-      // Bersihkan huruf/simbol, ambil angkanya saja
+      // Ambil lagu yang SEDANG TAMPIL di layar saat ini
+      Map<String, dynamic> currentSong = widget.songList[_currentIndex];
+      String rawNomor = currentSong['nomor'] ?? "";
       String cleanNomor = rawNomor.replaceAll(RegExp(r'[^0-9]'), '');
       
       if (cleanNomor.isEmpty) {
@@ -62,14 +79,14 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
          return;
       }
 
-      // 👇 JALAN NINJA: PIPA STREAMING GITHUB BOS 👇
       String githubBaseUrl = "https://raw.githubusercontent.com/pulicarpus/audio-nki/main/";
       String fileName = "NKI_${cleanNomor.padLeft(3, '0')}.mp3";
       String fullUrl = githubBaseUrl + fileName;
       
       try {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memuat audio dari server...")));
-        // Menyedot lagu dari GitHub!
+        if (mounted && _position == Duration.zero) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memuat audio dari server...")));
+        }
         await _audioPlayer.play(UrlSource(fullUrl));
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Maaf, file MP3 belum tersedia di server.")));
@@ -79,26 +96,40 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Tema warna "Warm Paper" agar jemaat nyaman baca di gereja
     const Color mainBgColor = Color(0xFFEFE6D6); 
     const Color paperColor = Color(0xFFFCFBF4); 
     const Color headerIndigo = Color(0xFF1A237E);
 
-    final String judul = widget.songData['judul'] ?? "Tanpa Judul";
-    final String nomor = widget.songData['nomor'] ?? "";
-    final String lirik = widget.songData['lirik'] ?? "Lirik tidak tersedia.";
-    final String pencipta = widget.songData['pencipta'] ?? "Pelayan Tuhan";
+    // Ambil data lagu sesuai halaman yang sedang dibuka
+    Map<String, dynamic> currentSong = widget.songList[_currentIndex];
+    final String judul = currentSong['judul'] ?? "Tanpa Judul";
+    final String nomor = currentSong['nomor'] ?? "";
+    final String pencipta = currentSong['pencipta'] ?? "Pelayan Tuhan";
+    final String lirik = currentSong['lirik'] ?? "Lirik tidak tersedia.";
     
-    // Cek apakah ini lagu NKI atau Kontemporer (Biar tombol play cuma muncul di NKI)
-    bool isNKI = widget.songData['kategori']?.toString().toUpperCase() == "NKI" || nomor.isNotEmpty;
+    bool isNKI = currentSong['kategori']?.toString().toUpperCase() == "NKI" || nomor.isNotEmpty;
 
     return Scaffold(
       backgroundColor: mainBgColor,
       appBar: AppBar(
-        title: const Text("Lirik Lagu", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Lirik Lagu", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            // Tambahan indikator kecil di bawah judul AppBar
+            if (isNKI) Text("Lagu ${nomor.isNotEmpty ? nomor : '-'}", style: const TextStyle(fontSize: 12, color: Colors.white70)),
+          ],
+        ),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
+          // 👇 TOMBOL PLAY SULTAN PINDAH KE SINI 👇
+          if (isNKI)
+            IconButton(
+              icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, size: 32, color: Colors.orangeAccent),
+              onPressed: _playPauseAudio,
+            ),
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: () {
@@ -106,136 +137,120 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
             },
           )
         ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // KARTU LIRIK
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(25),
-              decoration: BoxDecoration(
-                color: paperColor,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5)
-                  )
-                ]
+        // 👇 SLIDER DURASI NYELIP CANTIK DI BAWAH APPBAR 👇
+        bottom: isNKI ? PreferredSize(
+          preferredSize: const Size.fromHeight(15),
+          child: Container(
+            color: Colors.indigo.shade800,
+            height: 15,
+            child: SliderTheme(
+              data: SliderThemeData(
+                trackHeight: 2,
+                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center, 
-                children: [
-                  // JUDUL & NOMOR
-                  Text(
-                    nomor.isNotEmpty ? "$nomor. $judul" : judul,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 24, 
-                      fontWeight: FontWeight.bold, 
-                      color: headerIndigo
-                    ),
+              child: Slider(
+                activeColor: Colors.orangeAccent,
+                inactiveColor: Colors.indigo.shade300,
+                min: 0,
+                max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
+                value: _position.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
+                onChanged: (value) async {
+                  if (_duration.inSeconds > 0) {
+                    final position = Duration(seconds: value.toInt());
+                    await _audioPlayer.seek(position);
+                  }
+                },
+              ),
+            ),
+          ),
+        ) : null,
+      ),
+      // 👇 INI DIA MESIN GESER HALAMANNYA (PAGE VIEW) 👇
+      body: PageView.builder(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        itemCount: widget.songList.length,
+        itemBuilder: (context, index) {
+          // Ambil data lagu untuk halaman yang sedang di-render
+          Map<String, dynamic> song = widget.songList[index];
+          final String itemJudul = song['judul'] ?? "Tanpa Judul";
+          final String itemNomor = song['nomor'] ?? "";
+          final String itemLirik = song['lirik'] ?? "Lirik tidak tersedia.";
+          final String itemPencipta = song['pencipta'] ?? "Pelayan Tuhan";
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(25),
+                  decoration: BoxDecoration(
+                    color: paperColor,
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
+                    ]
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    pencipta,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600], fontStyle: FontStyle.italic),
-                  ),
-                  
-                  // 👇 PEMUTAR AUDIO MELAYANG (MUNCUL JIKA NKI) 👇
-                  if (isNKI)
-                    Container(
-                      margin: const EdgeInsets.only(top: 20, bottom: 5),
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade50,
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.indigo.shade100)
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center, 
+                    children: [
+                      Text(
+                        itemNomor.isNotEmpty ? "$itemNomor. $itemJudul" : itemJudul,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: headerIndigo),
                       ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: Colors.indigo,
-                            radius: 22,
-                            child: IconButton(
-                              icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-                              onPressed: _playPauseAudio,
+                      const SizedBox(height: 8),
+                      Text(
+                        itemPencipta,
+                        style: TextStyle(fontSize: 14, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                      ),
+                      const Divider(height: 40, thickness: 1.2),
+
+                      GestureDetector(
+                        onScaleStart: (details) => _baseFontSize = _fontSize,
+                        onScaleUpdate: (details) {
+                          setState(() {
+                            _fontSize = (_baseFontSize * details.scale).clamp(14.0, 40.0);
+                          });
+                        },
+                        child: Container(
+                          color: Colors.transparent, 
+                          width: double.infinity,
+                          child: Text(
+                            itemLirik,
+                            textAlign: TextAlign.left, 
+                            style: TextStyle(
+                              fontSize: _fontSize,
+                              height: 1.6, 
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500
                             ),
                           ),
-                          const SizedBox(width: 5),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderThemeData(
-                                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                                overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                                trackHeight: 4,
-                              ),
-                              child: Slider(
-                                activeColor: Colors.indigo,
-                                inactiveColor: Colors.indigo.shade200,
-                                min: 0,
-                                max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0,
-                                value: _position.inSeconds.toDouble().clamp(0.0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1.0),
-                                onChanged: (value) async {
-                                  if (_duration.inSeconds > 0) {
-                                    final position = Duration(seconds: value.toInt());
-                                    await _audioPlayer.seek(position);
-                                  }
-                                },
-                              ),
-                            ),
-                          ),
-                          Text(
-                            "${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}",
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.indigo),
-                          ),
-                          const SizedBox(width: 15),
-                        ],
-                      ),
-                    ),
-
-                  const Divider(height: 40, thickness: 1.2),
-
-                  // AREA LIRIK DENGAN PINCH TO ZOOM
-                  GestureDetector(
-                    onScaleStart: (details) {
-                      _baseFontSize = _fontSize;
-                    },
-                    onScaleUpdate: (details) {
-                      setState(() {
-                        // Batasi zoom minimal 14, maksimal 40
-                        _fontSize = (_baseFontSize * details.scale).clamp(14.0, 40.0);
-                      });
-                    },
-                    child: Container(
-                      color: Colors.transparent, // Penting agar deteksi sentuhan luas
-                      width: double.infinity,
-                      child: Text(
-                        lirik,
-                        textAlign: TextAlign.left, // RATA KIRI SULTAN
-                        style: TextStyle(
-                          fontSize: _fontSize,
-                          height: 1.6, // Spasi baris agar tidak tumpang tindih
-                          color: Colors.black87,
-                          fontWeight: FontWeight.w500
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 30),
+                
+                // 👇 PETUNJUK GESER ESTETIK 👇
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.swipe_left, color: Colors.grey[400], size: 20),
+                    const SizedBox(width: 8),
+                    Text("Geser untuk pindah lagu", style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Icon(Icons.swipe_right, color: Colors.grey[400], size: 20),
+                  ],
+                ),
+                const SizedBox(height: 50),
+              ],
             ),
-            const SizedBox(height: 30),
-            Text(
-              "Gunakan dua jari (pinch) untuk memperbesar huruf",
-              style: TextStyle(color: Colors.grey[600], fontSize: 12),
-            ),
-            const SizedBox(height: 50),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

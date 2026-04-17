@@ -42,7 +42,8 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
       var doc = await _db.collection("churches").doc(widget.gerejaId).get();
       if (doc.exists) {
         var data = doc.data()!;
-        _etNama.text = data['nama'] ?? "";
+        // 👇 BACA DARI 'namaGereja', KALAU KOSONG BACA DARI 'nama' (DATA LAMA) 👇
+        _etNama.text = data['namaGereja'] ?? data['nama'] ?? "";
         _etAlamat.text = data['alamat'] ?? "";
       }
     } catch (e) {
@@ -63,7 +64,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
     try {
       if (widget.gerejaId != null) {
         await _db.collection("churches").doc(widget.gerejaId).update({
-          "nama": nama,
+          "namaGereja": nama, // 👈 SUDAH DIUBAH JADI namaGereja
           "alamat": alamat,
           "lastUpdate": FieldValue.serverTimestamp(),
         });
@@ -75,7 +76,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         String kodeUndangan = "$kodeUnik${Random().nextInt(900) + 100}"; 
 
         await _db.collection("churches").add({
-          "nama": nama,
+          "namaGereja": nama, // 👈 SUDAH DIUBAH JADI namaGereja
           "alamat": alamat,
           "kodeUndangan": kodeUndangan,
           "createdAt": FieldValue.serverTimestamp(),

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 👈 IMPORT INI UNTUK FITUR COPY-PASTE SULTAN
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -112,6 +113,11 @@ class _MainActivityState extends State<MainActivity> {
   String _igGembala = "";
   String _tiktokGembala = "";
   String _ytGembala = "";
+
+  // 👇 VARIABEL UNTUK REKENING GEREJA 👇
+  String _namaBank = "Bank BRI";
+  String _noRekening = "1234-5678-9012-345";
+  String _atasNamaRekening = "GKII SILOAM";
   
   late Map<String, String> _ayatEmas;
   bool _isLoadingUpload = false;
@@ -159,6 +165,11 @@ class _MainActivityState extends State<MainActivity> {
           _igGembala = data?['igGembala'] ?? "";
           _tiktokGembala = data?['tiktokGembala'] ?? "";
           _ytGembala = data?['ytGembala'] ?? "";
+          
+          // Memuat data rekening dari database (Jika belum ada, pakai default yang di atas)
+          _namaBank = data?['namaBank'] ?? _namaBank;
+          _noRekening = data?['noRekening'] ?? _noRekening;
+          _atasNamaRekening = data?['atasNamaRekening'] ?? _atasNamaRekening;
         });
       }
     });
@@ -186,6 +197,68 @@ class _MainActivityState extends State<MainActivity> {
     } finally {
       if (mounted) setState(() => _isLoadingUpload = false);
     }
+  }
+
+  // 👇 FUNGSI DIALOG UNTUK EDIT REKENING OLEH ADMIN 👇
+  void _tampilkanDialogEditRekening() {
+    final user = UserManager();
+    if (!user.isAdmin() && !user.isSuperAdmin()) return;
+
+    final txtBank = TextEditingController(text: _namaBank);
+    final txtRekening = TextEditingController(text: _noRekening);
+    final txtAtasNama = TextEditingController(text: _atasNamaRekening);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Edit Rekening Gereja", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: txtBank, 
+                decoration: const InputDecoration(labelText: "Nama Bank (Cth: Bank BRI)", border: OutlineInputBorder())
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: txtRekening, 
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Nomor Rekening", border: OutlineInputBorder())
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: txtAtasNama, 
+                decoration: const InputDecoration(labelText: "Atas Nama", border: OutlineInputBorder())
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+            onPressed: () async {
+              Navigator.pop(context);
+              String churchId = user.activeChurchId!;
+              try {
+                await _db.collection("churches").doc(churchId).update({
+                  "namaBank": txtBank.text.trim(),
+                  "noRekening": txtRekening.text.trim(),
+                  "atasNamaRekening": txtAtasNama.text.trim(),
+                });
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data Rekening berhasil diperbarui.")));
+              } catch (e) {
+                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
+              }
+            },
+            child: const Text("Simpan"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _tampilkanDialogEditGembala() {
@@ -360,7 +433,6 @@ class _MainActivityState extends State<MainActivity> {
                       ),
                     ),
 
-                  // 👇 BAGIAN HEADER GEREJA SUDAH DIBUAT FULLSCREEN & TOMBOL EDIT DIPISAH 👇
                   Stack(
                     children: [
                       GestureDetector(
@@ -494,7 +566,6 @@ class _MainActivityState extends State<MainActivity> {
                             children: [
                               Row(
                                 children: [
-                                  // 👇 FOTO GEMBALA SUDAH BISA DIKLIK FULLSCREEN 👇
                                   GestureDetector(
                                     onTap: () {
                                       if (_fotoGembalaUrl != null && _fotoGembalaUrl!.isNotEmpty) {
@@ -546,6 +617,73 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                         
                         SizedBox(height: screenHeight * 0.04), 
+
+                        // 👇 HEADER REKENING DITAMBAH TOMBOL EDIT KHUSUS ADMIN 👇
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text("Rekening Persembahan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            if (isAdmin || isSuperAdmin)
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.indigo),
+                                onPressed: _tampilkanDialogEditRekening,
+                                tooltip: "Edit Rekening Gereja",
+                              )
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        
+                        // KARTU REKENING SULTAN
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF1A237E), Colors.indigo], 
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                                child: const Icon(Icons.account_balance, color: Colors.white, size: 28),
+                              ),
+                              const SizedBox(width: 15),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(_namaBank, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                                    const SizedBox(height: 4),
+                                    Text(_noRekening, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                                    const SizedBox(height: 2),
+                                    Text("a.n $_atasNamaRekening", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.copy, color: Colors.white),
+                                tooltip: "Salin Rekening",
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: _noRekening));
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Nomor Rekening disalin!"), 
+                                      backgroundColor: Colors.green,
+                                      behavior: SnackBarBehavior.floating,
+                                    )
+                                  );
+                                },
+                              )
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: screenHeight * 0.04),
+                        // 👆 BATAS KARTU REKENING 👆
                         
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),

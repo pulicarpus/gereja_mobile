@@ -65,7 +65,16 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       } else {
         var docGereja = query.docs.first;
         String idGereja = docGereja.id;
-        String namaGereja = docGereja.get("namaGereja") ?? "Gereja";
+        
+        // 👇 JARING PENGAMAN ANTI-CRASH SULTAN 👇
+        // Ubah doc jadi Map dulu, biar aman ngecek datanya
+        Map<String, dynamic>? dataGereja = docGereja.data();
+        
+        // Cek kalau field namaGereja beneran ada, kalau nggak ada otomatis kasih nama "Gereja"
+        String namaGereja = "Gereja";
+        if (dataGereja.containsKey('namaGereja') && dataGereja['namaGereja'] != null) {
+            namaGereja = dataGereja['namaGereja'];
+        }
 
         _simpanUserKeFirestore(idGereja, namaGereja);
       }
@@ -99,17 +108,16 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       // --- SINKRONISASI ONESIGNAL (Add Tag) ---
       OneSignal.User.addTagWithKey("active_church", churchId);
 
-      // 👇 INI DIA TERSANGKANYA YANG SUDAH DIPERBAIKI BOS 👇
       // Simpan ke SharedPreferences via UserManager
       final userManager = UserManager();
       await userManager.setUser(
         role: "user",
         churchId: churchId,
         churchName: churchName,
-        uId: widget.userUid, // 👈 Sudah diganti jadi uId
-        uNama: widget.userName, // 👈 Sudah diganti jadi uNama
-        uFoto: null, // Default kosong untuk user baru
-        uKomisi: "Umum", // Default komisi
+        uId: widget.userUid, 
+        uNama: widget.userName, 
+        uFoto: null, 
+        uKomisi: "Umum", 
       );
 
       if (mounted) {

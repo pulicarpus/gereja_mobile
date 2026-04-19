@@ -52,13 +52,14 @@ jobs:
           dart run flutter_launcher_icons
         working-directory: . 
 
-      # JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
+# JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
       - name: Create Secrets File
         run: |
           mkdir -p lib
           echo "const String geminiApiKey = '${{ secrets.GEMINI_API_KEY }}';" > lib/secrets.dart
           echo "const String teleBotTokenSecret = '${{ secrets.TELE_BOT_TOKEN }}';" >> lib/secrets.dart
           echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
+          echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
       
       - name: Build APK
         run: flutter build apk --release

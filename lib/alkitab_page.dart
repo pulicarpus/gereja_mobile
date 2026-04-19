@@ -14,7 +14,6 @@ import 'package:path_provider/path_provider.dart';
 import 'bible_models.dart';
 import 'notes_pages.dart';
 import 'search_page.dart';
-// 👇 IMPORT HALAMAN BARU KITA BOS 👇
 import 'offline_audio_page.dart';
 import 'kamus_page.dart';
 import 'loading_sultan.dart';
@@ -37,6 +36,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
   int _currentChapter = 1;
+  int? _highlightedVerse; // 👈 VARIABEL BARU UNTUK AYAT YANG MENYALA
   bool _isLoading = true;
   bool _isSyncing = false; 
   late SharedPreferences _prefs;
@@ -78,13 +78,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _getAudioUrl(int bookNum, int chapter) {
     int standardBookNum = 0;
 
-    // Logika Konversi ID Kitab (Rakitan Bos yang sangat mantap!)
     if (bookNum >= 470) {
       standardBookNum = (((bookNum - 470) ~/ 10) + 40);
     } else {
       Map<int, int> otTranslator = {
-        10: 1,   20: 2,   30: 3,   40: 4,   50: 5,
-        60: 6,   70: 7,   80: 8,   90: 9,   100: 10,
+        10: 1,  20: 2,  30: 3,  40: 4,  50: 5,
+        60: 6,  70: 7,  80: 8,  90: 9,  100: 10,
         110: 11, 120: 12, 130: 13, 140: 14, 150: 15,
         160: 16, 
         190: 17, 
@@ -108,19 +107,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
       
       String chapterStr;
       
-      // 👇 JURUS BUNGLON YANG DISEMPURNAKAN 👇
       if (folder == "mazmur") {
-        // Khusus Mazmur pakai 3 digit (contoh: 001, 010, 150)
         chapterStr = chapter.toString().padLeft(3, '0');
       } else if (prefix.endsWith("_")) {
-        // Khusus versi Davar (contoh file: 11_1Kings_) pakai 2 digit (01, 02, 10)
         chapterStr = chapter.toString().padLeft(2, '0');
       } else {
-        // Khusus SABDA lama (contoh file: 01_kej) biarkan polosan tanpa 0 di depan (1, 2, 10)
         chapterStr = chapter.toString();
       }
 
-      // Merangkai URL langsung ke gudang GitHub Bos
       String baseUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio";
       return "$baseUrl/$folder/$prefix$chapterStr.mp3";
     }
@@ -164,17 +158,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
           iOS: AudioContextIOS(category: AVAudioSessionCategory.playback, options: [AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers]),
         ));
 
-        // 👇 LOGIKA RADAR: CEK MEMORI HP DULU! 👇
         final dir = await getApplicationDocumentsDirectory();
         File localFile = File('${dir.path}/audio/$folder/$fileName');
         
         Source audioSource;
         if (await localFile.exists()) {
-          // BINGO! File ada di HP. Putar tanpa kuota internet!
           audioSource = DeviceFileSource(localFile.path);
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memutar audio offline 🎧")));
         } else {
-          // Tidak ada di HP? Terpaksa streaming dari GitHub
           String onlineUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/$fileName";
           audioSource = UrlSource(onlineUrl);
         }
@@ -229,8 +220,26 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _verses = verseData;
       _syncNotes();
       setState(() { _isLoading = false; _selectedVerses.clear(); });
+      
+      // 👇 MESIN PENDORONG (SCROLL) & PENANDA SULTAN 👇
       if (scrollToVerse != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) { if (_scrollController.hasClients) _scrollController.animateTo((scrollToVerse - 1) * (_fontSize * 3.5), duration: const Duration(milliseconds: 600), curve: Curves.easeOut); });
+        setState(() => _highlightedVerse = scrollToVerse); // Nyalakan lampu kuning
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) { 
+          if (_scrollController.hasClients) {
+            // Perhitungan scroll yang lebih akurat (dikali 4.5 biar posisinya pas di tengah layar)
+            _scrollController.animateTo(
+              (scrollToVerse - 1) * (_fontSize * 4.5), 
+              duration: const Duration(milliseconds: 600), 
+              curve: Curves.easeOut
+            ); 
+          }
+        });
+
+        // Matikan lampu kuning pelan-pelan setelah 3 detik
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) setState(() => _highlightedVerse = null);
+        });
       }
     } catch (e) { setState(() => _isLoading = false); }
   }
@@ -319,14 +328,12 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (val == 'search') { Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); } 
     else if (val == 'dictionary') { _showDictionary(); } 
     else if (val == 'notes') { _showNotesManager(); }
-    // 👇 FUNGSI PINDAH KE HALAMAN AUDIO OFFLINE 👇
     else if (val == 'audio_offline') { 
       Navigator.push(context, MaterialPageRoute(builder: (c) => const OfflineAudioPage())); 
     }
   }
 
   void _showDictionary() {
-    // Langsung buka halaman Kamus Pintar yang baru
     Navigator.push(
       context, 
       MaterialPageRoute(builder: (context) => const KamusPage())
@@ -347,7 +354,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _syncCloud(bool isBackup) async {
     final user = FirebaseAuth.instance.currentUser; 
     
-    // 👇 1. CEK LOGIN STATUS DULU 👇
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -402,7 +408,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
 
     } catch (e) {
-      // 👇 2. LAPORKAN JIKA ADA ERROR DATABASE 👇
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Error Cloud: $e"),
@@ -414,7 +419,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-// 👇 FUNGSI PINTAR UNTUK MENYINGKAT AYAT BERURUTAN 👇
   String _formatVerses(List<int> verses) {
     if (verses.isEmpty) return "";
     List<String> groups = [];
@@ -423,15 +427,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
     for (int i = 1; i < verses.length; i++) {
       if (verses[i] == end + 1) {
-        end = verses[i]; // Angka berurutan, lanjutkan rentangnya
+        end = verses[i]; 
       } else {
-        // Angka terputus, simpan grup sebelumnya
         groups.add(start == end ? "$start" : "$start-$end");
         start = verses[i];
         end = verses[i];
       }
     }
-    // Simpan grup yang paling terakhir
     groups.add(start == end ? "$start" : "$start-$end");
     return groups.join(", ");
   }
@@ -441,7 +443,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     List<int> sorted = _selectedVerses.toList()..sort();
     String bName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
     
-    // 👇 INI DIA PAHLAWANNYA 👇
     String nas = "$bName $_currentChapter:${_formatVerses(sorted)}";
     
     showModalBottomSheet(context: context, builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [
@@ -474,7 +475,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then(_handleNavResult);
   }
   
-  // 👇 KAMUS JUMLAH PASAL (Agar aplikasi tahu kapan harus pindah kitab) 👇
   final Map<int, int> _chaptersPerBook = {
     1: 50,  2: 40,  3: 27,  4: 36,  5: 34,  6: 24,  7: 21,  8: 4,   9: 31,  10: 24, 
     11: 22, 12: 25, 13: 29, 14: 36, 15: 10, 16: 13, 17: 10, 18: 42, 19: 150, 20: 31, 
@@ -485,36 +485,30 @@ class _AlkitabPageState extends State<AlkitabPage> {
     60: 5,  61: 3,  62: 5,  63: 1,  64: 1,  65: 1,  66: 22
   };
 
-  // 👇 VARIABEL UNTUK MELACAK GESERAN JARI 👇
   double _horizontalDragDistance = 0;
 
-// 👇 FUNGSI PINDAH KE PASAL BERIKUTNYA (VERSI REVISI ANTI BLANK) 👇
   void _goToNextChapter() {
     if (_allBooks.isEmpty) return;
     
-    // Cari urutan kitab saat ini (0 sampai 65)
     int currentIndex = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum);
     if (currentIndex == -1) return;
 
-    int standardBookNum = currentIndex + 1; // 1 sampai 66
+    int standardBookNum = currentIndex + 1; 
     int maxChapter = _chaptersPerBook[standardBookNum] ?? 1;
 
     if (_currentChapter < maxChapter) {
       _currentChapter++;
     } else if (currentIndex < _allBooks.length - 1) {
-      // Lompat ke kitab berikutnya pakai data dari _allBooks
       _currentBookNum = _allBooks[currentIndex + 1].bookNumber;
       _currentChapter = 1;
     } else {
-      return; // Mentok di Wahyu
+      return; 
     }
     
-    // Tambahan scrollToVerse: 1 supaya setelah geser, otomatis balik ke atas!
     setState(() => _isLoading = true);
     _resetAudio(); _saveLastPosition(); _loadContent(scrollToVerse: 1);
   }
 
-  // 👇 FUNGSI PINDAH KE PASAL SEBELUMNYA (VERSI REVISI ANTI BLANK) 👇
   void _goToPrevChapter() {
     if (_allBooks.isEmpty) return;
     
@@ -524,12 +518,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (_currentChapter > 1) {
       _currentChapter--;
     } else if (currentIndex > 0) {
-      // Mundur ke kitab sebelumnya
       _currentBookNum = _allBooks[currentIndex - 1].bookNumber;
-      int prevStandardNum = currentIndex; // Nomor 1-66 kitab sebelumnya
+      int prevStandardNum = currentIndex; 
       _currentChapter = _chaptersPerBook[prevStandardNum] ?? 1; 
     } else {
-      return; // Mentok di Kejadian 1
+      return; 
     }
     
     setState(() => _isLoading = true);
@@ -546,12 +539,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
       appBar: AppBar(
         backgroundColor: Colors.indigo[900], 
         foregroundColor: Colors.white,
-        automaticallyImplyLeading: false, // 👇 MANTRA MENGHILANGKAN TOMBOL BACK BAWAAN
-        titleSpacing: 10, // Sedikit jarak dari pinggir kiri layar
+        automaticallyImplyLeading: false, 
+        titleSpacing: 10, 
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 👇 TOMBOL PREV 👇
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -560,7 +552,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ),
             const SizedBox(width: 4),
             
-            // 👇 JUDUL KITAB BISA MENGKERUT (FLEXIBLE) 👇
             Flexible(
               child: InkWell(
                 onTap: _showNavigation, 
@@ -573,7 +564,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                         child: Text(
                           "$bName $_currentChapter", 
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                          overflow: TextOverflow.ellipsis, // Otomatis jadi titik-titik kalau kepanjangan
+                          overflow: TextOverflow.ellipsis, 
                         ),
                       ),
                       const Icon(Icons.arrow_drop_down)
@@ -584,7 +575,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ),
             const SizedBox(width: 4),
             
-            // 👇 TOMBOL NEXT 👇
             IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
@@ -681,13 +671,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ],
         ),
       ),
-    ); // <--- INI DIA SI BIANG KEROK YANG TADI HILANG BOS 😂
+    ); 
   }
 
   List<Widget> _buildContent() {
     List<Widget> content = [];
     for (var v in _verses) {
-      int vNum = v['verse'] as int; bool isSel = _selectedVerses.contains(vNum);
+      int vNum = v['verse'] as int; 
+      bool isSel = _selectedVerses.contains(vNum);
+      
+      // 👇 CEK APAKAH INI AYAT YANG HARUS DI-HIGHLIGHT 👇
+      bool isHighlighted = (_highlightedVerse == vNum);
       
       if (_perikopMap.containsKey(vNum)) { 
         for (var t in _perikopMap[vNum]!) {
@@ -705,7 +699,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onLongPress: () { if (!isSel) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
         onTap: () => setState(() => isSel ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
         child: Container(
-          color: isSel ? Colors.blue.withOpacity(0.15) : Colors.transparent, 
+          // 👇 LOGIKA WARNA SULTAN 👇
+          color: isHighlighted ? Colors.yellow.withOpacity(0.4) 
+               : (isSel ? Colors.blue.withOpacity(0.15) : Colors.transparent), 
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,

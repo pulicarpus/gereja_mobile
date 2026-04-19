@@ -21,8 +21,8 @@ class BuatGambarPage extends StatefulWidget {
 
 class _BuatGambarPageState extends State<BuatGambarPage> {
   final ScreenshotController _screenshotController = ScreenshotController();
+  final TextEditingController _searchController = TextEditingController(); // 👈 KONTROLER PENCARIAN
   
-  // 👇 LANGSUNG COMOT DARI BRANKAS SULTAN 👇
   final String _apiKey = pixabayApiKey; 
   
   List<String> _imageUrls = [];
@@ -46,8 +46,12 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
 
   Future<void> _fetchImages(String query) async {
     setState(() => _isLoading = true);
+    
+    // 👇 Encode URL biar pencarian dengan spasi (misal: "langit malam") aman 👇
+    String encodedQuery = Uri.encodeComponent(query);
+    
     try {
-      final url = Uri.parse("https://pixabay.com/api/?key=$_apiKey&q=$query&image_type=photo&orientation=vertical&per_page=20");
+      final url = Uri.parse("https://pixabay.com/api/?key=$_apiKey&q=$encodedQuery&image_type=photo&orientation=vertical&per_page=20");
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -60,6 +64,9 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
           _currentTheme = query;
           _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak dapat menemukan gambar.")));
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -89,12 +96,38 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
     return Scaffold(
       backgroundColor: Colors.grey[200],
       appBar: AppBar(
-        title: const Text("Studio Ayat", style: TextStyle(fontWeight: FontWeight.bold)),
+        // 👇 PENCARIAN GAMBAR PINDAH KE SINI BOS 👇
+        title: Container(
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: "Cari latar (misal: bunga, langit)...",
+              hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+              prefixIcon: const Icon(Icons.search, color: Colors.indigo, size: 20),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+            textInputAction: TextInputAction.search,
+            onSubmitted: (value) {
+              if (value.trim().isNotEmpty) {
+                // Sembunyikan keyboard & cari gambar
+                FocusScope.of(context).unfocus();
+                _fetchImages(value.trim());
+              }
+            },
+          ),
+        ),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
+          // --- AREA KANVAS GAMBAR ---
           Expanded(
             child: Center(
               child: Padding(
@@ -156,9 +189,11 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
               ),
             ),
           ),
+
+          // --- AREA TOMBOL FILTER & PILIH GAMBAR ---
           Container(
             color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.only(top: 10, bottom: 10),
             child: Column(
               children: [
                 SingleChildScrollView(
@@ -175,7 +210,10 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                           selectedColor: Colors.indigo,
                           backgroundColor: Colors.indigo.shade50,
                           onSelected: (bool selected) {
-                            if (selected) _fetchImages(theme["query"]!);
+                            if (selected) {
+                              _searchController.clear();
+                              _fetchImages(theme["query"]!);
+                            }
                           },
                         ),
                       );
@@ -184,9 +222,9 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                 ),
                 const SizedBox(height: 10),
                 _isLoading 
-                  ? const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()))
+                  ? const SizedBox(height: 70, child: Center(child: CircularProgressIndicator()))
                   : SizedBox(
-                      height: 80,
+                      height: 70,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 15),
@@ -198,7 +236,7 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                             onTap: () => setState(() => _selectedImage = url),
                             child: Container(
                               margin: const EdgeInsets.only(right: 10),
-                              width: 60,
+                              width: 55,
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(10),
                                 border: isSelected ? Border.all(color: Colors.orange, width: 3) : null,
@@ -212,14 +250,25 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
               ],
             ),
           ),
+          
+          // 👇 TOMBOL SHARE SULTAN PINDAH KE BAWAH SINI 👇
+          Container(
+            color: Colors.white,
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 5, 20, 20), // Memberi ruang aman di bawah layar
+            child: ElevatedButton.icon(
+              onPressed: _shareImage,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.share, size: 24),
+              label: const Text("Bagikan ke WA / IG", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          )
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _shareImage,
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.share),
-        label: const Text("Share ke WA/IG", style: TextStyle(fontWeight: FontWeight.bold)),
       ),
     );
   }

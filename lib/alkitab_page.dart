@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'dart:convert'; // Untuk simpan Map ke SharedPreferences
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart'; 
@@ -18,6 +18,7 @@ import 'search_page.dart';
 import 'offline_audio_page.dart';
 import 'kamus_page.dart';
 import 'loading_sultan.dart';
+import 'buat_gambar_page.dart'; // 👈 IMPORT HALAMAN STUDIO GAMBAR SULTAN
 
 class AlkitabPage extends StatefulWidget {
   const AlkitabPage({super.key});
@@ -35,13 +36,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _targetVerseKey = GlobalKey();
 
-  // 👇 DATA STABILO & LABEL 👇
-  Map<String, dynamic> _highlights = {}; // Simpan warna & label per ayat
+  // DATA STABILO & LABEL
+  Map<String, dynamic> _highlights = {}; 
 
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
   int _currentChapter = 1;
-  int _currentVerse = 1; // 👈 Track ayat terakhir
+  int _currentVerse = 1; 
   int? _highlightedVerse; 
   bool _isLoading = true;
   bool _isSyncing = false; 
@@ -83,20 +84,19 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Future<void> _initApp() async {
     _prefs = await SharedPreferences.getInstance();
     
-    // 👇 AMBIL POSISI TERAKHIR (KITAB, PASAL, AYAT) 👇
+    // LOAD LAST POSITION
     _currentBookNum = _prefs.getInt('LAST_BOOK_NUM') ?? 10; 
     _currentChapter = _prefs.getInt('LAST_CHAPTER') ?? 1;
     _currentVerse = _prefs.getInt('LAST_VERSE') ?? 1;
-    
     _fontSize = _prefs.getDouble('LAST_FONT_SIZE') ?? 18.0;
 
-    // 👇 MUAT DATA STABILO 👇
+    // LOAD HIGHLIGHTS
     String? hStr = _prefs.getString('BIBLE_HIGHLIGHTS');
     if (hStr != null) _highlights = jsonDecode(hStr);
 
     await _loadDatabase();
     
-    // 👇 OTOMATIS LONCAT KE AYAT TERAKHIR 👇
+    // AUTO-SCROLL KE AYAT TERAKHIR SAAT BUKA APLIKASI
     if (_currentVerse > 1) {
       Future.delayed(const Duration(milliseconds: 800), () {
         _loadContent(scrollToVerse: _currentVerse);
@@ -143,11 +143,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _syncNotes();
       setState(() { _isLoading = false; _selectedVerses.clear(); });
       
+      // AUTO SCROLL RADAR SULTAN
       if (scrollToVerse != null) {
         setState(() => _highlightedVerse = scrollToVerse); 
         WidgetsBinding.instance.addPostFrameCallback((_) { 
           if (_targetVerseKey.currentContext != null) {
             Scrollable.ensureVisible(_targetVerseKey.currentContext!, duration: const Duration(milliseconds: 600), curve: Curves.easeInOut, alignment: 0.3);
+          } else if (_scrollController.hasClients) {
+            _scrollController.animateTo((scrollToVerse - 1) * (_fontSize * 4.5), duration: const Duration(milliseconds: 600), curve: Curves.easeOut); 
           }
         });
         Future.delayed(const Duration(seconds: 3), () { if (mounted) setState(() => _highlightedVerse = null); });
@@ -184,11 +187,33 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }),
       ListTile(leading: const Icon(Icons.add_comment, color: Colors.blue), title: const Text("Buat Catatan"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: nas, prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult); }),
       
-      // 👇 MENU BARU: STABILO SULTAN 👇
+      // MENU STABILO
       ListTile(
         leading: const Icon(Icons.edit_attributes, color: Colors.orange), 
         title: const Text("Beri Stabilo & Label"), 
         onTap: () { Navigator.pop(context); _showStabiloDialog(sorted); }
+      ),
+
+      // MENU GAMBAR (STUDIO AYAT SULTAN)
+      ListTile(
+        leading: const Icon(Icons.image, color: Colors.purple), 
+        title: const Text("Jadikan Gambar"), 
+        onTap: () { 
+          Navigator.pop(context); 
+          
+          String teksAyatPenuh = ""; 
+          for (var v in sorted) { 
+             var d = _verses.firstWhere((e) => e['verse'] == v); 
+             teksAyatPenuh += "${_cleanText(d['text'])} "; 
+          }
+          
+          Navigator.push(context, MaterialPageRoute(builder: (c) => BuatGambarPage(
+             ayatTeks: teksAyatPenuh.trim(), 
+             referensi: nas
+          ))); 
+          
+          setState(() => _selectedVerses.clear());
+        }
       ),
     ]));
   }
@@ -224,7 +249,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
         ),
         actions: [
           TextButton(onPressed: () {
-             // Hapus Stabilo
              setState(() { for (var v in verses) { _highlights.remove("${_currentBookNum}_${_currentChapter}_$v"); } });
              _saveHighlightsToPrefs();
              Navigator.pop(c);
@@ -296,7 +320,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       bool isSel = _selectedVerses.contains(vNum);
       bool isHighlighted = (_highlightedVerse == vNum);
       
-      // 👇 CEK STABILO DARI MEMORI 👇
+      // LOAD STABILO
       String key = "${_currentBookNum}_${_currentChapter}_$vNum";
       Map<String, dynamic>? highlightData = _highlights[key];
       Color? stabiloColor = highlightData != null ? Color(highlightData['color']) : null;
@@ -309,13 +333,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onTap: () {
           setState(() {
             isSel ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum);
-            // 👇 SIMPAN POSISI SAAT DIKETUK 👇
-            _saveLastPosition(vNum);
+            _saveLastPosition(vNum); // SIMPAN AYAT TERAKHIR
           });
         },
         child: Container(
           key: isHighlighted ? _targetVerseKey : null,
-          // 👇 WARNA SULTAN (Prioritas: Pilihan Jari > Stabilo > Radar Kuning) 👇
           color: isSel ? Colors.blue.withOpacity(0.2) : (stabiloColor ?? (isHighlighted ? Colors.yellow.withOpacity(0.4) : Colors.transparent)), 
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
           child: Column(
@@ -325,7 +347,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
                 ..._parseTextWithLinks(v['text'].toString()),
               ])),
-              // 👇 TAMPILKAN LABEL JIKA ADA 👇
               if (labelText != null && labelText.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 20),
@@ -343,17 +364,48 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return content;
   }
 
-  // --- AUDIO & NAVIGATION (LOGIKA LAMA TETAP SAMA) ---
+  // --- AUDIO & NAVIGATION  ---
   void _onMenuSelected(String v) { if (v == 'search') Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); else if (v == 'dictionary') Navigator.push(context, MaterialPageRoute(builder: (c) => const KamusPage())); }
   void _handleNavResult(dynamic res) { if (res != null && res is Map) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(scrollToVerse: res['verse']); } }
-  void _goToNextChapter() { if (_currentChapter < (_chaptersPerBook[_currentBookNum >= 470 ? (((_currentBookNum - 470) ~/ 10) + 40) : (_currentBookNum ~/ 10)] ?? 1)) { _currentChapter++; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx < _allBooks.length - 1) { _currentBookNum = _allBooks[idx + 1].bookNumber; _currentChapter = 1; } } setState(() => _isLoading = true); _loadContent(scrollToVerse: 1); }
-  void _goToPrevChapter() { if (_currentChapter > 1) { _currentChapter--; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx > 0) { _currentBookNum = _allBooks[idx - 1].bookNumber; _currentChapter = 1; } } setState(() => _isLoading = true); _loadContent(scrollToVerse: 1); }
-  void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { Navigator.pop(context); setState(() { _currentBookNum = b; _currentChapter = c; }); _loadContent(scrollToVerse: v); })))); }
-  List<InlineSpan> _parseTextWithLinks(String t) { List<InlineSpan> s = []; final r = RegExp(r'<x>(.*?)</x>'); int last = 0; for (var m in r.allMatches(t)) { if (m.start > last) s.add(TextSpan(text: _cleanText(t.substring(last, m.start)))); String it = m.group(1) ?? ""; try { List<String> p = it.split(RegExp(r'\s+')); int tb = int.parse(p[0]); String tr = p.length > 1 ? p.sublist(1).join(' ') : ""; BibleBook? b; try { b = _allBooks.firstWhere((x) => x.bookNumber == tb); } catch(e){} int tc = 1, tv = 1; if (tr.contains(':')) { var rp = tr.split(':'); tc = int.tryParse(rp[0]) ?? 1; tv = int.tryParse(rp[1].split(RegExp(r'[^0-9]')).first) ?? 1; } s.add(TextSpan(text: b != null ? "${b.shortName} $tr" : it, style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontWeight: FontWeight.bold), recognizer: TapGestureRecognizer()..onTap = () { setState(() { _currentBookNum = tb; _currentChapter = tc; }); _loadContent(scrollToVerse: tv); })); } catch (e) { s.add(TextSpan(text: _cleanText(it))); } last = m.end; } if (last < t.length) s.add(TextSpan(text: _cleanText(t.substring(last)))); return s; }
+  void _goToNextChapter() { if (_currentChapter < (_chaptersPerBook[_currentBookNum >= 470 ? (((_currentBookNum - 470) ~/ 10) + 40) : (_currentBookNum ~/ 10)] ?? 1)) { _currentChapter++; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx < _allBooks.length - 1) { _currentBookNum = _allBooks[idx + 1].bookNumber; _currentChapter = 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }
+  void _goToPrevChapter() { if (_currentChapter > 1) { _currentChapter--; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx > 0) { _currentBookNum = _allBooks[idx - 1].bookNumber; _currentChapter = _chaptersPerBook[(_currentBookNum ~/ 10)] ?? 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }
+  void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { Navigator.pop(context); setState(() { _currentBookNum = b; _currentChapter = c; }); _saveLastPosition(v); _loadContent(scrollToVerse: v); })))); }
+  void _handleNoteClick(int vNum, List<String>? keys) { String bName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name; String ref = "$bName $_currentChapter:$vNum"; if (keys == null || keys.isEmpty) { Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: ref, prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult); } else if (keys.length == 1) { _openNote(keys.first); } else { showModalBottomSheet(context: context, builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [ Padding(padding: const EdgeInsets.all(16), child: Text("Pilih Catatan ($ref)", style: const TextStyle(fontWeight: FontWeight.bold))), ...keys.map((k) => ListTile(leading: const Icon(Icons.note, color: Colors.orange), title: Text(_prefs.getString(k)?.split("~|~")[1].characters.take(30).toString() ?? ""), onTap: () { Navigator.pop(c); _openNote(k); })) ])); } }
+  void _openNote(String k) { String? raw = _prefs.getString(k); if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then(_handleNavResult); }
+  
+  List<InlineSpan> _parseTextWithLinks(String t) { List<InlineSpan> s = []; final r = RegExp(r'<x>(.*?)</x>'); int last = 0; for (var m in r.allMatches(t)) { if (m.start > last) s.add(TextSpan(text: _cleanText(t.substring(last, m.start)))); String it = m.group(1) ?? ""; try { List<String> p = it.split(RegExp(r'\s+')); int tb = int.parse(p[0]); String tr = p.length > 1 ? p.sublist(1).join(' ') : ""; BibleBook? b; try { b = _allBooks.firstWhere((x) => x.bookNumber == tb); } catch(e){} int tc = 1, tv = 1; if (tr.contains(':')) { var rp = tr.split(':'); tc = int.tryParse(rp[0]) ?? 1; tv = int.tryParse(rp[1].split(RegExp(r'[^0-9]')).first) ?? 1; } s.add(TextSpan(text: b != null ? "${b.shortName} $tr" : it, style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline, fontWeight: FontWeight.bold), recognizer: TapGestureRecognizer()..onTap = () { setState(() { _currentBookNum = tb; _currentChapter = tc; }); _saveLastPosition(tv); _loadContent(scrollToVerse: tv); })); } catch (e) { s.add(TextSpan(text: _cleanText(it))); } last = m.end; } if (last < t.length) s.add(TextSpan(text: _cleanText(t.substring(last)))); return s; }
+  
   final Map<int, int> _chaptersPerBook = { 1: 50, 2: 40, 3: 27, 4: 36, 5: 34, 6: 24, 7: 21, 8: 4, 9: 31, 10: 24, 11: 22, 12: 25, 13: 29, 14: 36, 15: 10, 16: 13, 17: 10, 18: 42, 19: 150, 20: 31, 21: 12, 22: 8, 23: 66, 24: 52, 25: 5, 26: 48, 27: 12, 28: 14, 29: 3, 30: 9, 31: 1, 32: 4, 33: 7, 34: 3, 35: 3, 36: 3, 37: 2, 38: 14, 39: 4, 40: 28, 41: 16, 42: 24, 43: 21, 44: 28, 45: 16, 46: 16, 47: 13, 48: 6, 49: 6, 50: 4, 51: 4, 52: 5, 53: 3, 54: 6, 55: 4, 56: 3, 57: 1, 58: 13, 59: 5, 60: 5, 61: 3, 62: 5, 63: 1, 64: 1, 65: 1, 66: 22 };
-  Future<void> _playPauseAudio() async { /* SAMA SEPERTI SEBELUMNYA */ }
+  
+  Future<void> _playPauseAudio() async { 
+    int standardBookNum = 0;
+    if (_currentBookNum >= 470) {
+      standardBookNum = (((_currentBookNum - 470) ~/ 10) + 40);
+    } else {
+      Map<int, int> otTranslator = { 10: 1, 20: 2, 30: 3, 40: 4, 50: 5, 60: 6, 70: 7, 80: 8, 90: 9, 100: 10, 110: 11, 120: 12, 130: 13, 140: 14, 150: 15, 160: 16, 190: 17, 220: 18, 230: 19, 240: 20, 250: 21, 260: 22, 290: 23, 300: 24, 310: 25, 330: 26, 340: 27, 350: 28, 360: 29, 370: 30, 380: 31, 390: 32, 400: 33, 410: 34, 420: 35, 430: 36, 440: 37, 450: 38, 460: 39 };
+      standardBookNum = otTranslator[_currentBookNum] ?? (_currentBookNum ~/ 10);
+    }
+
+    if (!_bibleAudioMap.containsKey(standardBookNum)) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Audio belum tersedia."))); return; }
+    String folder = _bibleAudioMap[standardBookNum]!["folder"]!;
+    String prefix = _bibleAudioMap[standardBookNum]!["file"]!;
+    String chapterStr = (folder == "mazmur") ? _currentChapter.toString().padLeft(3, '0') : _currentChapter.toString().padLeft(2, '0');
+    String fileName = "$prefix$chapterStr.mp3";
+
+    try {
+      if (_isPlaying) { await _audioPlayer.pause(); } else {
+        setState(() => _isAudioLoading = true);
+        await _audioPlayer.setAudioContext(const AudioContext(android: AudioContextAndroid(isSpeakerphoneOn: true, stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.gain), iOS: AudioContextIOS(category: AVAudioSessionCategory.playback, options: [AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers])));
+        final dir = await getApplicationDocumentsDirectory();
+        File localFile = File('${dir.path}/audio/$folder/$fileName');
+        Source audioSource;
+        if (await localFile.exists()) { audioSource = DeviceFileSource(localFile.path); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Memutar audio offline 🎧"))); } else { String onlineUrl = "https://raw.githubusercontent.com/pulicarpus/gereja_mobile/master/audio/$folder/$fileName"; audioSource = UrlSource(onlineUrl); }
+        await _audioPlayer.play(audioSource);
+        setState(() => _isAudioLoading = false);
+      }
+    } catch (e) { setState(() => _isAudioLoading = false); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal memutar audio: $e"))); }
+  }
 }
 
-// NavSheet tetap sama
 class _NavSheet extends StatefulWidget { final List<BibleBook> allBooks; final Database db; final Function(int, int, int) onSelectionComplete; const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete}); @override State<_NavSheet> createState() => _NavSheetState(); }
 class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid()) ]))); Widget _buildGrid() { if (selC != null) return _grid(vrs, (v) => widget.onSelectionComplete(selB!.bookNumber, selC!, v)); if (selB != null) return _grid(chs, (c) => _getVerses(c)); List<BibleBook> pl = widget.allBooks.length >= 39 ? widget.allBooks.sublist(0, 39) : widget.allBooks; List<BibleBook> pb = widget.allBooks.length > 39 ? widget.allBooks.sublist(39) : []; return ListView(children: [ _header("PERJANJIAN LAMA", Colors.pink), _kGrid(pl), if (pb.isNotEmpty) _header("PERJANJIAN BARU", Colors.blue), if (pb.isNotEmpty) _kGrid(pb) ]); } Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(15), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold))); Widget _kGrid(List<BibleBook> bks) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 10), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 70, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5), itemCount: bks.length, itemBuilder: (c, i) => InkWell(onTap: () => _getChapters(bks[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(5)), child: Text(bks[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))))); Widget _grid(List<int> its, Function(int) onTap) => GridView.builder(padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 60, mainAxisSpacing: 10, crossAxisSpacing: 10), itemCount: its.length, itemBuilder: (c, i) => InkWell(onTap: () => onTap(its[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${its[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))); }

@@ -33,10 +33,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
   Map<int, List<String>> _verseNotesMap = {}; 
   final ScrollController _scrollController = ScrollController();
   
+  // 👇 INI DIA CHIP PELACAK (RADAR) BARU KITA BOS! 👇
+  final GlobalKey _targetVerseKey = GlobalKey();
+
   String _currentVersion = "TB.SQLite3"; 
   int _currentBookNum = 10; 
   int _currentChapter = 1;
-  int? _highlightedVerse; // 👈 VARIABEL BARU UNTUK AYAT YANG MENYALA
+  int? _highlightedVerse; 
   bool _isLoading = true;
   bool _isSyncing = false; 
   late SharedPreferences _prefs;
@@ -221,13 +224,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _syncNotes();
       setState(() { _isLoading = false; _selectedVerses.clear(); });
       
-      // 👇 MESIN PENDORONG (SCROLL) & PENANDA SULTAN 👇
+      // 👇 SCROLL AKURAT PAKAI RADAR SULTAN 👇
       if (scrollToVerse != null) {
-        setState(() => _highlightedVerse = scrollToVerse); // Nyalakan lampu kuning
+        setState(() => _highlightedVerse = scrollToVerse); 
         
         WidgetsBinding.instance.addPostFrameCallback((_) { 
-          if (_scrollController.hasClients) {
-            // Perhitungan scroll yang lebih akurat (dikali 4.5 biar posisinya pas di tengah layar)
+          if (_targetVerseKey.currentContext != null) {
+            // Memastikan layar geser persis ke widget dengan radar (alignment 0.3 = posisi agak ke atas biar pas di mata)
+            Scrollable.ensureVisible(
+              _targetVerseKey.currentContext!,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOut,
+              alignment: 0.3, 
+            );
+          } else if (_scrollController.hasClients) {
+            // Cadangan kalau gagal nemu radar
             _scrollController.animateTo(
               (scrollToVerse - 1) * (_fontSize * 4.5), 
               duration: const Duration(milliseconds: 600), 
@@ -699,7 +710,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
         onLongPress: () { if (!isSel) setState(() => _selectedVerses.add(vNum)); _showActionMenu(); },
         onTap: () => setState(() => isSel ? _selectedVerses.remove(vNum) : _selectedVerses.add(vNum)),
         child: Container(
-          // 👇 LOGIKA WARNA SULTAN 👇
+          // 👇 PASANG CHIP PELACAK KHUSUS DI AYAT YANG DITUJU 👇
+          key: isHighlighted ? _targetVerseKey : null,
           color: isHighlighted ? Colors.yellow.withOpacity(0.4) 
                : (isSel ? Colors.blue.withOpacity(0.15) : Colors.transparent), 
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),

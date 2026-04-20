@@ -51,6 +51,10 @@ dependencies:
   # 👇 TAMBAHAN UNTUK EXPORT KEUANGAN (PDF & CSV) BOS 👇
   pdf: ^3.10.4
   csv: ^5.0.2
+  
+  # 👇 TAMBAHAN UNTUK GALLERY SULTAN 👇
+  photo_view: ^0.15.0  # Untuk fitur Zoom in/out pakai 2 jari
+  gal: ^2.3.0          # Untuk fitur Save foto ke Galeri HP
 
 dev_dependencies:
   flutter_test:

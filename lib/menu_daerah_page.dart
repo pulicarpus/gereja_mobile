@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
-import 'dashboard_daerah_page.dart'; 
-import 'list_daerah_page.dart';
+import 'data_gereja_daerah_page.dart';
+import 'dashboard_daerah_page.dart';
 
 class MenuDaerahPage extends StatelessWidget {
-  const MenuDaerahPage({super.key});
+  final String namaDaerah; // 👈 MENERIMA NAMA DAERAH DARI HALAMAN SEBELUMNYA
+
+  const MenuDaerahPage({super.key, required this.namaDaerah});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Pusat Kendali Daerah", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text("Pusat Kendali - $namaDaerah", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -18,7 +20,7 @@ class MenuDaerahPage extends StatelessWidget {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Banner Daerah
+            // Banner Daerah Dynamic
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(30),
@@ -33,18 +35,19 @@ class MenuDaerahPage extends StatelessWidget {
                   bottomRight: Radius.circular(30),
                 ),
               ),
-              child: const Column(
+              child: Column(
                 children: [
-                  Icon(Icons.account_balance, size: 60, color: Colors.white),
-                  SizedBox(height: 15),
+                  const Icon(Icons.account_balance, size: 60, color: Colors.white),
+                  const SizedBox(height: 15),
                   Text(
-                    "PENGURUS DAERAH",
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2),
+                    "PENGURUS ${namaDaerah.toUpperCase()}", // 👈 NAMA DAERAH OTOMATIS BERUBAH
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                   ),
-                  SizedBox(height: 5),
-                  Text(
+                  const SizedBox(height: 5),
+                  const Text(
                     "Sistem Manajemen Multi-Gereja",
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                 ],
               ),
@@ -62,23 +65,24 @@ class MenuDaerahPage extends StatelessWidget {
               mainAxisSpacing: 15,
               children: [
                 _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, () {
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => const ListDaerahPage()));
+                  // 👇 MASUK KE DAFTAR GEREJA KHUSUS DAERAH INI 👇
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => DataGerejaDaerahPage(namaDaerah: namaDaerah)));
                 }),
                 _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
-                  // 👇 MENGARAH KE HALAMAN GRAFIK 👇
+                  // 👇 (Nanti kita update dashboardnya biar bisa filter berdasarkan daerah) 👇
                   Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));
                 }),
                 _buildMenuSultan(context, Icons.account_balance_wallet, "Laporan\nKeuangan", Colors.green, () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Keuangan Daerah")));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Keuangan $namaDaerah segera hadir")));
                 }),
                 _buildMenuSultan(context, Icons.assignment_ind, "Badan\nPengurus", Colors.orange, () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Struktur Pengurus")));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pengurus $namaDaerah segera hadir")));
                 }),
                 _buildMenuSultan(context, Icons.notifications_active, "Info & Surat\nDaerah", Colors.red, () {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Edaran Daerah")));
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Surat $namaDaerah segera hadir")));
                 }),
                 _buildMenuSultan(context, Icons.settings_suggest, "Pengaturan\nDaerah", Colors.grey.shade700, () {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Pengaturan")));
+                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pengaturan $namaDaerah")));
                 }),
               ],
             ),
@@ -88,7 +92,6 @@ class MenuDaerahPage extends StatelessWidget {
     );
   }
 
-  // WIDGET PEMBANTU (Aman di luar fungsi build)
   Widget _buildMenuSultan(BuildContext context, IconData icon, String title, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,

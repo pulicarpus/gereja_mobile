@@ -62,8 +62,8 @@ class MenuDaerahPage extends StatelessWidget {
               mainAxisSpacing: 15,
               children: [
                 _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, () {
-  Navigator.push(context, MaterialPageRoute(builder: (c) => const ListDaerahPage()));
-}),
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => const ListDaerahPage()));
+                }),
                 _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
                   // 👇 MENGARAH KE HALAMAN GRAFIK 👇
                   Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));

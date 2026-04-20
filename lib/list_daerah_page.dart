@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'data_gereja_daerah_page.dart';
+import 'menu_daerah_page.dart'; // 👈 IMPORT MENU DAERAHNYA
 
 class ListDaerahPage extends StatelessWidget {
   const ListDaerahPage({super.key});
@@ -25,7 +25,6 @@ class ListDaerahPage extends StatelessWidget {
             return const Center(child: Text("Belum ada data."));
           }
 
-          // 👇 MESIN PENGELOMPOK DAERAH OTOMATIS 👇
           Map<String, int> daerahCount = {};
           for (var doc in snapshot.data!.docs) {
             var data = doc.data() as Map<String, dynamic>;
@@ -35,7 +34,6 @@ class ListDaerahPage extends StatelessWidget {
             daerahCount[namaDaerah] = (daerahCount[namaDaerah] ?? 0) + 1;
           }
 
-          // Ubah Map menjadi List agar bisa diurutkan (Alfabet)
           List<String> daftarDaerah = daerahCount.keys.toList();
           daftarDaerah.sort();
 
@@ -71,9 +69,9 @@ class ListDaerahPage extends StatelessWidget {
                   ),
                   trailing: const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () {
-                    // 👇 KALAU DIKLIK, BAWA NAMA DAERAHNYA KE HALAMAN BERIKUTNYA 👇
+                    // 👇 SEKARANG MENGARAH KE KANTOR / MENU DAERAH 👇
                     Navigator.push(context, MaterialPageRoute(
-                      builder: (context) => DataGerejaDaerahPage(namaDaerah: namaDaerah)
+                      builder: (context) => MenuDaerahPage(namaDaerah: namaDaerah)
                     ));
                   },
                 ),

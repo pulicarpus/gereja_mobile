@@ -68,7 +68,7 @@ class DetailGerejaPage extends StatelessWidget {
             else blmBaptis++;
 
             // 4. Hitung Kategorial
-            String kategorial = data['kategorial'] ?? "Belum Diatur";
+            String kategorial = data['kelompok'] ?? "Belum Diatur";
             if (kategorial.trim().isEmpty) kategorial = "Belum Diatur";
             kategorialCount[kategorial] = (kategorialCount[kategorial] ?? 0) + 1;
           }

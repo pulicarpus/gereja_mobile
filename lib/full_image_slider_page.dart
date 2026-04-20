@@ -3,7 +3,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:io';
 import 'dart:convert';
-import 'secrets.dart'; // 👈 Tambah ini
+import 'package:gal/gal.dart'; // 👈 IMPORT SENJATA UNTUK NGE-SAVE KE GALERI HP
+
+import 'secrets.dart'; 
 
 class FullImageSliderPage extends StatefulWidget {
   final List<String> images; 
@@ -22,6 +24,7 @@ class FullImageSliderPage extends StatefulWidget {
 class _FullImageSliderPageState extends State<FullImageSliderPage> {
   late PageController _pageController;
   int _currentIndex = 0;
+  final String _botToken = teleBotTokenSecret;
 
   @override
   void initState() {
@@ -36,8 +39,73 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
     super.dispose();
   }
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  void _showSnack(String msg, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? Colors.red : Colors.green,
+      )
+    );
+  }
+
+  // 👇 FUNGSI SAKTI MENYIMPAN FOTO KE GALERI HP 👇
+  Future<void> _saveImageToGallery(String fileId) async {
+    // Tampilkan loading muter-muter
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+    );
+
+    try {
+      // 1. Cek dulu apakah fotonya sudah ada di memori internal (cache)
+      final dir = await getApplicationDocumentsDirectory();
+      File localFile = File('${dir.path}/IMG_$fileId.jpg');
+
+      // Jika belum ada di memori, download ulang dari Telegram
+      if (!await localFile.exists()) {
+        final urlInfo = Uri.parse("https://api.telegram.org/bot$_botToken/getFile?file_id=$fileId");
+        final resInfo = await http.get(urlInfo);
+
+        if (resInfo.statusCode == 200) {
+          final json = jsonDecode(resInfo.body);
+          if (json['ok'] == true) {
+            String path = json['result']['file_path'];
+            final downloadUrl = Uri.parse("https://api.telegram.org/file/bot$_botToken/$path");
+            final imgResponse = await http.get(downloadUrl);
+
+            if (imgResponse.statusCode == 200) {
+              await localFile.writeAsBytes(imgResponse.bodyBytes);
+            } else {
+              throw Exception("Gagal mengunduh gambar.");
+            }
+          } else {
+            throw Exception("Gagal mendapatkan info file.");
+          }
+        } else {
+          throw Exception("Gagal terhubung ke server.");
+        }
+      }
+
+      // 2. JURUS SULTAN: Pindahkan file ke Galeri Umum HP
+      // Minta izin akses galeri dulu (kalau belum)
+      bool hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (!hasAccess) {
+        await Gal.requestAccess(toAlbum: true);
+      }
+
+      // Save fotonya ke folder "GKII Mobile"!
+      await Gal.putImage(localFile.path, album: 'GKII Mobile');
+
+      // Tutup loading
+      if (mounted) Navigator.pop(context);
+      _showSnack("Berhasil disimpan ke Galeri HP! 🎉");
+
+    } catch (e) {
+      // Tutup loading
+      if (mounted) Navigator.pop(context);
+      _showSnack("Gagal menyimpan: $e", isError: true);
+    }
   }
 
   @override
@@ -86,9 +154,11 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
                     style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.download_done_rounded, color: Colors.white, size: 28),
+                    icon: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
+                    tooltip: "Simpan ke Galeri",
                     onPressed: () {
-                      _showSnack("Gambar sudah tersimpan di galeri (Cache) aplikasi");
+                      String currentFileId = widget.images[_currentIndex];
+                      _saveImageToGallery(currentFileId);
                     },
                   ),
                 ],

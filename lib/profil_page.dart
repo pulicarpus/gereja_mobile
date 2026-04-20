@@ -9,6 +9,9 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 import 'loading_sultan.dart';
 
+// 👇 IMPORT HALAMAN SINKRONISASI 👇
+import 'sinkronisasi_jemaat_page.dart';
+
 class ProfilPage extends StatefulWidget {
   const ProfilPage({super.key});
 
@@ -24,9 +27,13 @@ class _ProfilPageState extends State<ProfilPage> {
   
   final TextEditingController _namaController = TextEditingController();
   File? _imageFile;
-  bool _isLoading = false;
+  bool _isLoading = true; // Kita buat true dulu untuk loading awal
   String? _currentPhotoUrl;
   String _currentRole = "Jemaat";
+  bool _isLinked = false; 
+  
+  // 👇 WADAH UNTUK MENYIMPAN DATA BUKU INDUK 👇
+  Map<String, dynamic>? _dataBukuInduk;
 
   @override
   void initState() {
@@ -34,29 +41,59 @@ class _ProfilPageState extends State<ProfilPage> {
     _loadInitialData();
   }
 
-  void _loadInitialData() {
-    setState(() {
-      _namaController.text = _userManager.userNama ?? "";
-      _currentPhotoUrl = _userManager.userFotoUrl;
-      _currentRole = _userManager.userRole ?? "Jemaat";
-    });
-  }
+  Future<void> _loadInitialData() async {
+    // Tarik data dasar dari memori lokal (UserManager)
+    _namaController.text = _userManager.userNama ?? "";
+    _currentPhotoUrl = _userManager.userFotoUrl;
+    _currentRole = _userManager.userRole ?? "Jemaat";
+    _isLinked = _userManager.isLinked(); 
 
-  // 👇 FUNGSI PILIH FOTO DARI GALERI 👇
-  Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70, // Kompres biar gak kegedean
-    );
-
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+    // Jika akun terhubung (Sultan), tarik data lengkap dari Firestore!
+    if (_isLinked) {
+      await _fetchDataBukuInduk();
+    } else {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // 👇 FUNGSI SIMPAN PERUBAHAN 👇
+  // 👇 FUNGSI PENARIK DATA LENGKAP DARI KOLEKSI JEMAAT 👇
+  Future<void> _fetchDataBukuInduk() async {
+    String? churchId = _userManager.getChurchIdForCurrentView();
+    String? jemaatId = _userManager.jemaatId;
+
+    if (churchId != null && jemaatId != null) {
+      try {
+        DocumentSnapshot doc = await _db
+            .collection("churches")
+            .doc(churchId)
+            .collection("jemaat")
+            .doc(jemaatId)
+            .get();
+
+        if (doc.exists) {
+          _dataBukuInduk = doc.data() as Map<String, dynamic>?;
+        }
+      } catch (e) {
+        debugPrint("Gagal tarik data buku induk: $e");
+      }
+    }
+    
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  // FUNGSI PILIH FOTO DARI GALERI
+  Future<void> _pickImage() async {
+    final pickedFile = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 70, 
+    );
+
+    if (pickedFile != null) {
+      setState(() => _imageFile = File(pickedFile.path));
+    }
+  }
+
+  // FUNGSI SIMPAN PERUBAHAN NAMA & FOTO AKUN
   Future<void> _updateProfil() async {
     if (_namaController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nama tidak boleh kosong")));
@@ -78,21 +115,20 @@ class _ProfilPageState extends State<ProfilPage> {
         finalPhotoUrl = await ref.getDownloadURL();
       }
 
-      // 2. Update data di Firestore
+      // 2. Update data di Firestore (Koleksi Users)
       await _db.collection("users").doc(user.uid).update({
         "namaLengkap": _namaController.text.trim(),
         "photoUrl": finalPhotoUrl,
       });
 
-      // 3. Update SharedPreferences lokal (UserManager)
+      // 3. Update SharedPreferences lokal
       await _userManager.updateProfil(
         _namaController.text.trim(),
         finalPhotoUrl,
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil berhasil diperbarui!")));
-        Navigator.pop(context, true); // Kembali dan beri sinyal sukses
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil akun berhasil diperbarui!")));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal update: $e")));
@@ -101,7 +137,7 @@ class _ProfilPageState extends State<ProfilPage> {
     }
   }
 
-  // 👇 KONFIRMASI LOGOUT 👇
+  // KONFIRMASI LOGOUT
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -115,7 +151,7 @@ class _ProfilPageState extends State<ProfilPage> {
             onPressed: () async {
               await _auth.signOut();
               OneSignal.logout();
-              await _userManager.reset(); // Pastikan ada fungsi reset di UserManager
+              await _userManager.reset(); 
               if (mounted) {
                 Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
               }
@@ -127,12 +163,57 @@ class _ProfilPageState extends State<ProfilPage> {
     );
   }
 
+  // NAVIGASI KE HALAMAN SINKRONISASI
+  void _goToSinkronisasi() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const SinkronisasiJemaatPage()),
+    ).then((_) {
+      setState(() => _isLoading = true);
+      _userManager.loadFromPrefs().then((_) => _loadInitialData());
+    });
+  }
+
+  // 👇 WIDGET BUILDER UNTUK BARIS INFO BUKU INDUK 👇
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade50,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: Colors.indigo.shade700),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 2),
+                Text(
+                  value.isEmpty ? "-" : value, 
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87)
+                ),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Edit Profil", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("Profil Saya", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -143,7 +224,7 @@ class _ProfilPageState extends State<ProfilPage> {
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
-                  // 👇 AREA FOTO PROFIL 👇
+                  // --- AREA FOTO PROFIL ---
                   Center(
                     child: Stack(
                       children: [
@@ -181,27 +262,109 @@ class _ProfilPageState extends State<ProfilPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 25),
+                  const SizedBox(height: 20),
 
-                  // 👇 INFO ROLE 👇
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      "Status: ${_currentRole.toUpperCase()}",
-                      style: TextStyle(color: Colors.indigo.shade900, fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
+                  // --- INFO ROLE ---
+                  Text(
+                    _currentRole.toUpperCase(),
+                    style: TextStyle(color: Colors.indigo.shade900, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.5),
                   ),
-                  const SizedBox(height: 35),
+                  const SizedBox(height: 30),
 
-                  // 👇 FORM INPUT 👇
+                  // --- AREA STATUS SINKRONISASI ---
+                  if (!_isLinked) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(15),
+                      decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.orange.shade200)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 30),
+                              SizedBox(width: 15),
+                              Expanded(
+                                child: Text("Akun Belum Terhubung", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16)),
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Text("Hubungkan akun Anda dengan data jemaat gereja untuk melihat biodata lengkap.", style: TextStyle(color: Colors.deepOrange, fontSize: 13)),
+                          const SizedBox(height: 15),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _goToSinkronisasi,
+                              icon: const Icon(Icons.link),
+                              label: const Text("HUBUNGKAN SEKARANG"),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // 👇 BIODATA LENGKAP BUKU INDUK (MUNCUL JIKA SUDAH SINKRON) 👇
+                  if (_isLinked && _dataBukuInduk != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white, 
+                        borderRadius: BorderRadius.circular(20), 
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.verified_user_rounded, color: Colors.green),
+                              const SizedBox(width: 10),
+                              const Text("Data Buku Induk", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
+                              const Spacer(),
+                              Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400) // Tanda read-only
+                            ],
+                          ),
+                          const Divider(height: 30, thickness: 1),
+                          
+                          _buildInfoRow(Icons.cake, "Tanggal Lahir", _dataBukuInduk?['tanggalLahir'] ?? "-"),
+                          _buildInfoRow(Icons.wc, "Jenis Kelamin", _dataBukuInduk?['jenisKelamin'] ?? "-"),
+                          _buildInfoRow(Icons.phone, "Nomor Telepon", _dataBukuInduk?['nomorTelepon'] ?? "-"),
+                          _buildInfoRow(Icons.location_on, "Alamat Lengkap", _dataBukuInduk?['alamat'] ?? "-"),
+                          _buildInfoRow(Icons.water_drop, "Status Baptis", _dataBukuInduk?['statusBaptis'] ?? "-"),
+                          _buildInfoRow(Icons.favorite, "Status Pernikahan", _dataBukuInduk?['statusPernikahan'] ?? "-"),
+                          _buildInfoRow(Icons.family_restroom, "Status Keluarga", _dataBukuInduk?['statusKeluarga'] ?? "-"),
+                          _buildInfoRow(Icons.groups, "Kelompok / Kategorial", _dataBukuInduk?['kelompok'] ?? "-"),
+                          _buildInfoRow(Icons.star, "Karunia Pelayanan", _dataBukuInduk?['karuniaPelayanan'] ?? "-"),
+                          
+                          const SizedBox(height: 10),
+                          Center(
+                            child: Text(
+                              "*Untuk mengubah data di atas, silakan hubungi Admin Gereja.",
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontStyle: FontStyle.italic),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 30),
+
+                  // --- FORM INPUT PENGATURAN AKUN ---
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text("Pengaturan Akun Aplikasi", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.grey)),
+                  ),
+                  const SizedBox(height: 15),
                   TextField(
                     controller: _namaController,
                     decoration: InputDecoration(
-                      labelText: "Nama Lengkap",
+                      labelText: "Nama Tampilan (Di Aplikasi)",
                       prefixIcon: const Icon(Icons.person_outline),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                       filled: true,
@@ -210,7 +373,7 @@ class _ProfilPageState extends State<ProfilPage> {
                   ),
                   const SizedBox(height: 30),
 
-                  // 👇 TOMBOL SIMPAN 👇
+                  // --- TOMBOL SIMPAN AKUN ---
                   SizedBox(
                     width: double.infinity,
                     height: 55,
@@ -222,18 +385,19 @@ class _ProfilPageState extends State<ProfilPage> {
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                         elevation: 2,
                       ),
-                      child: const Text("SIMPAN PERUBAHAN", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      child: const Text("SIMPAN NAMA & FOTO", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ),
                   ),
                   
                   const SizedBox(height: 20),
 
-                  // 👇 TOMBOL LOGOUT 👇
+                  // --- TOMBOL LOGOUT ---
                   TextButton.icon(
                     onPressed: _showLogoutDialog,
                     icon: const Icon(Icons.logout, color: Colors.red),
                     label: const Text("Keluar dari Akun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                   ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),

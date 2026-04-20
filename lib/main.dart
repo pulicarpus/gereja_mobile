@@ -32,7 +32,7 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 import 'video_splash_page.dart';
-import 'menu_daerah_page.dart';
+import 'list_daerah_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -969,7 +969,7 @@ class _MainActivityState extends State<MainActivity> {
                 subtitle: const Text("Panel Pengurus Daerah", style: TextStyle(fontSize: 12)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const MenuDaerahPage()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const ListDaerahPage()));
                 },
               ),
             ],

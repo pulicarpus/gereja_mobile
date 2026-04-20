@@ -5,6 +5,9 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 import 'main.dart'; // Asumsi main.dart berisi MainActivity kita tadi
 
+// 👇 IMPORT HALAMAN SINKRONISASI KITA 👇
+import 'sinkronisasi_jemaat_page.dart'; 
+
 class ValidasiGerejaPage extends StatefulWidget {
   final String userUid;
   final String userName;
@@ -98,6 +101,8 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         "isBlocked": false,
         "churchId": churchId,
         "churchName": churchName,
+        "jemaatId": "", // 👈 DEFAULT KOSONG DULU
+        "isPengurus": false // 👈 DEFAULT USER BIASA
       };
 
       await _db.collection("users").doc(widget.userUid).set(
@@ -118,6 +123,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         uNama: widget.userName, 
         uFoto: null, 
         uKomisi: "Umum", 
+        uIsPengurus: false, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
       );
 
       if (mounted) {
@@ -126,9 +132,9 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
           SnackBar(content: Text("Berhasil masuk ke $churchName")),
         );
         
-        // Pindah ke Halaman Utama (MainActivity)
+        // 👇 PENGALIHAN JALUR SULTAN: KE SINKRONISASI DULU 👇
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const MainActivity()),
+          MaterialPageRoute(builder: (context) => const SinkronisasiJemaatPage()),
           (route) => false,
         );
       }

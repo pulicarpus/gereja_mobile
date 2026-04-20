@@ -3,29 +3,48 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class DataGerejaDaerahPage extends StatelessWidget {
-  const DataGerejaDaerahPage({super.key});
+  final String namaDaerah; // 👈 MENERIMA KIRIMAN NAMA DAERAH
+
+  const DataGerejaDaerahPage({super.key, required this.namaDaerah});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Data Gereja & Pengerja", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text("Gereja di $namaDaerah", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('churches').snapshots(),
+        // 👇 FILTER SAKTI: HANYA AMBIL GEREJA YANG DAERAHNYA SAMA 👇
+        stream: FirebaseFirestore.instance
+            .collection('churches')
+            .where('daerah', isEqualTo: namaDaerah == "Belum Diatur" ? null : namaDaerah)
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text("Belum ada data gereja yang terdaftar."));
+            // Karena Firebase tidak bisa query null dengan == secara sempurna untuk field yang hilang, 
+            // kita lakukan filter manual untuk yang "Belum Diatur" di bawah ini.
           }
 
-          var docs = snapshot.data!.docs;
+          var docs = snapshot.data?.docs ?? [];
+
+          // Filter manual khusus untuk gereja yang field 'daerah'-nya kosong/belum ada
+          if (namaDaerah == "Belum Diatur") {
+             docs = docs.where((doc) {
+                var d = doc.data() as Map<String, dynamic>;
+                return !d.containsKey('daerah') || d['daerah'] == null || d['daerah'].toString().trim().isEmpty;
+             }).toList();
+          }
+
+          if (docs.isEmpty) {
+             return const Center(child: Text("Tidak ada gereja di daerah ini."));
+          }
 
           return ListView.builder(
             padding: const EdgeInsets.all(20),
@@ -37,18 +56,13 @@ class DataGerejaDaerahPage extends StatelessWidget {
               String namaGembala = data['namaGembala'] ?? "Belum ada data Gembala";
               String alamat = data['alamat'] ?? "Alamat belum diatur";
               String? fotoGembala = data['fotoGembalaUrl'];
-              
-              // 👇 INI DIA PENAMBAHAN LABEL DAERAHNYA 👇
-              String namaDaerah = data['daerah'] ?? "Daerah Belum Diatur";
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 15),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
                 ),
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(15),
@@ -58,32 +72,13 @@ class DataGerejaDaerahPage extends StatelessWidget {
                     backgroundImage: fotoGembala != null ? CachedNetworkImageProvider(fotoGembala) : null,
                     child: fotoGembala == null ? const Icon(Icons.person, color: Colors.indigo) : null,
                   ),
-                  title: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          namaGereja.toUpperCase(),
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
-                        ),
-                      ),
-                    ],
+                  title: Text(
+                    namaGereja.toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const SizedBox(height: 6),
-                      // BADGE DAERAH
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade100, 
-                          borderRadius: BorderRadius.circular(8)
-                        ),
-                        child: Text(
-                          "Wilayah/Daerah: $namaDaerah", 
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900)
-                        ),
-                      ),
                       const SizedBox(height: 8),
                       Row(
                         children: [

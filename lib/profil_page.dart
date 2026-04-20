@@ -27,12 +27,12 @@ class _ProfilPageState extends State<ProfilPage> {
   
   final TextEditingController _namaController = TextEditingController();
   File? _imageFile;
-  bool _isLoading = true; // Kita buat true dulu untuk loading awal
+  bool _isLoading = true; 
   String? _currentPhotoUrl;
   String _currentRole = "Jemaat";
   bool _isLinked = false; 
   
-  // 👇 WADAH UNTUK MENYIMPAN DATA BUKU INDUK 👇
+  // WADAH UNTUK MENYIMPAN DATA BUKU INDUK
   Map<String, dynamic>? _dataBukuInduk;
 
   @override
@@ -42,13 +42,11 @@ class _ProfilPageState extends State<ProfilPage> {
   }
 
   Future<void> _loadInitialData() async {
-    // Tarik data dasar dari memori lokal (UserManager)
     _namaController.text = _userManager.userNama ?? "";
     _currentPhotoUrl = _userManager.userFotoUrl;
     _currentRole = _userManager.userRole ?? "Jemaat";
     _isLinked = _userManager.isLinked(); 
 
-    // Jika akun terhubung (Sultan), tarik data lengkap dari Firestore!
     if (_isLinked) {
       await _fetchDataBukuInduk();
     } else {
@@ -56,7 +54,7 @@ class _ProfilPageState extends State<ProfilPage> {
     }
   }
 
-  // 👇 FUNGSI PENARIK DATA LENGKAP DARI KOLEKSI JEMAAT 👇
+  // FUNGSI PENARIK DATA BUKU INDUK
   Future<void> _fetchDataBukuInduk() async {
     String? churchId = _userManager.getChurchIdForCurrentView();
     String? jemaatId = _userManager.jemaatId;
@@ -79,6 +77,25 @@ class _ProfilPageState extends State<ProfilPage> {
     }
     
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  // 👇 LOGIKA PRIORITAS FOTO SULTAN 👇
+  String? get _displayPhotoUrl {
+    // 1. Cek apakah ini foto custom yang di-upload mandiri oleh user di aplikasi
+    bool isCustomUpload = _currentPhotoUrl != null && _currentPhotoUrl!.contains("profil_${_auth.currentUser?.uid}");
+    
+    if (isCustomUpload) {
+      return _currentPhotoUrl; // Prioritas Tertinggi: Foto pilihan user sendiri
+    }
+    
+    // 2. Cek apakah ada foto resmi dari Buku Induk (Database Firebase Admin)
+    String? fotoJemaat = _dataBukuInduk?['fotoProfil'];
+    if (fotoJemaat != null && fotoJemaat.isNotEmpty) {
+      return fotoJemaat; // Prioritas Kedua: Foto dari Admin Gereja
+    }
+    
+    // 3. Fallback terakhir: Foto dari Google (Gmail)
+    return _currentPhotoUrl; 
   }
 
   // FUNGSI PILIH FOTO DARI GALERI
@@ -107,7 +124,7 @@ class _ProfilPageState extends State<ProfilPage> {
     try {
       String? finalPhotoUrl = _currentPhotoUrl;
 
-      // 1. Jika ada foto baru, upload ke Firebase Storage
+      // Jika ada foto baru, upload ke Firebase Storage (Tandai dengan prefix 'profil_')
       if (_imageFile != null) {
         String fileName = "profil_${user.uid}.jpg";
         Reference ref = _storage.ref().child("users/${user.uid}/$fileName");
@@ -115,17 +132,23 @@ class _ProfilPageState extends State<ProfilPage> {
         finalPhotoUrl = await ref.getDownloadURL();
       }
 
-      // 2. Update data di Firestore (Koleksi Users)
+      // Update data di Firestore (Koleksi Users)
       await _db.collection("users").doc(user.uid).update({
         "namaLengkap": _namaController.text.trim(),
         "photoUrl": finalPhotoUrl,
       });
 
-      // 3. Update SharedPreferences lokal
+      // Update SharedPreferences lokal
       await _userManager.updateProfil(
         _namaController.text.trim(),
         finalPhotoUrl,
       );
+
+      // Perbarui state _currentPhotoUrl agar UI langsung merefleksikan perubahan
+      setState(() {
+        _currentPhotoUrl = finalPhotoUrl;
+        _imageFile = null; // Reset image file setelah sukses
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil akun berhasil diperbarui!")));
@@ -174,7 +197,6 @@ class _ProfilPageState extends State<ProfilPage> {
     });
   }
 
-  // 👇 WIDGET BUILDER UNTUK BARIS INFO BUKU INDUK 👇
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12.0),
@@ -234,15 +256,16 @@ class _ProfilPageState extends State<ProfilPage> {
                             border: Border.all(color: Colors.white, width: 4),
                             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)],
                           ),
+                          // 👇 PAKAI LOGIKA _displayPhotoUrl DI SINI 👇
                           child: CircleAvatar(
                             radius: 65,
                             backgroundColor: Colors.grey.shade200,
                             backgroundImage: _imageFile != null
                                 ? FileImage(_imageFile!)
-                                : (_currentPhotoUrl != null 
-                                    ? CachedNetworkImageProvider(_currentPhotoUrl!) 
+                                : (_displayPhotoUrl != null 
+                                    ? CachedNetworkImageProvider(_displayPhotoUrl!) 
                                     : null) as ImageProvider?,
-                            child: (_imageFile == null && _currentPhotoUrl == null)
+                            child: (_imageFile == null && _displayPhotoUrl == null)
                                 ? const Icon(Icons.person, size: 65, color: Colors.grey)
                                 : null,
                           ),
@@ -306,7 +329,7 @@ class _ProfilPageState extends State<ProfilPage> {
                     ),
                   ],
 
-                  // 👇 BIODATA LENGKAP BUKU INDUK (MUNCUL JIKA SUDAH SINKRON) 👇
+                  // --- BIODATA LENGKAP BUKU INDUK ---
                   if (_isLinked && _dataBukuInduk != null) ...[
                     Container(
                       width: double.infinity,
@@ -325,7 +348,7 @@ class _ProfilPageState extends State<ProfilPage> {
                               const SizedBox(width: 10),
                               const Text("Data Buku Induk", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green)),
                               const Spacer(),
-                              Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400) // Tanda read-only
+                              Icon(Icons.lock_outline, size: 16, color: Colors.grey.shade400) 
                             ],
                           ),
                           const Divider(height: 30, thickness: 1),

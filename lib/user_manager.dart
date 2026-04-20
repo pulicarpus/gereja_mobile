@@ -13,9 +13,10 @@ class UserManager {
   static const String _keyOriginalChurchName = "original_church_name";
   static const String _keyActiveChurchId = "active_church_id";
   static const String _keyActiveChurchName = "active_church_name";
-  
-  // 👇 KUNCI BARU UNTUK PENGURUS 👇
   static const String _keyIsPengurus = "is_pengurus";
+  
+  // 👇 KUNCI BARU UNTUK SINKRONISASI JEMAAT 👇
+  static const String _keyJemaatId = "jemaat_id";
 
   // Variabel Data
   String? userRole;
@@ -27,9 +28,10 @@ class UserManager {
   String? originalChurchName;
   String? activeChurchId;
   String? activeChurchName;
-  
-  // 👇 VARIABEL BARU UNTUK PENGURUS 👇
   bool isPengurus = false;
+  
+  // 👇 VARIABEL BARU UNTUK SINKRONISASI JEMAAT 👇
+  String? jemaatId;
 
   // Singleton pattern
   static final UserManager _instance = UserManager._internal();
@@ -50,7 +52,8 @@ class UserManager {
     required String? uNama,
     String? uFoto,
     String uKomisi = "Umum",
-    bool uIsPengurus = false, // 👈 PARAMETER BARU (Default false)
+    bool uIsPengurus = false,
+    String? uJemaatId, // 👈 PARAMETER BARU UNTUK SINKRONISASI
   }) async {
     userRole = role;
     userId = uId;
@@ -61,7 +64,8 @@ class UserManager {
     originalChurchName = churchName;
     activeChurchId = churchId;
     activeChurchName = churchName;
-    isPengurus = uIsPengurus; // 👈 SIMPAN STATUS
+    isPengurus = uIsPengurus; 
+    jemaatId = uJemaatId; // 👈 SIMPAN JEMAAT ID
     await saveToPrefs();
   }
 
@@ -77,7 +81,8 @@ class UserManager {
     await prefs.setString(_keyOriginalChurchName, originalChurchName ?? "");
     await prefs.setString(_keyActiveChurchId, activeChurchId ?? "");
     await prefs.setString(_keyActiveChurchName, activeChurchName ?? "");
-    await prefs.setBool(_keyIsPengurus, isPengurus); // 👈 SIMPAN KE MEMORI HP
+    await prefs.setBool(_keyIsPengurus, isPengurus); 
+    await prefs.setString(_keyJemaatId, jemaatId ?? ""); // 👈 SIMPAN KE MEMORI HP
   }
 
   // Load data saat aplikasi baru dibuka
@@ -95,13 +100,20 @@ class UserManager {
     originalChurchName = prefs.getString(_keyOriginalChurchName);
     activeChurchId = prefs.getString(_keyActiveChurchId);
     activeChurchName = prefs.getString(_keyActiveChurchName);
-    isPengurus = prefs.getBool(_keyIsPengurus) ?? false; // 👈 BACA DARI MEMORI HP
+    isPengurus = prefs.getBool(_keyIsPengurus) ?? false; 
+    
+    // 👇 BACA DARI MEMORI HP 👇
+    String? loadedJemaatId = prefs.getString(_keyJemaatId);
+    jemaatId = (loadedJemaatId != null && loadedJemaatId.isNotEmpty) ? loadedJemaatId : null;
     
     return true;
   }
 
   bool isAdmin() => userRole == "admin" || userRole == "superadmin";
   bool isSuperAdmin() => userRole == "superadmin";
+  
+  // 👇 FUNGSI SAKTI PENGECEK STATUS SINKRONISASI 👇
+  bool isLinked() => jemaatId != null && jemaatId!.trim().isNotEmpty;
 
   String? getChurchIdForCurrentView() => activeChurchId ?? originalChurchId;
 
@@ -133,6 +145,12 @@ class UserManager {
     await saveToPrefs();
   }
 
+  // 👇 FUNGSI KHUSUS UPDATE JEMAAT ID SAAT SINKRONISASI BERHASIL 👇
+  Future<void> linkJemaatId(String newJemaatId) async {
+    jemaatId = newJemaatId;
+    await saveToPrefs();
+  }
+
   Future<void> reset() async {
     userRole = null;
     userId = null;
@@ -143,7 +161,8 @@ class UserManager {
     originalChurchName = null;
     activeChurchId = null;
     activeChurchName = null;
-    isPengurus = false; // 👈 RESET STATUS PENGURUS
+    isPengurus = false; 
+    jemaatId = null; // 👈 RESET STATUS SINKRONISASI
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }

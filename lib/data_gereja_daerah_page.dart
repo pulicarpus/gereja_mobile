@@ -16,7 +16,6 @@ class DataGerejaDaerahPage extends StatelessWidget {
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // Mengambil SEMUA data gereja dari koleksi 'churches' secara real-time
         stream: FirebaseFirestore.instance.collection('churches').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -34,11 +33,13 @@ class DataGerejaDaerahPage extends StatelessWidget {
             itemBuilder: (context, index) {
               var data = docs[index].data() as Map<String, dynamic>;
               
-              // Menarik field yang ada di Firestore masing-masing gereja
               String namaGereja = data['namaGereja'] ?? data['churchName'] ?? "Gereja Tanpa Nama"; 
               String namaGembala = data['namaGembala'] ?? "Belum ada data Gembala";
               String alamat = data['alamat'] ?? "Alamat belum diatur";
               String? fotoGembala = data['fotoGembalaUrl'];
+              
+              // 👇 INI DIA PENAMBAHAN LABEL DAERAHNYA 👇
+              String namaDaerah = data['daerah'] ?? "Daerah Belum Diatur";
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 15),
@@ -57,13 +58,32 @@ class DataGerejaDaerahPage extends StatelessWidget {
                     backgroundImage: fotoGembala != null ? CachedNetworkImageProvider(fotoGembala) : null,
                     child: fotoGembala == null ? const Icon(Icons.person, color: Colors.indigo) : null,
                   ),
-                  title: Text(
-                    namaGereja.toUpperCase(),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          namaGereja.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
+                        ),
+                      ),
+                    ],
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      const SizedBox(height: 6),
+                      // BADGE DAERAH
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100, 
+                          borderRadius: BorderRadius.circular(8)
+                        ),
+                        child: Text(
+                          "Wilayah/Daerah: $namaDaerah", 
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900)
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -74,23 +94,18 @@ class DataGerejaDaerahPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.location_on_outlined, size: 14, color: Colors.redAccent),
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(Icons.location_on_outlined, size: 14, color: Colors.redAccent),
+                          ),
                           const SizedBox(width: 5),
                           Expanded(child: Text(alamat, style: const TextStyle(fontSize: 12, color: Colors.grey), maxLines: 2, overflow: TextOverflow.ellipsis)),
                         ],
                       ),
                     ],
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(color: Colors.indigo.shade50, shape: BoxShape.circle),
-                    child: const Icon(Icons.chevron_right, color: Colors.indigo),
-                  ),
-                  onTap: () {
-                     // Rencana ke depan: Kalau diklik bisa masuk ke detail lengkap gereja tersebut
-                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Profil lengkap $namaGereja akan segera hadir!")));
-                  },
                 ),
               );
             },

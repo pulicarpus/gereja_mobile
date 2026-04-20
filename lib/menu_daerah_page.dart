@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'dashboard_daerah_page.dart'; // Import dashboard statistik yang tadi
-import 'data_gereja_daerah_page.dart';
+import 'dashboard_daerah_page.dart'; 
+import 'data_gereja_daerah_page.dart'; // 👈 Sudah di-import
 
 class MenuDaerahPage extends StatelessWidget {
   const MenuDaerahPage({super.key});
@@ -13,42 +13,87 @@ class MenuDaerahPage extends StatelessWidget {
         title: const Text("Pusat Kendali Daerah", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
+        elevation: 0,
       ),
-      body: GridView.count(
-        padding: const EdgeInsets.all(25),
-        crossAxisCount: 2, // 2 Kolom biar ikonnya besar dan jelas
-        crossAxisSpacing: 15,
-        mainAxisSpacing: 15,
-        children: [
-_buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, () {
-  Navigator.push(context, MaterialPageRoute(builder: (context) => const DataGerejaDaerahPage()));
-}),
-            // Arahkan ke list gereja dan gembala
-          }),
-          _buildMenuSultan(context, Icons.account_balance_wallet, "Laporan\nKeuangan", Colors.green, () {
-            // Arahkan ke gabungan keuangan daerah
-          }),
-          _buildMenuSultan(context, Icons.assignment_ind, "Badan\nPengurus", Colors.orange, () {
-            // Arahkan ke daftar pengurus daerah
-          }),
-          _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
-            // 👇 KE HALAMAN GRAFIK YANG KITA BUAT TADI 👇
-            Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));
-          }),
-          _buildMenuSultan(context, Icons.notifications_active, "Info & Surat\nDaerah", Colors.red, () {
-            // Menu tambahan untuk edaran daerah
-          }),
-          _buildMenuSultan(context, Icons.settings_suggest, "Pengaturan\nDaerah", Colors.grey, () {
-            // Pengaturan khusus admin daerah
-          }),
-        ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Banner Daerah
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(30),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.indigo.shade900, Colors.blue.shade800],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
+              ),
+              child: const Column(
+                children: [
+                  Icon(Icons.account_balance, size: 60, color: Colors.white),
+                  SizedBox(height: 15),
+                  Text(
+                    "PENGURUS DAERAH",
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2),
+                  ),
+                  SizedBox(height: 5),
+                  Text(
+                    "Sistem Manajemen Multi-Gereja",
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+
+            // Grid Menu Daerah
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(25),
+              crossAxisCount: 2, 
+              crossAxisSpacing: 15,
+              mainAxisSpacing: 15,
+              children: [
+                _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, () {
+                  // 👇 MENGARAH KE HALAMAN DATA GEREJA 👇
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => const DataGerejaDaerahPage()));
+                }),
+                _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
+                  // 👇 MENGARAH KE HALAMAN GRAFIK 👇
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));
+                }),
+                _buildMenuSultan(context, Icons.account_balance_wallet, "Laporan\nKeuangan", Colors.green, () {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Keuangan Daerah")));
+                }),
+                _buildMenuSultan(context, Icons.assignment_ind, "Badan\nPengurus", Colors.orange, () {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Struktur Pengurus")));
+                }),
+                _buildMenuSultan(context, Icons.notifications_active, "Info & Surat\nDaerah", Colors.red, () {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Edaran Daerah")));
+                }),
+                _buildMenuSultan(context, Icons.settings_suggest, "Pengaturan\nDaerah", Colors.grey.shade700, () {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Segera Hadir: Pengaturan")));
+                }),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
+  // WIDGET PEMBANTU (Aman di luar fungsi build)
   Widget _buildMenuSultan(BuildContext context, IconData icon, String title, Color color, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(25),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -59,7 +104,7 @@ _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, 
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
               child: Icon(icon, size: 35, color: color),
             ),
@@ -67,7 +112,7 @@ _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, 
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black87),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
             ),
           ],
         ),

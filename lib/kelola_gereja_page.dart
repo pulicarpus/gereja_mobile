@@ -53,9 +53,11 @@ class KelolaGerejaPage extends StatelessWidget {
               var data = gerejaList[index].data() as Map<String, dynamic>;
               var docId = gerejaList[index].id;
               
-              String namaGereja = data['nama'] ?? "Gereja Tanpa Nama";
+              String namaGereja = data['nama'] ?? data['churchName'] ?? "Gereja Tanpa Nama";
               String alamatGereja = data['alamat'] ?? "Alamat belum diisi";
               String kodeUndangan = data['kodeUndangan'] ?? "-";
+              // 👇 DETEKTOR DAERAH DITAMBAHKAN DI SINI 👇
+              String namaDaerah = data['daerah'] ?? "Belum Diatur";
 
               bool isActive = UserManager().activeChurchId == docId;
 
@@ -78,7 +80,26 @@ class KelolaGerejaPage extends StatelessWidget {
                         namaGereja, 
                         style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: isActive ? Colors.indigo[900] : Colors.black87)
                       ),
-                      subtitle: Text(alamatGereja, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      // 👇 MENAMPILKAN LABEL DAERAH DI BAWAH NAMA GEREJA 👇
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(5)
+                            ),
+                            child: Text(
+                              "Daerah: $namaDaerah", 
+                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900)
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(alamatGereja, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
                       trailing: IconButton(
                         icon: const Icon(Icons.edit_note, color: Colors.blueGrey, size: 28),
                         tooltip: "Edit Info Gereja",

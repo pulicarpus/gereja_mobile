@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dashboard_daerah_page.dart'; // Import dashboard statistik yang tadi
+import 'data_gereja_daerah_page.dart';
 
 class MenuDaerahPage extends StatelessWidget {
   const MenuDaerahPage({super.key});

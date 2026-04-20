@@ -17,6 +17,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   final _etNama = TextEditingController();
+  final _etDaerah = TextEditingController(); // 👈 KONTROLER BARU UNTUK DAERAH
   final _etAlamat = TextEditingController();
   
   bool _isLoading = false;
@@ -32,6 +33,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
   @override
   void dispose() {
     _etNama.dispose();
+    _etDaerah.dispose(); // 👈 JANGAN LUPA DIBUANG KALAU SUDAH KELUAR
     _etAlamat.dispose();
     super.dispose();
   }
@@ -42,8 +44,8 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
       var doc = await _db.collection("churches").doc(widget.gerejaId).get();
       if (doc.exists) {
         var data = doc.data()!;
-        // 👇 BACA DARI 'namaGereja', KALAU KOSONG BACA DARI 'nama' (DATA LAMA) 👇
         _etNama.text = data['namaGereja'] ?? data['nama'] ?? "";
+        _etDaerah.text = data['daerah'] ?? ""; // 👈 BACA DATA DAERAH DARI FIREBASE
         _etAlamat.text = data['alamat'] ?? "";
       }
     } catch (e) {
@@ -59,12 +61,14 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
     setState(() => _isLoading = true);
 
     String nama = _etNama.text.trim();
+    String daerah = _etDaerah.text.trim(); // 👈 AMBIL TEKS KETIKAN DAERAH
     String alamat = _etAlamat.text.trim();
 
     try {
       if (widget.gerejaId != null) {
         await _db.collection("churches").doc(widget.gerejaId).update({
-          "namaGereja": nama, // 👈 SUDAH DIUBAH JADI namaGereja
+          "namaGereja": nama, 
+          "daerah": daerah, // 👈 SIMPAN UPDATE DAERAH
           "alamat": alamat,
           "lastUpdate": FieldValue.serverTimestamp(),
         });
@@ -76,7 +80,8 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         String kodeUndangan = "$kodeUnik${Random().nextInt(900) + 100}"; 
 
         await _db.collection("churches").add({
-          "namaGereja": nama, // 👈 SUDAH DIUBAH JADI namaGereja
+          "namaGereja": nama, 
+          "daerah": daerah, // 👈 SIMPAN DAERAH UNTUK GEREJA BARU
           "alamat": alamat,
           "kodeUndangan": kodeUndangan,
           "createdAt": FieldValue.serverTimestamp(),
@@ -104,7 +109,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         foregroundColor: Colors.white,
       ),
       body: _isLoading
-          ? LoadingSultan(size: 80)
+          ? const LoadingSultan(size: 80)
           : Form(
               key: _formKey,
               child: ListView(
@@ -127,6 +132,25 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return "Nama gereja tidak boleh kosong";
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // 👇 KOLOM INPUT DAERAH BARU 👇
+                  TextFormField(
+                    controller: _etDaerah,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: InputDecoration(
+                      labelText: "Nama Daerah / Wilayah",
+                      hintText: "Contoh: Daerah Mahakam, Daerah Sintang",
+                      prefixIcon: const Icon(Icons.map),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return "Daerah tidak boleh kosong";
                       }
                       return null;
                     },

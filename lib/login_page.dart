@@ -6,6 +6,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 
 import 'validasi_gereja_page.dart';
+import 'sinkronisasi_jemaat_page.dart'; // 👈 IMPORT HALAMAN BARU KITA
 import 'loading_sultan.dart';
 
 class LoginPage extends StatefulWidget {
@@ -85,20 +86,15 @@ class _LoginPageState extends State<LoginPage> {
         final data = doc.data() as Map<String, dynamic>;
         String role = data['role'] ?? "user";
         String? churchId = data['churchId']; 
+        String? jemaatId = data['jemaatId']; // 👈 AMBIL DATA JEMAAT ID
         String churchName = data['churchName'] ?? "";
         String nama = data['namaLengkap'] ?? user.displayName ?? "Jemaat";
         String? foto = data['photoUrl'] ?? user.photoURL;
         
-        // 👇 AMBIL STATUS PENGURUS DARI FIREBASE 👇
         bool statusPengurus = data['isPengurus'] ?? false;
 
-        // SATPAM CEGATAN
-        if (role != "superadmin" && (churchId == null || churchId.trim().isEmpty)) {
-          _goToValidasiManual(user);
-          return; 
-        }
-
         // MENGGUNAKAN LOGIKA BOS: setUser DENGAN PARAMETER BARU
+        // (Pastikan nanti di user_manager.dart parameter jemaatId ditambahkan ya Bos)
         await UserManager().setUser(
           role: role,
           churchId: churchId ?? "",
@@ -107,17 +103,30 @@ class _LoginPageState extends State<LoginPage> {
           uNama: nama,
           uFoto: foto,
           uKomisi: data['kelompok'] ?? "Umum",
-          uIsPengurus: statusPengurus, // 👈 SUNTIKKAN KE USER MANAGER
+          uIsPengurus: statusPengurus, 
         );
 
         // Jika Superadmin, beri Tag khusus di OneSignal
         if (role == "superadmin") {
           OneSignal.User.addTagWithKey("active_church", "SUPERADMIN");
+          _goToMainActivity(); // Superadmin bebas hambatan
+          return;
         } else if (churchId != null && churchId.isNotEmpty) {
           OneSignal.User.addTagWithKey("active_church", churchId);
         }
 
-        _goToMainActivity();
+        // 👇 LOGIKA SATPAM 3 JALUR SULTAN 👇
+        if (churchId == null || churchId.trim().isEmpty) {
+          // JALUR 1: Belum ada gereja -> Lempar ke Validasi Gereja
+          _goToValidasiManual(user);
+        } else if (jemaatId == null || jemaatId.trim().isEmpty) {
+          // JALUR 2: Sudah ada gereja, tapi belum sinkron jemaat -> Lempar ke Sinkronisasi
+          _goToSinkronisasi();
+        } else {
+          // JALUR 3: SULTAN! Sudah lengkap semua -> Langsung ke Beranda
+          _goToMainActivity();
+        }
+
       } else {
         _saveNewUserAndValidate(user);
       }
@@ -137,7 +146,8 @@ class _LoginPageState extends State<LoginPage> {
       "isBlocked": false,
       "churchId": "",
       "churchName": "",
-      "isPengurus": false // 👈 USER BARU DEFAULT BUKAN PENGURUS
+      "jemaatId": "", // 👈 DEFAULT KOSONG UNTUK USER BARU
+      "isPengurus": false 
     };
 
     try {
@@ -161,6 +171,15 @@ class _LoginPageState extends State<LoginPage> {
           userEmail: user.email ?? "",
         ),
       ),
+    );
+  }
+
+  // 👇 FUNGSI NAVIGASI BARU KE SINKRONISASI 👇
+  void _goToSinkronisasi() {
+    setState(() => _isLoading = false);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const SinkronisasiJemaatPage()),
     );
   }
 

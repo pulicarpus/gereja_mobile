@@ -951,21 +951,27 @@ class _MainActivityState extends State<MainActivity> {
             ],
 
             if (isSuperAdmin) ...[
-              ListTile(
-                leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
-                title: const Text("Kelola Gereja", style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text("Hak Akses Superadmin", style: TextStyle(fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const KelolaGerejaPage()))
-                  .then((_) => setState(() { _initSession(); }));
-                },
-              ),
-            ],
-          ],
-        ),
-      );
-  }
+  ListTile(
+    leading: const Icon(Icons.admin_panel_settings, color: Colors.orange),
+    title: const Text("Kelola Gereja", style: TextStyle(fontWeight: FontWeight.bold)),
+    subtitle: const Text("Hak Akses Superadmin", style: TextStyle(fontSize: 12)),
+    onTap: () {
+      Navigator.pop(context);
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const KelolaGerejaPage()))
+      .then((_) => setState(() { _initSession(); }));
+    },
+  ),
+  // 👇 MENU PUSAT KENDALI DAERAH (VIP) 👇
+  ListTile(
+    leading: const Icon(Icons.account_balance, color: Colors.purple),
+    title: const Text("Pusat Kendali Daerah", style: TextStyle(fontWeight: FontWeight.bold)),
+    subtitle: const Text("Panel Pengurus Daerah", style: TextStyle(fontSize: 12)),
+    onTap: () {
+      Navigator.pop(context);
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MenuDaerahPage()));
+    },
+  ),
+],
 
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(

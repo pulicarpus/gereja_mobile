@@ -104,6 +104,7 @@ class _LoginPageState extends State<LoginPage> {
           uFoto: foto,
           uKomisi: data['kelompok'] ?? "Umum",
           uIsPengurus: statusPengurus, 
+          uJemaatId: jemaatId,
         );
 
         // Jika Superadmin, beri Tag khusus di OneSignal

@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+// 👇 IMPORT HALAMAN STATISTIK GEREJA YANG BARU KITA BUAT 👇
+import 'detail_gereja_page.dart'; 
+
 class DataGerejaDaerahPage extends StatelessWidget {
-  final String namaDaerah; // 👈 MENERIMA KIRIMAN NAMA DAERAH
+  final String namaDaerah; // Menerima nama daerah dari halaman sebelumnya
 
   const DataGerejaDaerahPage({super.key, required this.namaDaerah});
 
@@ -18,7 +21,7 @@ class DataGerejaDaerahPage extends StatelessWidget {
         elevation: 0,
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 👇 FILTER SAKTI: HANYA AMBIL GEREJA YANG DAERAHNYA SAMA 👇
+        // Mengambil gereja yang daerahnya sesuai
         stream: FirebaseFirestore.instance
             .collection('churches')
             .where('daerah', isEqualTo: namaDaerah == "Belum Diatur" ? null : namaDaerah)
@@ -26,10 +29,6 @@ class DataGerejaDaerahPage extends StatelessWidget {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            // Karena Firebase tidak bisa query null dengan == secara sempurna untuk field yang hilang, 
-            // kita lakukan filter manual untuk yang "Belum Diatur" di bawah ini.
           }
 
           var docs = snapshot.data?.docs ?? [];
@@ -50,7 +49,9 @@ class DataGerejaDaerahPage extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             itemCount: docs.length,
             itemBuilder: (context, index) {
-              var data = docs[index].data() as Map<String, dynamic>;
+              var doc = docs[index];
+              var docId = doc.id; // 👈 MENDAPATKAN ID GEREJA
+              var data = doc.data() as Map<String, dynamic>;
               
               String namaGereja = data['namaGereja'] ?? data['churchName'] ?? "Gereja Tanpa Nama"; 
               String namaGembala = data['namaGembala'] ?? "Belum ada data Gembala";
@@ -101,6 +102,17 @@ class DataGerejaDaerahPage extends StatelessWidget {
                       ),
                     ],
                   ),
+                  trailing: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(color: Colors.indigo.shade50, shape: BoxShape.circle),
+                    child: const Icon(Icons.analytics_outlined, color: Colors.indigo),
+                  ),
+                  onTap: () {
+                    // 👇 MEMBUKA HALAMAN STATISTIK GEREJA SAAT DIKLIK 👇
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (context) => DetailGerejaPage(churchId: docId, namaGereja: namaGereja)
+                    ));
+                  },
                 ),
               );
             },

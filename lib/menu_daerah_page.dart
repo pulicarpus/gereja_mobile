@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dashboard_daerah_page.dart'; 
-import 'data_gereja_daerah_page.dart'; // 👈 Sudah di-import
+import 'list_daerah_page.dart';
 
 class MenuDaerahPage extends StatelessWidget {
   const MenuDaerahPage({super.key});
@@ -62,9 +62,8 @@ class MenuDaerahPage extends StatelessWidget {
               mainAxisSpacing: 15,
               children: [
                 _buildMenuSultan(context, Icons.church, "Data Gereja\n& Pengerja", Colors.blue, () {
-                  // 👇 MENGARAH KE HALAMAN DATA GEREJA 👇
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => const DataGerejaDaerahPage()));
-                }),
+  Navigator.push(context, MaterialPageRoute(builder: (c) => const ListDaerahPage()));
+}),
                 _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
                   // 👇 MENGARAH KE HALAMAN GRAFIK 👇
                   Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));

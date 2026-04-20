@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import untuk ngecek login
+import 'package:firebase_auth/firebase_auth.dart'; 
 
-// Sesuaikan import ini dengan nama file Bos
 import 'main.dart'; 
 import 'login_page.dart'; 
+import 'user_manager.dart'; // 👈 IMPORT OTAK MEMORI KITA
+
+// 👇 IMPORT 2 GERBANG TOL KITA 👇
+import 'validasi_gereja_page.dart';
+import 'sinkronisasi_jemaat_page.dart';
 
 class VideoSplashPage extends StatefulWidget {
   const VideoSplashPage({super.key});
@@ -15,42 +19,77 @@ class VideoSplashPage extends StatefulWidget {
 
 class _VideoSplashPageState extends State<VideoSplashPage> {
   late VideoPlayerController _controller;
-  bool _isNavigating = false; // Mencegah pindah halaman berkali-kali
+  bool _isNavigating = false; 
 
   @override
   void initState() {
     super.initState();
-    // Pastikan jalurnya sesuai dengan video polosan Bos
     _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4")
       ..initialize().then((_) {
-        _controller.setVolume(0.0); // SATPAM AUDIO: Mute suara videonya
+        _controller.setVolume(0.0); 
         setState(() {});
         _controller.play(); 
       });
 
-    // Pasang telinga untuk ngecek kapan videonya selesai
     _controller.addListener(() {
       if (_controller.value.isInitialized && 
           _controller.value.position >= _controller.value.duration && 
           !_isNavigating) {
             
-        _isNavigating = true; // Kunci supaya tidak pindah halaman dobel
+        _isNavigating = true; 
         _checkAuthAndNavigate();
       }
     });
   }
 
-  void _checkAuthAndNavigate() {
-    // Cek apakah jemaat sudah login atau belum
-    Widget nextPage = FirebaseAuth.instance.currentUser == null 
-        ? const LoginPage() 
-        : const MainActivity();
+  // 👇 LOGIKA SATPAM SULTAN DIPASANG DI SINI 👇
+  Future<void> _checkAuthAndNavigate() async {
+    final user = FirebaseAuth.instance.currentUser;
 
-    // Lakukan lompatan
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => nextPage),
-    );
+    if (user == null) {
+      // 1. Belum Login sama sekali
+      _doNavigate(const LoginPage());
+      return;
+    }
+
+    // 2. Load memori dari HP (Apakah dia sudah sinkron sebelumnya?)
+    final userManager = UserManager();
+    await userManager.loadFromPrefs(); 
+
+    String? churchId = userManager.getChurchIdForCurrentView();
+    String? jemaatId = userManager.jemaatId;
+    String? role = userManager.userRole;
+
+    Widget nextPage;
+
+    if (role == "superadmin") {
+      // 👑 Superadmin bebas hambatan
+      nextPage = const MainActivity();
+    } else if (churchId == null || churchId.trim().isEmpty) {
+      // 🚩 JALUR 1: Sudah login, tapi belum masukkan kode gereja
+      nextPage = ValidasiGerejaPage(
+        userUid: user.uid,
+        userName: user.displayName ?? "Jemaat Baru",
+        userEmail: user.email ?? "",
+      );
+    } else if (jemaatId == null || jemaatId.trim().isEmpty) {
+      // 🚩 JALUR 2: Sudah masuk gereja, tapi belum sinkron biodata
+      nextPage = const SinkronisasiJemaatPage();
+    } else {
+      // 🚀 JALUR SULTAN: Lengkap! Langsung ke Beranda
+      nextPage = const MainActivity();
+    }
+
+    _doNavigate(nextPage);
+  }
+
+  void _doNavigate(Widget page) {
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => page),
+      );
+    }
   }
 
   @override
@@ -67,14 +106,13 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
         fit: StackFit.expand,
         children: [
           // ==========================================
-          // LAYER 1 (PALING BAWAH): VIDEO OMBAK FULL SCREEN
+          // LAYER 1: VIDEO OMBAK FULL SCREEN
           // ==========================================
           Center(
             child: _controller.value.isInitialized
                 ? SizedBox(
                     width: double.infinity,
                     height: double.infinity,
-                    // 👇 INI DIA KUNCI SULTANNYA: UBAH JADI COVER 👇
                     child: FittedBox(
                       fit: BoxFit.cover, 
                       child: SizedBox(
@@ -88,13 +126,13 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
           ),
 
           // ==========================================
-          // LAYER 2 (PALING ATAS): TEKS TAJAM (HD)
+          // LAYER 2: TEKS TAJAM (HD)
           // ==========================================
           if (_controller.value.isInitialized)
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.of(context).size.height * 0.35, // Ketinggian teks (35% dari bawah)
+              bottom: MediaQuery.of(context).size.height * 0.35, 
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -104,18 +142,18 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Colors.indigo.shade900, // Warna biru tua
+                      color: Colors.indigo.shade900, 
                       shadows: [
                         Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
                       ]
                     ),
                   ),
-                  const SizedBox(height: 5), // Jarak baris
+                  const SizedBox(height: 5), 
                   Text(
                     "GKII Mobile",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 38, // Ukuran gagah
+                      fontSize: 38, 
                       fontWeight: FontWeight.w900, 
                       color: Colors.blue.shade700,
                       shadows: [

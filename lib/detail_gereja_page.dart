@@ -16,9 +16,30 @@ class DetailGerejaPage extends StatelessWidget {
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
+        // 👇 INI DIA TOMBOL BPJ DI HEADER 👇
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.assignment_ind),
+            tooltip: "Lihat BPJ $namaGereja",
+            onPressed: () {
+              // Sementara kita pasang notifikasi dulu sebelum dijahit ke halaman Pengurus
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Menuju data BPJ $namaGereja..."),
+                  backgroundColor: Colors.indigo[900],
+                )
+              );
+              
+              // Rencana Navigasi:
+              // Navigator.push(context, MaterialPageRoute(
+              //   builder: (context) => PengurusPage(churchId: churchId)
+              // ));
+            },
+          ),
+          const SizedBox(width: 10),
+        ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // 👇 FOKUS MENGHITUNG DATA JEMAAT DI GEREJA YANG DIKLIK SAJA 👇
         stream: FirebaseFirestore.instance.collection('churches').doc(churchId).collection('jemaat').snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -67,7 +88,7 @@ class DetailGerejaPage extends StatelessWidget {
             if (baptis == 'sudah' || baptis == 'ya') sudahBaptis++;
             else blmBaptis++;
 
-            // 4. Hitung Kategorial
+            // 4. Hitung Kategorial (Membaca dari field 'kelompok')
             String kategorial = data['kelompok'] ?? "Belum Diatur";
             if (kategorial.trim().isEmpty) kategorial = "Belum Diatur";
             kategorialCount[kategorial] = (kategorialCount[kategorial] ?? 0) + 1;

@@ -4,7 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'loading_sultan.dart';
 
 class DashboardDaerahPage extends StatefulWidget {
-  final String? namaDaerah; // 👈 SEKARANG MENERIMA NAMA DAERAH
+  final String? namaDaerah; 
 
   const DashboardDaerahPage({super.key, this.namaDaerah});
 
@@ -16,7 +16,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
   final _db = FirebaseFirestore.instance;
   bool _isLoading = true;
 
-  // Variabel Penampung Statistik Jemaat & Gereja
   int totalJemaatDaerah = 0;
   int totalGereja = 0;
   int pria = 0;
@@ -29,7 +28,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     "Lainnya": 0,
   };
 
-  // 👇 VARIABEL BARU UNTUK PENGERJA 👇
   int totalPengerja = 0;
   int totalPdt = 0;
   int totalVic = 0;
@@ -41,10 +39,8 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     _hitungDataGlobal();
   }
 
-  // 👇 MESIN PINTAR PENGHITUNG DATA SE-DAERAH 👇
   Future<void> _hitungDataGlobal() async {
     try {
-      // 1. Ambil gereja sesuai daerah yang dipilih
       Query churchQuery = _db.collection("churches");
       if (widget.namaDaerah != null && widget.namaDaerah != "Belum Diatur") {
         churchQuery = churchQuery.where('daerah', isEqualTo: widget.namaDaerah);
@@ -53,7 +49,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       
       List<QueryDocumentSnapshot> docs = snapGereja.docs;
 
-      // Filter manual jika daerah "Belum Diatur"
       if (widget.namaDaerah == "Belum Diatur") {
         docs = docs.where((doc) {
           var d = doc.data() as Map<String, dynamic>;
@@ -72,7 +67,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       for (var docGereja in docs) {
         var dataGereja = docGereja.data() as Map<String, dynamic>;
         
-        // 👇 DETEKTOR GELAR PENGERJA DARI NAMA GEMBALA 👇
         String gembala = (dataGereja['namaGembala'] ?? "").toString().toLowerCase();
         bool isPengerja = false;
 
@@ -86,25 +80,21 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
           tempEv++;
           isPengerja = true;
         } else if (gembala.isNotEmpty && !gembala.contains("belum ada")) {
-          // Tidak ada gelar tapi ada namanya, tetap dihitung 1 pengerja
           isPengerja = true; 
         }
 
         if (isPengerja) tempPengerja++;
 
-        // 👇 HITUNG JEMAAT 👇
         var snapJemaat = await docGereja.reference.collection("jemaat").get();
         tempTotal += snapJemaat.docs.length;
 
         for (var docJemaat in snapJemaat.docs) {
           var data = docJemaat.data();
           
-          // Hitung Gender
           String jk = (data['jenisKelamin'] ?? "").toString().toLowerCase();
           if (jk == "pria" || jk == "laki-laki" || jk == "l") tempPria++;
           if (jk == "wanita" || jk == "perempuan" || jk == "p") tempWanita++;
 
-          // Hitung Kategorial (Membaca field 'kelompok')
           String kat = data['kelompok'] ?? "Lainnya";
           if (!tempKat.containsKey(kat)) kat = "Lainnya";
           tempKat[kat] = tempKat[kat]! + 1;
@@ -118,7 +108,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
           wanita = tempWanita;
           kategorialStats = tempKat;
           
-          // Update Variabel Pengerja
           totalPengerja = tempPengerja;
           totalPdt = tempPdt;
           totalVic = tempVic;
@@ -156,7 +145,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
                   _buildHeaderStats(),
                   const SizedBox(height: 30),
 
-                  // 👇 BLOK BARU UNTUK DATA PENGERJA 👇
                   const Text("Kekuatan Hamba Tuhan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                   const SizedBox(height: 15),
                   _buildPengerjaStats(),
@@ -169,7 +157,7 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
 
                   const Text("Sebaran Kategorial Daerah", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
                   const SizedBox(height: 15),
-                  _buildKategorialChart(),
+                  _buildKategorialHorizontalChart(), // 👇 PAKAI GRAFIK HORIZONTAL YANG BARU 👇
                   const SizedBox(height: 50),
                 ],
               ),
@@ -177,7 +165,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     );
   }
 
-  // WIDGET 1: RINGKASAN ANGKA
   Widget _buildHeaderStats() {
     return Row(
       children: [
@@ -188,7 +175,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     );
   }
 
-  // 👇 WIDGET BARU: KARTU PENGERJA 👇
   Widget _buildPengerjaStats() {
     return Column(
       children: [
@@ -235,7 +221,6 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     );
   }
 
-  // WIDGET 2: GRAFIK PIE GENDER (Sudah Anti-Crash kalau kosong)
   Widget _buildGenderChart() {
     double priaPct = totalJemaatDaerah == 0 ? 0 : (pria / totalJemaatDaerah) * 100;
     double wanitaPct = totalJemaatDaerah == 0 ? 0 : (wanita / totalJemaatDaerah) * 100;
@@ -272,45 +257,85 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     );
   }
 
-  // WIDGET 3: GRAFIK BATANG KATEGORIAL
-  Widget _buildKategorialChart() {
+  // 👇 WIDGET BARU: GRAFIK HORIZONTAL YANG JAUH LEBIH RAPI & JELAS 👇
+  Widget _buildKategorialHorizontalChart() {
+    if (totalJemaatDaerah == 0) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+        child: const Center(child: Text("Belum ada jemaat", style: TextStyle(color: Colors.grey))),
+      );
+    }
+
+    int maxValue = kategorialStats.values.reduce((a, b) => a > b ? a : b);
+    if (maxValue == 0) maxValue = 1; // Cegah pembagian dengan 0
+
     return Container(
-      height: 250,
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
-      child: totalJemaatDaerah == 0 
-        ? const Center(child: Text("Belum ada jemaat", style: TextStyle(color: Colors.grey)))
-        : BarChart(
-            BarChartData(
-              alignment: BarChartAlignment.spaceAround,
-              maxY: (kategorialStats.values.reduce((a, b) => a > b ? a : b) + 10).toDouble(),
-              barGroups: kategorialStats.entries.map((e) {
-                int index = kategorialStats.keys.toList().indexOf(e.key);
-                return BarChartGroupData(
-                  x: index,
-                  barRods: [BarChartRodData(toY: e.value.toDouble(), color: Colors.indigo, width: 15, borderRadius: BorderRadius.circular(4))],
-                );
-              }).toList(),
-              titlesData: FlTitlesData(
-                leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                bottomTitles: AxisTitles(
-                  sideTitles: SideTitles(
-                    showTitles: true,
-                    getTitlesWidget: (value, meta) {
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: Text(kategorialStats.keys.toList()[value.toInt()].substring(0, 3), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                      );
-                    },
+      decoration: BoxDecoration(
+        color: Colors.white, 
+        borderRadius: BorderRadius.circular(20), 
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]
+      ),
+      child: Column(
+        children: kategorialStats.entries.map((e) {
+          String nama = e.key;
+          int jumlah = e.value;
+          double pct = jumlah / maxValue; // Hitung panjang bar (persentase dari nilai tertinggi)
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Row(
+              children: [
+                // 1. Label Nama Kategorial
+                SizedBox(
+                  width: 95,
+                  child: Text(nama, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87)),
+                ),
+                const SizedBox(width: 8),
+                
+                // 2. Batang Grafik
+                Expanded(
+                  child: Stack(
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      Container(
+                        height: 20,
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
+                      ),
+                      FractionallySizedBox(
+                        widthFactor: pct,
+                        child: Container(
+                          height: 20,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: [Colors.indigo.shade400, Colors.indigo.shade800]),
+                            borderRadius: BorderRadius.circular(10)
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              ),
-              borderData: FlBorderData(show: false),
-              gridData: const FlGridData(show: false),
+                const SizedBox(width: 12),
+                
+                // 3. Angka Detail di Ujung Kanan
+                SizedBox(
+                  width: 45,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+                    child: Text(
+                      "$jumlah", 
+                      textAlign: TextAlign.center, 
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 12)
+                    ),
+                  ),
+                )
+              ],
             ),
-          ),
+          );
+        }).toList(),
+      ),
     );
   }
 

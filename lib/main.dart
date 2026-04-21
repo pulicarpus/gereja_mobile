@@ -31,7 +31,10 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 import 'video_splash_page.dart';
-import 'list_daerah_page.dart'; // 👈 IMPORT HALAMAN DAERAH DI SINI
+
+// 👇 IMPORT HALAMAN DAERAH 👇
+import 'list_daerah_page.dart'; 
+import 'menu_daerah_page.dart'; 
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -103,7 +106,6 @@ class _MainActivityState extends State<MainActivity> {
   final _storage = FirebaseStorage.instance;
   final _picker = ImagePicker();
   
-  // 👇 CONTROLLER UNTUK FITUR SWIPE KANAN-KIRI 👇
   final PageController _pageController = PageController();
   int _currentIndex = 0;
 
@@ -379,21 +381,36 @@ class _MainActivityState extends State<MainActivity> {
     final user = UserManager();
     bool isAdmin = user.isAdmin();
     bool isSuperAdmin = user.isSuperAdmin();
+    bool isAdminDaerah = user.isAdminDaerah(); // 👈 CEK APAKAH DIA ADMIN DAERAH
+    
+    // Apakah dia punya hak geser ke kanan? (Hanya SuperAdmin & Admin Daerah)
+    bool hasSwipeAccess = isSuperAdmin || isAdminDaerah;
+    
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
-    // KITA BUNGKUS HALAMAN GEREJA LOKAL KE DALAM VARIABEL
+    // BUNGKUS HALAMAN GEREJA LOKAL
     Widget berandaLokal = _buildBerandaGerejaLokal(user, isAdmin, isSuperAdmin, isMemantau);
 
-    // JIKA BUKAN SUPERADMIN, LANGSUNG TAMPILKAN GEREJA LOKAL (Tidak bisa swipe)
-    if (!isSuperAdmin) {
+    // JIKA BUKAN SUPERADMIN / ADMIN DAERAH, LANGSUNG TAMPILKAN GEREJA LOKAL
+    if (!hasSwipeAccess) {
       return berandaLokal;
     }
 
-    // JIKA SUPERADMIN, TAMPILKAN MODE SULTAN (Bisa Swipe + Ada Menu Bawah)
+    // 👇 LOGIKA CERDAS PENENTUAN HALAMAN KEDUA 👇
+    Widget halamanPusatKendali;
+    if (isSuperAdmin) {
+      // Superadmin melihat daftar semua daerah
+      halamanPusatKendali = const ListDaerahPage(); 
+    } else {
+      // Admin Daerah langsung masuk ke menu daerahnya sendiri (Bypass)
+      halamanPusatKendali = MenuDaerahPage(namaDaerah: user.adminDaerahArea ?? "Belum Diatur");
+    }
+
+    // TAMPILKAN MODE SULTAN (Bisa Swipe + Ada Menu Bawah)
     return Scaffold(
       body: PageView(
         controller: _pageController,
-        physics: const BouncingScrollPhysics(), // Efek membal saat digeser
+        physics: const BouncingScrollPhysics(), 
         onPageChanged: (index) {
           setState(() {
             _currentIndex = index;
@@ -401,7 +418,7 @@ class _MainActivityState extends State<MainActivity> {
         },
         children: [
           berandaLokal,          // HALAMAN 1: GEREJA LOKAL
-          const ListDaerahPage() // HALAMAN 2: PUSAT DAERAH
+          halamanPusatKendali,   // HALAMAN 2: PUSAT KENDALI (Disesuaikan otomatis)
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -433,7 +450,7 @@ class _MainActivityState extends State<MainActivity> {
     );
   }
 
-  // 👇 INI ADALAH ISI HALAMAN GEREJA LOKAL YANG LAMA 👇
+  // 👇 INI ADALAH ISI HALAMAN GEREJA LOKAL 👇
   Widget _buildBerandaGerejaLokal(UserManager user, bool isAdmin, bool isSuperAdmin, bool isMemantau) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -514,7 +531,7 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                       ),
                       
-                      if (isAdmin || isSuperAdmin)
+                      if (isAdmin)
                         Positioned(
                           bottom: 10, right: 10,
                           child: GestureDetector(
@@ -595,7 +612,7 @@ class _MainActivityState extends State<MainActivity> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            if (isAdmin || isSuperAdmin)
+                            if (isAdmin)
                               IconButton(
                                 icon: const Icon(Icons.edit, color: Colors.indigo),
                                 onPressed: _tampilkanDialogEditGembala,
@@ -672,7 +689,7 @@ class _MainActivityState extends State<MainActivity> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text("Rekening Persembahan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            if (isAdmin || isSuperAdmin)
+                            if (isAdmin)
                               IconButton(
                                 icon: const Icon(Icons.edit, color: Colors.indigo),
                                 onPressed: _tampilkanDialogEditRekening,
@@ -984,7 +1001,7 @@ class _MainActivityState extends State<MainActivity> {
             ),
             const Divider(),
             
-            if (isAdmin || isSuperAdmin) ...[
+            if (isAdmin) ...[
               ListTile(
                 leading: const Icon(Icons.manage_accounts, color: Colors.blue),
                 title: const Text("Manajemen Pengguna", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1008,7 +1025,6 @@ class _MainActivityState extends State<MainActivity> {
                   .then((_) => setState(() { _initSession(); }));
                 },
               ),
-              // 👇 MENU PUSAT DAERAH DI SINI SUDAH SAYA HAPUS KARENA SUDAH BISA DI-SWIPE 👇
             ],
           ],
         ),
@@ -1038,7 +1054,6 @@ class _MainActivityState extends State<MainActivity> {
   }
 }
 
-// HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;

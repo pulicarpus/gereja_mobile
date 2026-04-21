@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 👈 IMPORT INI UNTUK FITUR COPY-PASTE SULTAN
+import 'package:flutter/services.dart'; 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,7 +12,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// Import file-file pendukung
 import 'user_manager.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
@@ -32,7 +31,7 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 import 'video_splash_page.dart';
-import 'list_daerah_page.dart';
+import 'list_daerah_page.dart'; // 👈 IMPORT HALAMAN DAERAH DI SINI
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -104,6 +103,10 @@ class _MainActivityState extends State<MainActivity> {
   final _storage = FirebaseStorage.instance;
   final _picker = ImagePicker();
   
+  // 👇 CONTROLLER UNTUK FITUR SWIPE KANAN-KIRI 👇
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
+
   String? _fotoGembalaUrl;
   String _namaGembala = "Gembala Sidang";
   String _alamatGereja = "Memuat alamat...";
@@ -115,7 +118,6 @@ class _MainActivityState extends State<MainActivity> {
   String _tiktokGembala = "";
   String _ytGembala = "";
 
-  // 👇 VARIABEL UNTUK REKENING GEREJA 👇
   String _namaBank = "Bank BRI";
   String _noRekening = "1234-5678-9012-345";
   String _atasNamaRekening = "GKII SILOAM";
@@ -128,6 +130,12 @@ class _MainActivityState extends State<MainActivity> {
     super.initState();
     _ayatEmas = AyatData.getAyatAcak();
     _initSession();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   void _initSession() async {
@@ -167,7 +175,6 @@ class _MainActivityState extends State<MainActivity> {
           _tiktokGembala = data?['tiktokGembala'] ?? "";
           _ytGembala = data?['ytGembala'] ?? "";
           
-          // Memuat data rekening dari database (Jika belum ada, pakai default yang di atas)
           _namaBank = data?['namaBank'] ?? _namaBank;
           _noRekening = data?['noRekening'] ?? _noRekening;
           _atasNamaRekening = data?['atasNamaRekening'] ?? _atasNamaRekening;
@@ -200,7 +207,6 @@ class _MainActivityState extends State<MainActivity> {
     }
   }
 
-  // 👇 FUNGSI DIALOG UNTUK EDIT REKENING OLEH ADMIN 👇
   void _tampilkanDialogEditRekening() {
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
@@ -219,21 +225,11 @@ class _MainActivityState extends State<MainActivity> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                controller: txtBank, 
-                decoration: const InputDecoration(labelText: "Nama Bank (Cth: Bank BRI)", border: OutlineInputBorder())
-              ),
+              TextField(controller: txtBank, decoration: const InputDecoration(labelText: "Nama Bank (Cth: Bank BRI)", border: OutlineInputBorder())),
               const SizedBox(height: 10),
-              TextField(
-                controller: txtRekening, 
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Nomor Rekening", border: OutlineInputBorder())
-              ),
+              TextField(controller: txtRekening, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Nomor Rekening", border: OutlineInputBorder())),
               const SizedBox(height: 10),
-              TextField(
-                controller: txtAtasNama, 
-                decoration: const InputDecoration(labelText: "Atas Nama", border: OutlineInputBorder())
-              ),
+              TextField(controller: txtAtasNama, decoration: const InputDecoration(labelText: "Atas Nama", border: OutlineInputBorder())),
             ],
           ),
         ),
@@ -293,9 +289,7 @@ class _MainActivityState extends State<MainActivity> {
                   child: CircleAvatar(
                     radius: 50,
                     backgroundColor: Colors.indigo.shade50,
-                    backgroundImage: imageFile != null 
-                        ? FileImage(imageFile!) 
-                        : (_fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null) as ImageProvider?,
+                    backgroundImage: imageFile != null ? FileImage(imageFile!) : (_fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null) as ImageProvider?,
                     child: (imageFile == null && _fotoGembalaUrl == null) ? const Icon(Icons.camera_alt, size: 40, color: Colors.indigo) : null,
                   ),
                 ),
@@ -361,9 +355,7 @@ class _MainActivityState extends State<MainActivity> {
     Uri uri;
     if (isWhatsApp) {
       String cleanNumber = urlString.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanNumber.startsWith('0')) {
-        cleanNumber = '62${cleanNumber.substring(1)}';
-      }
+      if (cleanNumber.startsWith('0')) cleanNumber = '62${cleanNumber.substring(1)}';
       uri = Uri.parse("https://wa.me/$cleanNumber");
     } else {
       if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
@@ -379,6 +371,9 @@ class _MainActivityState extends State<MainActivity> {
     }
   }
 
+  // 👇 ============================================================== 👇
+  // 👇 INI ADALAH TAMPILAN UTAMA (BUILD METHOD) YANG SUDAH DIUPDATE 👇
+  // 👇 ============================================================== 👇
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
@@ -386,6 +381,60 @@ class _MainActivityState extends State<MainActivity> {
     bool isSuperAdmin = user.isSuperAdmin();
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
+    // KITA BUNGKUS HALAMAN GEREJA LOKAL KE DALAM VARIABEL
+    Widget berandaLokal = _buildBerandaGerejaLokal(user, isAdmin, isSuperAdmin, isMemantau);
+
+    // JIKA BUKAN SUPERADMIN, LANGSUNG TAMPILKAN GEREJA LOKAL (Tidak bisa swipe)
+    if (!isSuperAdmin) {
+      return berandaLokal;
+    }
+
+    // JIKA SUPERADMIN, TAMPILKAN MODE SULTAN (Bisa Swipe + Ada Menu Bawah)
+    return Scaffold(
+      body: PageView(
+        controller: _pageController,
+        physics: const BouncingScrollPhysics(), // Efek membal saat digeser
+        onPageChanged: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        children: [
+          berandaLokal,          // HALAMAN 1: GEREJA LOKAL
+          const ListDaerahPage() // HALAMAN 2: PUSAT DAERAH
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        backgroundColor: Colors.white,
+        selectedItemColor: Colors.indigo[900],
+        unselectedItemColor: Colors.grey.shade400,
+        elevation: 15,
+        type: BottomNavigationBarType.fixed,
+        onTap: (index) {
+          _pageController.animateToPage(
+            index, 
+            duration: const Duration(milliseconds: 300), 
+            curve: Curves.easeInOut
+          );
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.church), 
+            label: "Gereja Lokal"
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map_outlined), 
+            activeIcon: Icon(Icons.map), 
+            label: "Pusat Daerah"
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 👇 INI ADALAH ISI HALAMAN GEREJA LOKAL YANG LAMA 👇
+  Widget _buildBerandaGerejaLokal(UserManager user, bool isAdmin, bool isSuperAdmin, bool isMemantau) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
@@ -619,7 +668,6 @@ class _MainActivityState extends State<MainActivity> {
                         
                         SizedBox(height: screenHeight * 0.04), 
 
-                        // 👇 HEADER REKENING DITAMBAH TOMBOL EDIT KHUSUS ADMIN 👇
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
@@ -634,7 +682,6 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                         const SizedBox(height: 10),
                         
-                        // KARTU REKENING SULTAN
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -684,7 +731,6 @@ class _MainActivityState extends State<MainActivity> {
                           ),
                         ),
                         SizedBox(height: screenHeight * 0.04),
-                        // 👆 BATAS KARTU REKENING 👆
                         
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 15),
@@ -962,23 +1008,13 @@ class _MainActivityState extends State<MainActivity> {
                   .then((_) => setState(() { _initSession(); }));
                 },
               ),
-              // 👇 MENU PUSAT KENDALI DAERAH (VIP) 👇
-              ListTile(
-                leading: const Icon(Icons.account_balance, color: Colors.purple),
-                title: const Text("Pusat Kendali Daerah", style: TextStyle(fontWeight: FontWeight.bold)),
-                subtitle: const Text("Panel Pengurus Daerah", style: TextStyle(fontSize: 12)),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const ListDaerahPage()));
-                },
-              ),
+              // 👇 MENU PUSAT DAERAH DI SINI SUDAH SAYA HAPUS KARENA SUDAH BISA DI-SWIPE 👇
             ],
-          ], // 👈 KEMBALINYA PENUTUP COLUMN
-        ), // 👈 KEMBALINYA PENUTUP DRAWER WIDGET
+          ],
+        ),
       ); 
-  } // 👈 KEMBALINYA PENUTUP FUNGSI _buildDrawer
+  }
 
-  // 👇 SEKARANG FUNGSI INI SUDAH AMAN DI LUAR 👇
   Widget _buildDrawerItem(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: () { Navigator.pop(context); onTap(); },
@@ -1000,9 +1036,9 @@ class _MainActivityState extends State<MainActivity> {
       ),
     );
   }
-} // 👈 KEMBALINYA PENUTUP KELAS MAIN ACTIVITY
+}
 
-// 👇 HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN 👇
+// HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;
@@ -1012,7 +1048,7 @@ class FullScreenImagePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Background gelap
+      backgroundColor: Colors.black, 
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
@@ -1022,7 +1058,7 @@ class FullScreenImagePage extends StatelessWidget {
         child: InteractiveViewer(
           panEnabled: true,
           minScale: 0.5,
-          maxScale: 4, // Bisa dizoom sampai 4x
+          maxScale: 4, 
           child: Hero(
             tag: heroTag,
             child: Image.network(

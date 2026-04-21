@@ -65,68 +65,102 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     final etNominal = TextEditingController();
     final etKeterangan = TextEditingController();
     String jenis = isPemasukan ? "Pemasukan" : "Pengeluaran";
+    DateTime selectedDate = DateTime.now(); // 👈 Variabel Tanggal Baru
 
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Icon(isPemasukan ? Icons.south_west : Icons.north_east, color: isPemasukan ? Colors.green : Colors.red),
-            const SizedBox(width: 8),
-            Text("Tambah $jenis", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: etNominal,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: "Nominal (Angka Saja)", border: OutlineInputBorder(), prefixText: "Rp "),
-            ),
-            const SizedBox(height: 15),
-            TextField(
-              controller: etKeterangan,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: "Keterangan", hintText: "Cth: Konsumsi Rapat", border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: isPemasukan ? Colors.green : Colors.red, foregroundColor: Colors.white),
-            onPressed: () async {
-              if (etNominal.text.trim().isEmpty || etKeterangan.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Mohon isi semua kolom!"), backgroundColor: Colors.orange));
-                return;
-              }
-              
-              int nominal = int.tryParse(etNominal.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-              if (nominal <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Nominal tidak valid!"), backgroundColor: Colors.orange));
-                return;
-              }
-
-              Navigator.pop(dialogContext);
-
-              try {
-                await _db.collection("keuangan_daerah").add({
-                  "daerah": widget.namaDaerah,
-                  "jenis": jenis,
-                  "nominal": nominal,
-                  "keterangan": etKeterangan.text.trim(),
-                  "tanggal": FieldValue.serverTimestamp(),
-                });
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $jenis berhasil dicatat!"), backgroundColor: Colors.green));
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text("Simpan"),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: [
+              Icon(isPemasukan ? Icons.south_west : Icons.north_east, color: isPemasukan ? Colors.green : Colors.red),
+              const SizedBox(width: 8),
+              Text("Tambah $jenis", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            ],
           ),
-        ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 👇 WIDGET PILIH TANGGAL 👇
+                InkWell(
+                  onTap: () async {
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setStateDialog(() => selectedDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade400),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(DateFormat('dd MMMM yyyy').format(selectedDate), style: const TextStyle(fontSize: 15)),
+                        const Icon(Icons.calendar_month, color: Colors.indigo),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: etNominal,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: "Nominal (Angka Saja)", border: OutlineInputBorder(), prefixText: "Rp "),
+                ),
+                const SizedBox(height: 15),
+                TextField(
+                  controller: etKeterangan,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: "Keterangan", hintText: "Cth: Konsumsi Rapat", border: OutlineInputBorder()),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: isPemasukan ? Colors.green : Colors.red, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (etNominal.text.trim().isEmpty || etKeterangan.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Mohon isi semua kolom!"), backgroundColor: Colors.orange));
+                  return;
+                }
+                
+                int nominal = int.tryParse(etNominal.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+                if (nominal <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Nominal tidak valid!"), backgroundColor: Colors.orange));
+                  return;
+                }
+
+                Navigator.pop(dialogContext);
+
+                try {
+                  await _db.collection("keuangan_daerah").add({
+                    "daerah": widget.namaDaerah,
+                    "jenis": jenis,
+                    "nominal": nominal,
+                    "keterangan": etKeterangan.text.trim(),
+                    "tanggal": Timestamp.fromDate(selectedDate), // 👈 Simpan Tanggal Manual
+                  });
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $jenis berhasil dicatat!"), backgroundColor: Colors.green));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text("Simpan"),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -165,11 +199,19 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _db.collection("keuangan_daerah").where("daerah", isEqualTo: widget.namaDaerah).orderBy("tanggal", descending: true).snapshots(),
+              // 👇 ORDER BY DICABUT AGAR TIDAK ERROR INDEX FIREBASE 👇
+              stream: _db.collection("keuangan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                 
-                var docs = snapshot.data?.docs ?? [];
+                var docs = snapshot.data?.docs.toList() ?? [];
+                
+                // 👇 PENGURUTAN DIAMBIL ALIH OLEH FLUTTER AGAR AMAN 👇
+                docs.sort((a, b) {
+                  Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                  Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                  return tB.compareTo(tA); // Urutkan terbaru ke terlama
+                });
                 
                 int thnPemasukan = 0, thnPengeluaran = 0;
                 int blnPemasukan = 0, blnPengeluaran = 0;
@@ -346,7 +388,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 }
 
 // ============================================================================
-// 👇 TAB 2: PERPULUHAN (DENGAN AUTOCOMPLETE PINTAR) 👇
+// 👇 TAB 2: PERPULUHAN 👇
 // ============================================================================
 class _PerpuluhanTab extends StatefulWidget {
   final String namaDaerah;
@@ -360,17 +402,15 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
-  // 👇 PENAMPUNG DATA OTOMATIS 👇
   List<String> _listGereja = [];
   List<String> _listPengerja = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchSuggestions(); // Sedot data nama-nama dari Firebase saat halaman dibuka
+    _fetchSuggestions(); 
   }
 
-  // MESIN PENYEDOT DATA GEREJA & PENGERJA
   Future<void> _fetchSuggestions() async {
     try {
       var snap = await _db.collection("churches").where("daerah", isEqualTo: widget.namaDaerah).get();
@@ -402,8 +442,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   void _showAddPerpuluhanDialog() {
     final etNominal = TextEditingController();
     String tipeSumber = "Gereja Lokal";
-    
-    // Variabel penangkap ketikan dari Autocomplete
+    DateTime selectedDate = DateTime.now(); // 👈 Variabel Tanggal Baru
     TextEditingController? autoNameController;
 
     showDialog(
@@ -412,90 +451,121 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
         builder: (context, setStateDialog) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text("Input Perpuluhan", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: tipeSumber,
-                decoration: const InputDecoration(labelText: "Sumber", border: OutlineInputBorder()),
-                items: ["Gereja Lokal", "Pengerja (Hamba Tuhan)", "Donatur Lain"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (val) {
-                  setStateDialog(() {
-                    tipeSumber = val!;
-                    autoNameController?.clear(); // Bersihkan nama kalau tipenya diganti
-                  });
-                },
-              ),
-              const SizedBox(height: 15),
-              
-              // 👇 FITUR AUTOCOMPLETE (SARAN OTOMATIS) 👇
-              Autocomplete<String>(
-                optionsBuilder: (TextEditingValue textEditingValue) {
-                  if (textEditingValue.text.isEmpty || tipeSumber == "Donatur Lain") {
-                    return const Iterable<String>.empty();
-                  }
-                  
-                  List<String> sourceList = [];
-                  if (tipeSumber == "Gereja Lokal") sourceList = _listGereja;
-                  if (tipeSumber == "Pengerja (Hamba Tuhan)") sourceList = _listPengerja;
-                  
-                  return sourceList.where((String option) {
-                    return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                  });
-                },
-                onSelected: (String selection) {
-                  autoNameController?.text = selection;
-                },
-                fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                  autoNameController = controller; // Tangkap controllernya
-                  return TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    textCapitalization: TextCapitalization.words,
-                    decoration: const InputDecoration(
-                      labelText: "Nama Pengerja / Gereja",
-                      hintText: "Ketik nama...",
-                      border: OutlineInputBorder(),
-                      suffixIcon: Icon(Icons.search, color: Colors.grey),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 👇 WIDGET PILIH TANGGAL 👇
+                InkWell(
+                  onTap: () async {
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      setStateDialog(() => selectedDate = picked);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade400),
+                      borderRadius: BorderRadius.circular(5),
                     ),
-                  );
-                },
-                optionsViewBuilder: (context, onSelected, options) {
-                  return Align(
-                    alignment: Alignment.topLeft,
-                    child: Material(
-                      elevation: 8.0,
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        width: 250, // Lebar dropdown
-                        constraints: const BoxConstraints(maxHeight: 200),
-                        child: ListView.separated(
-                          padding: EdgeInsets.zero,
-                          shrinkWrap: true,
-                          itemCount: options.length,
-                          separatorBuilder: (context, index) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final String option = options.elementAt(index);
-                            return ListTile(
-                              dense: true,
-                              title: Text(option, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)),
-                              onTap: () => onSelected(option),
-                            );
-                          },
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(DateFormat('dd MMMM yyyy').format(selectedDate), style: const TextStyle(fontSize: 15)),
+                        const Icon(Icons.calendar_month, color: Colors.orange),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+
+                DropdownButtonFormField<String>(
+                  value: tipeSumber,
+                  decoration: const InputDecoration(labelText: "Sumber", border: OutlineInputBorder()),
+                  items: ["Gereja Lokal", "Pengerja (Hamba Tuhan)", "Donatur Lain"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                  onChanged: (val) {
+                    setStateDialog(() {
+                      tipeSumber = val!;
+                      autoNameController?.clear();
+                    });
+                  },
+                ),
+                const SizedBox(height: 15),
+                
+                Autocomplete<String>(
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    if (textEditingValue.text.isEmpty || tipeSumber == "Donatur Lain") {
+                      return const Iterable<String>.empty();
+                    }
+                    
+                    List<String> sourceList = [];
+                    if (tipeSumber == "Gereja Lokal") sourceList = _listGereja;
+                    if (tipeSumber == "Pengerja (Hamba Tuhan)") sourceList = _listPengerja;
+                    
+                    return sourceList.where((String option) {
+                      return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                    });
+                  },
+                  onSelected: (String selection) {
+                    autoNameController?.text = selection;
+                  },
+                  fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+                    autoNameController = controller; 
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: "Nama Pengerja / Gereja",
+                        hintText: "Ketik nama...",
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.search, color: Colors.grey),
+                      ),
+                    );
+                  },
+                  optionsViewBuilder: (context, onSelected, options) {
+                    return Align(
+                      alignment: Alignment.topLeft,
+                      child: Material(
+                        elevation: 8.0,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          width: 250, 
+                          constraints: const BoxConstraints(maxHeight: 200),
+                          child: ListView.separated(
+                            padding: EdgeInsets.zero,
+                            shrinkWrap: true,
+                            itemCount: options.length,
+                            separatorBuilder: (context, index) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final String option = options.elementAt(index);
+                              return ListTile(
+                                dense: true,
+                                title: Text(option, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)),
+                                onTap: () => onSelected(option),
+                              );
+                            },
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 15),
-              
-              TextField(
-                controller: etNominal, 
-                keyboardType: TextInputType.number, 
-                decoration: const InputDecoration(labelText: "Nominal Perpuluhan", border: OutlineInputBorder(), prefixText: "Rp ")
-              ),
-            ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 15),
+                
+                TextField(
+                  controller: etNominal, 
+                  keyboardType: TextInputType.number, 
+                  decoration: const InputDecoration(labelText: "Nominal Perpuluhan", border: OutlineInputBorder(), prefixText: "Rp ")
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
@@ -523,7 +593,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                     "tipe": tipeSumber,
                     "nama": inputNama,
                     "nominal": nom,
-                    "tanggal": FieldValue.serverTimestamp(),
+                    "tanggal": Timestamp.fromDate(selectedDate), // 👈 Simpan Tanggal Manual
                   });
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan berhasil dicatat!"), backgroundColor: Colors.green));
                 } catch (e) {
@@ -543,10 +613,18 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _db.collection("perpuluhan_daerah").where("daerah", isEqualTo: widget.namaDaerah).orderBy("tanggal", descending: true).snapshots(),
+        // 👇 ORDER BY DICABUT AGAR TIDAK ERROR INDEX FIREBASE 👇
+        stream: _db.collection("perpuluhan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          var docs = snapshot.data?.docs ?? [];
+          var docs = snapshot.data?.docs.toList() ?? [];
+          
+          // 👇 PENGURUTAN DIAMBIL ALIH OLEH FLUTTER AGAR AMAN 👇
+          docs.sort((a, b) {
+            Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+            Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+            return tB.compareTo(tA);
+          });
           
           if (docs.isEmpty) {
              return const Center(child: Text("Belum ada data perpuluhan.", style: TextStyle(color: Colors.grey)));

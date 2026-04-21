@@ -18,10 +18,11 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
   Map<String, dynamic>? _targetUserData;
   String _churchName = "(Belum diatur)";
   String _kategorial = "Umum / Belum diatur"; 
-  
-  // 👇 TAMBAHAN STATE UNTUK STATUS PENGURUS 👇
   bool _isPengurus = false; 
   
+  // 👇 STATE BARU UNTUK JABATAN DAERAH 👇
+  String? _adminDaerahArea;
+
   bool _isLoading = true;
 
   @override
@@ -36,11 +37,11 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
       var doc = await _db.collection("users").doc(widget.userId).get();
       if (doc.exists) {
         _targetUserData = doc.data();
-        
         _kategorial = _targetUserData?['kelompok'] ?? "Umum / Belum diatur";
-        
-        // 👇 BACA STATUS PENGURUS DARI FIREBASE 👇
         _isPengurus = _targetUserData?['isPengurus'] ?? false;
+        
+        // 👇 BACA JABATAN DAERAH DARI FIREBASE 👇
+        _adminDaerahArea = _targetUserData?['adminDaerahArea'];
         
         String? targetChurchId = _targetUserData?['churchId'];
         if (targetChurchId != null && targetChurchId.isNotEmpty) {
@@ -61,7 +62,6 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     }
   }
 
-  // 👇 FUNGSI BARU: MENGUBAH STATUS PENGURUS KOMISI 👇
   Future<void> _togglePengurusStatus() async {
     setState(() => _isLoading = true);
     try {
@@ -102,7 +102,6 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
   Future<void> _assignUserToKategorial(String kategorialPilihan) async {
     setState(() => _isLoading = true);
     try {
-      // 🔥 FITUR SAFETY: Kalau pindah komisi, status pengurus lama otomatis dicabut!
       await _db.collection("users").doc(widget.userId).update({
         "kelompok": kategorialPilihan,
         "isPengurus": false 
@@ -157,14 +156,95 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     );
   }
 
+  // 👇 DIALOG KHUSUS UNTUK MEMILIH DAERAH 👇
+  void _showDaerahSelectionDialog() async {
+    // 1. Sedot dulu semua daftar Daerah yang ada di Firebase
+    var snapshot = await _db.collection("churches").get();
+    Set<String> daftarDaerah = {};
+    for (var doc in snapshot.docs) {
+      var data = doc.data();
+      if (data.containsKey('daerah') && data['daerah'] != null && data['daerah'].toString().trim().isNotEmpty) {
+        daftarDaerah.add(data['daerah'].toString().trim());
+      }
+    }
+    List<String> listDaerah = daftarDaerah.toList()..sort();
+
+    if (!mounted) return;
+
+    // 2. Tampilkan Dropdown
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+            const Padding(
+              padding: EdgeInsets.all(16.0), 
+              child: Text("Atur Jabatan Pengurus Daerah", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple))
+            ),
+            const Divider(height: 1),
+            if (listDaerah.isEmpty)
+              const Padding(padding: EdgeInsets.all(20), child: Text("Belum ada data daerah di sistem."))
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: listDaerah.length,
+                  itemBuilder: (context, index) {
+                    return ListTile(
+                      leading: const Icon(Icons.map, color: Colors.purple),
+                      title: Text(listDaerah[index], style: const TextStyle(fontWeight: FontWeight.w600)),
+                      onTap: () async {
+                        Navigator.pop(context); 
+                        setState(() => _isLoading = true);
+                        try {
+                          await _db.collection("users").doc(widget.userId).update({
+                            "adminDaerahArea": listDaerah[index],
+                          });
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Berhasil diangkat menjadi Pengurus Daerah ${listDaerah[index]}.")));
+                          await _loadUserData();
+                        } catch (e) {
+                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
+                          setState(() => _isLoading = false);
+                        }
+                      },
+                    );
+                  },
+                ),
+              ),
+            // Tombol Cabut Jabatan (Jika dia sudah punya jabatan daerah)
+            if (_adminDaerahArea != null && _adminDaerahArea!.isNotEmpty) ...[
+               const Divider(),
+               ListTile(
+                 leading: const Icon(Icons.remove_circle, color: Colors.red),
+                 title: const Text("Cabut Jabatan Daerah", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                 onTap: () async {
+                    Navigator.pop(context); 
+                    setState(() => _isLoading = true);
+                    try {
+                      await _db.collection("users").doc(widget.userId).update({
+                        "adminDaerahArea": FieldValue.delete(),
+                      });
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jabatan daerah dicabut.")));
+                      await _loadUserData();
+                    } catch (e) {
+                      setState(() => _isLoading = false);
+                    }
+                 },
+               )
+            ],
+            const SizedBox(height: 20),
+          ],
+        );
+      },
+    );
+  }
+
   void _showKategorialSelectionDialog() {
-    final List<String> daftarKategorial = [
-      "Sekolah Minggu",
-      "AMKI",
-      "Perkawan",
-      "Perkaria",
-      "Lainnya"
-    ];
+    final List<String> daftarKategorial = ["Sekolah Minggu", "AMKI", "Perkawan", "Perkaria", "Lainnya"];
 
     showModalBottomSheet(
       context: context,
@@ -177,7 +257,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
             Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
             const Padding(
               padding: EdgeInsets.all(16.0), 
-              child: Text("Pilih Kategorial", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple))
+              child: Text("Pilih Kategorial", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo))
             ),
             const Divider(height: 1),
             Flexible(
@@ -186,7 +266,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                 itemCount: daftarKategorial.length,
                 itemBuilder: (context, index) {
                   return ListTile(
-                    leading: const Icon(Icons.group, color: Colors.purple),
+                    leading: const Icon(Icons.group, color: Colors.indigo),
                     title: Text(daftarKategorial[index], style: const TextStyle(fontWeight: FontWeight.w600)),
                     onTap: () {
                       Navigator.pop(context); 
@@ -244,7 +324,6 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // KARTU PROFIL
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24),
@@ -256,27 +335,34 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                   Text(nama, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
                   const SizedBox(height: 4),
                   Text(email, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                  
+                  // 👇 BADGE PENGURUS DAERAH 👇
+                  if (_adminDaerahArea != null && _adminDaerahArea!.isNotEmpty)
+                     Container(
+                       margin: const EdgeInsets.only(top: 15),
+                       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+                       decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.purple.shade200)),
+                       child: Text("👑 PENGURUS DAERAH: ${_adminDaerahArea!.toUpperCase()}", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple.shade700)),
+                     ),
+                     
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 16),
                   
-                  // INFO GEREJA
                   _buildProfileRow(Icons.church, "Gereja Terdaftar", _churchName, Colors.blue),
                   const SizedBox(height: 16),
                   
-                  // INFO KATEGORIAL (BERUBAH JIKA DIA PENGURUS)
                   _buildProfileRow(
                     Icons.category, 
                     "Kategorial", 
-                    _isPengurus ? "$_kategorial (PENGURUS)" : _kategorial, 
-                    _isPengurus ? Colors.teal : Colors.purple
+                    _isPengurus ? "$_kategorial (PENGURUS LOKAL)" : _kategorial, 
+                    _isPengurus ? Colors.teal : Colors.indigo
                   ),
                   const SizedBox(height: 16),
                   
-                  // INFO ROLE
                   _buildProfileRow(
                     role == 'admin' || role == 'superadmin' ? Icons.admin_panel_settings : Icons.person, 
-                    "Pangkat / Role", 
+                    "Hak Akses Gereja Lokal", 
                     role.toUpperCase(), 
                     role == 'admin' ? Colors.orange : Colors.green
                   ),
@@ -285,17 +371,15 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
             ),
             const SizedBox(height: 30),
 
-            // AREA TOMBOL AKSI
             if (canManageRoles) ...[
-              const Align(alignment: Alignment.centerLeft, child: Text("TINDAKAN", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13))),
+              const Align(alignment: Alignment.centerLeft, child: Text("TINDAKAN LOKAL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13))),
               const SizedBox(height: 10),
 
-              _buildActionButton("Atur Kategorial", Icons.category, Colors.purple, _showKategorialSelectionDialog),
+              _buildActionButton("Atur Kategorial", Icons.category, Colors.indigo, _showKategorialSelectionDialog),
 
-              // 👇 TOMBOL ANGKAT/CABUT PENGURUS MUNCUL JIKA SUDAH PUNYA KOMISI 👇
               if (_kategorial != "Umum / Belum diatur" && role != "admin" && role != "superadmin")
                 _buildActionButton(
-                  _isPengurus ? "Cabut Status Pengurus" : "Jadikan Pengurus $_kategorial", 
+                  _isPengurus ? "Cabut Pengurus Lokal" : "Jadikan Pengurus $_kategorial", 
                   _isPengurus ? Icons.person_remove : Icons.person_add_alt_1, 
                   _isPengurus ? Colors.redAccent : Colors.teal, 
                   _togglePengurusStatus
@@ -309,9 +393,17 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
             ],
 
             if (isSuperAdmin) ...[
+              const SizedBox(height: 20),
+              const Align(alignment: Alignment.centerLeft, child: Text("TINDAKAN SUPERADMIN PUSAT", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 13))),
+              const SizedBox(height: 10),
+              
               if (role == "admin") 
                 _buildActionButton("Turunkan ke Jemaat Biasa", Icons.arrow_downward, Colors.grey.shade700, () => _updateUserRole("user")),
+              
               _buildActionButton("Atur / Pindah Gereja", Icons.swap_horiz, Colors.blue, _showChurchSelectionDialog),
+
+              // 👇 TOMBOL SAKTI: PENGANGKATAN PEJABAT DAERAH 👇
+              _buildActionButton("Atur Jabatan Daerah", Icons.map, Colors.purple, _showDaerahSelectionDialog),
             ]
           ],
         ),
@@ -329,7 +421,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: title == "Pangkat / Role" && value == 'ADMIN' ? Colors.orange.shade800 : Colors.black87)),
+              Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
             ],
           ),
         )

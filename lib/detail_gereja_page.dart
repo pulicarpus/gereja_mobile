@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'pengurus_page.dart';
 
 class DetailGerejaPage extends StatelessWidget {
   final String churchId;
@@ -22,18 +23,10 @@ class DetailGerejaPage extends StatelessWidget {
             icon: const Icon(Icons.assignment_ind),
             tooltip: "Lihat BPJ $namaGereja",
             onPressed: () {
-              // Sementara kita pasang notifikasi dulu sebelum dijahit ke halaman Pengurus
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text("Menuju data BPJ $namaGereja..."),
-                  backgroundColor: Colors.indigo[900],
-                )
-              );
-              
-              // Rencana Navigasi:
-              // Navigator.push(context, MaterialPageRoute(
-              //   builder: (context) => PengurusPage(churchId: churchId)
-              // ));
+              // 👇 SEKARANG LANGSUNG PINDAH KE HALAMAN PENGURUS 👇
+              Navigator.push(context, MaterialPageRoute(
+                builder: (context) => PengurusPage(churchId: churchId)
+              ));
             },
           ),
           const SizedBox(width: 10),

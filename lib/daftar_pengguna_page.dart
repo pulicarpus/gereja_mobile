@@ -14,7 +14,6 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final UserManager _userManager = UserManager();
   
-  // 👇 VARIABEL UNTUK PENCARIAN 👇
   String _searchQuery = "";
   final TextEditingController _searchController = TextEditingController();
 
@@ -26,6 +25,7 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 👇 INI YANG MEMBUAT SUPERADMIN HANYA MELIHAT JEMAAT DI GEREJA LOKAL YANG SEDANG DIBUKA 👇
     String? activeChurchId = _userManager.getChurchIdForCurrentView();
 
     Query query = _db.collection("users");
@@ -43,7 +43,6 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
       ),
       body: Column(
         children: [
-          // 👇 WIDGET KOLOM PENCARIAN (SEARCH BAR) 👇
           Container(
             color: Colors.indigo[900],
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -51,7 +50,7 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
               controller: _searchController,
               onChanged: (value) {
                 setState(() {
-                  _searchQuery = value.toLowerCase(); // Ubah ke huruf kecil semua biar mudah dicari
+                  _searchQuery = value.toLowerCase(); 
                 });
               },
               decoration: InputDecoration(
@@ -77,7 +76,6 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
             ),
           ),
 
-          // 👇 DAFTAR PENGGUNA (DIBUNGKUS EXPANDED AGAR MENGISI SISA LAYAR) 👇
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: query.snapshots(),
@@ -98,21 +96,17 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
                   );
                 }
 
-                // Ambil semua data dari Firestore
                 var users = snapshot.data!.docs;
 
-                // 👇 PROSES FILTERING PENCARIAN DI SINI 👇
                 if (_searchQuery.isNotEmpty) {
                   users = users.where((doc) {
                     var data = doc.data() as Map<String, dynamic>;
                     String nama = (data['nama'] ?? "").toString().toLowerCase();
                     String email = (data['email'] ?? "").toString().toLowerCase();
-                    // Cocokkan apakah nama atau email mengandung huruf yang diketik
                     return nama.contains(_searchQuery) || email.contains(_searchQuery);
                   }).toList();
                 }
 
-                // Jika dicari tapi tidak ketemu
                 if (users.isEmpty) {
                   return Center(
                     child: Column(
@@ -137,6 +131,9 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
                     String email = data['email'] ?? "Tidak ada email";
                     String role = data['role'] ?? "user";
                     String kelompok = data['kelompok'] ?? "Umum / Belum diatur";
+                    
+                    // 👇 DETEKSI JABATAN ADMIN DAERAH 👇
+                    String? adminDaerahArea = data['adminDaerahArea']; 
 
                     Color avatarBgColor;
                     Color avatarIconColor;
@@ -194,10 +191,22 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
                                         ),
                                         const SizedBox(width: 8),
                                         Expanded(
-                                          child: Text(kelompok, style: const TextStyle(fontSize: 11, color: Colors.purple, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                                          child: Text(kelompok, style: const TextStyle(fontSize: 11, color: Colors.indigo, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
                                         ),
                                       ],
-                                    )
+                                    ),
+                                    // 👇 MUNCULKAN BADGE KHUSUS JIKA DIA PENGURUS DAERAH 👇
+                                    if (adminDaerahArea != null && adminDaerahArea.isNotEmpty)
+                                      Container(
+                                        margin: const EdgeInsets.only(top: 6),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: Colors.purple.shade50, 
+                                          borderRadius: BorderRadius.circular(5), 
+                                          border: Border.all(color: Colors.purple.shade200)
+                                        ),
+                                        child: Text("👑 PENGURUS DAERAH: ${adminDaerahArea.toUpperCase()}", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.purple.shade700)),
+                                      )
                                   ],
                                 ),
                               ),

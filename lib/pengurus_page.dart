@@ -11,7 +11,9 @@ import 'loading_sultan.dart';
 import 'detail_seksi_page.dart';
 
 class PengurusPage extends StatefulWidget {
-  const PengurusPage({super.key});
+  final String? churchId; // 👈 DITAMBAHKAN AGAR BISA MENERIMA ID DARI LUAR
+
+  const PengurusPage({super.key, this.churchId});
 
   @override
   State<PengurusPage> createState() => _PengurusPageState();
@@ -24,8 +26,23 @@ class _PengurusPageState extends State<PengurusPage> {
   
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
+  late String _activeChurchId; // 👈 Variabel penampung ID Gereja yang final
 
-  // 👇 FUNGSI BUKA WHATSAPP 👇
+  @override
+  void initState() {
+    super.initState();
+    // Jika ada ID yang dikirim (dari daerah), pakai itu. Jika tidak, pakai gereja lokal user.
+    _activeChurchId = widget.churchId ?? _userManager.getChurchIdForCurrentView()!; 
+  }
+
+  // 👇 CEK APAKAH USER PUNYA HAK EDIT DI GEREJA INI 👇
+  bool _hasEditAccess() {
+    if (!_userManager.isAdmin()) return false;
+    // SuperAdmin Daerah tidak boleh edit BPJ saat sedang "ngintip"
+    if (widget.churchId != null && widget.churchId != _userManager.activeChurchId) return false;
+    return true;
+  }
+
   void _bukaWhatsApp(String noWa) async {
     if (noWa.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nomor WA belum diisi oleh Admin.")));
@@ -43,7 +60,6 @@ class _PengurusPageState extends State<PengurusPage> {
     }
   }
 
-  // 👇 FITUR FOTO FULLSCREEN SULTAN 👇
   void _showFullScreenImage(String imageUrl, String heroTag) {
     Navigator.push(context, MaterialPageRoute(builder: (context) {
       return Scaffold(
@@ -66,7 +82,6 @@ class _PengurusPageState extends State<PengurusPage> {
     }));
   }
 
-  // 👇 BOTTOM SHEET DETAIL PENGURUS INTI 👇
   void _showDetailBottomSheet(String nama, String jabatan, String? fotoUrl, String wa, String heroTag) {
     showModalBottomSheet(
       context: context,
@@ -116,9 +131,8 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 DIALOG NAMA SEKSI 👇
   void _showSeksiNameDialog({String? docId, String initialName = ""}) {
-    if (!_userManager.isAdmin()) return;
+    if (!_hasEditAccess()) return;
     final etSeksi = TextEditingController(text: initialName);
 
     showDialog(
@@ -133,7 +147,7 @@ class _PengurusPageState extends State<PengurusPage> {
           if (docId != null) 
             TextButton(
               onPressed: () {
-                _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()!).collection("bpj_seksi").doc(docId).delete();
+                _db.collection("churches").doc(_activeChurchId).collection("bpj_seksi").doc(docId).delete();
                 Navigator.pop(context);
               },
               child: const Text("Hapus", style: TextStyle(color: Colors.red)),
@@ -143,14 +157,13 @@ class _PengurusPageState extends State<PengurusPage> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
             onPressed: () async {
               if (etSeksi.text.trim().isEmpty) return;
-              String churchId = _userManager.getChurchIdForCurrentView()!;
               
               if (docId == null) {
-                await _db.collection("churches").doc(churchId).collection("bpj_seksi").add({
+                await _db.collection("churches").doc(_activeChurchId).collection("bpj_seksi").add({
                   "namaSeksi": etSeksi.text.trim(),
                 });
               } else {
-                await _db.collection("churches").doc(churchId).collection("bpj_seksi").doc(docId).update({
+                await _db.collection("churches").doc(_activeChurchId).collection("bpj_seksi").doc(docId).update({
                   "namaSeksi": etSeksi.text.trim(),
                 });
               }
@@ -163,7 +176,6 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 DIALOG EDIT PENGURUS INTI (Harian Saja) 👇
   void _showEditIntiDialog({
     required String title,
     required String roleId, 
@@ -171,7 +183,7 @@ class _PengurusPageState extends State<PengurusPage> {
     String initialWa = "",
     String? initialFotoUrl,
   }) {
-    if (!_userManager.isAdmin()) return;
+    if (!_hasEditAccess()) return;
 
     File? imageFile;
     final etNama = TextEditingController(text: initialNama);
@@ -221,17 +233,16 @@ class _PengurusPageState extends State<PengurusPage> {
                 Navigator.pop(context); 
 
                 String? uploadedUrl = initialFotoUrl;
-                String churchId = _userManager.getChurchIdForCurrentView()!;
 
                 try {
                   if (imageFile != null) {
                     String fileName = "harian_$roleId";
-                    Reference ref = _storage.ref().child("gereja/$churchId/pengurus/$fileName.jpg");
+                    Reference ref = _storage.ref().child("gereja/$_activeChurchId/pengurus/$fileName.jpg");
                     await ref.putFile(imageFile!);
                     uploadedUrl = await ref.getDownloadURL();
                   }
 
-                  await _db.collection("churches").doc(churchId).update({
+                  await _db.collection("churches").doc(_activeChurchId).update({
                     "bpj_$roleId": etNama.text.trim(),
                     "wa_$roleId": etWa.text.trim(),
                     if (uploadedUrl != null) "img_$roleId": uploadedUrl,
@@ -252,7 +263,6 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 WIDGET KARTU GRUP 👇
   Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle, VoidCallback? onTapCard}) {
     List<Widget> cardContent = [
       Container(
@@ -264,7 +274,7 @@ class _PengurusPageState extends State<PengurusPage> {
             Text(title.toUpperCase(), style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo.shade900, fontSize: 14)),
             Row(
               children: [
-                if (onEditTitle != null && _userManager.isAdmin()) 
+                if (onEditTitle != null && _hasEditAccess()) 
                   InkWell(onTap: onEditTitle, child: const Padding(padding: EdgeInsets.all(4.0), child: Icon(Icons.edit, size: 18, color: Colors.indigo))),
                 if (onTapCard != null)
                   const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.chevron_right, color: Colors.indigo)),
@@ -291,7 +301,6 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  // 👇 WIDGET BARIS ORANG 👇
   Widget _buildPersonRow(String jabatan, String nama, String? fotoUrl, VoidCallback onTap, VoidCallback onLongPress, {bool showEditIcon = true}) {
     bool isEmpty = nama.isEmpty || nama == "-";
     return InkWell(
@@ -317,7 +326,7 @@ class _PengurusPageState extends State<PengurusPage> {
                 ],
               ),
             ),
-            if (_userManager.isAdmin() && showEditIcon) const Icon(Icons.edit, size: 16, color: Colors.grey),
+            if (_hasEditAccess() && showEditIcon) const Icon(Icons.edit, size: 16, color: Colors.grey),
           ],
         ),
       ),
@@ -326,8 +335,6 @@ class _PengurusPageState extends State<PengurusPage> {
 
   @override
   Widget build(BuildContext context) {
-    String? churchId = _userManager.getChurchIdForCurrentView();
-
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -341,10 +348,9 @@ class _PengurusPageState extends State<PengurusPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. BAGIAN PENGURUS HARIAN
                 const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text("PENGURUS INTI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                 StreamBuilder<DocumentSnapshot>(
-                  stream: _db.collection("churches").doc(churchId).snapshots(),
+                  stream: _db.collection("churches").doc(_activeChurchId).snapshots(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     var data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
@@ -356,7 +362,7 @@ class _PengurusPageState extends State<PengurusPage> {
                       return _buildPersonRow(
                         jabatan, nama, img,
                         () {
-                           if (nama.isEmpty && _userManager.isAdmin()) {
+                           if (nama.isEmpty && _hasEditAccess()) {
                               _showEditIntiDialog(title: "Edit $jabatan", roleId: roleId, initialNama: nama, initialWa: wa, initialFotoUrl: img);
                            } else if (nama.isNotEmpty) {
                               _showDetailBottomSheet(nama, jabatan, img, wa, "inti_$roleId");
@@ -378,10 +384,9 @@ class _PengurusPageState extends State<PengurusPage> {
 
                 const SizedBox(height: 20),
 
-                // 2. BAGIAN SEKSI KATEGORIAL
                 const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text("SEKSI & KOMISI", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
                 StreamBuilder<QuerySnapshot>(
-                  stream: _db.collection("churches").doc(churchId).collection("bpj_seksi").snapshots(),
+                  stream: _db.collection("churches").doc(_activeChurchId).collection("bpj_seksi").snapshots(),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                     if (snapshot.data!.docs.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(20), child: Text("Belum ada data seksi.", style: TextStyle(color: Colors.grey.shade500))));
@@ -395,7 +400,6 @@ class _PengurusPageState extends State<PengurusPage> {
                           String nama = data['${roleId}_nama'] ?? fallbackNama;
                           String? img = data['${roleId}_img'] ?? fallbackImg;
                           
-                          // 👇 KETIKA BARIS INI DIKLIK, LANGSUNG BUKA HALAMAN DETAIL SEKSI 👇
                           return _buildPersonRow(
                             jabatanTitle, nama, img,
                             () {
@@ -408,7 +412,7 @@ class _PengurusPageState extends State<PengurusPage> {
                                  builder: (context) => DetailSeksiPage(docId: doc.id, namaSeksi: seksiName)
                                ));
                             },
-                            showEditIcon: false // Ikon pensil dihilangkan untuk baris ini
+                            showEditIcon: false 
                           );
                         }
 
@@ -436,7 +440,7 @@ class _PengurusPageState extends State<PengurusPage> {
             ),
           ),
           
-      floatingActionButton: _userManager.isAdmin()
+      floatingActionButton: _hasEditAccess()
           ? FloatingActionButton.extended(
               onPressed: () => _showSeksiNameDialog(),
               backgroundColor: Colors.indigo,

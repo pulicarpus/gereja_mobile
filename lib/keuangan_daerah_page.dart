@@ -79,14 +79,13 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
-  List<QueryDocumentSnapshot> _filteredDocs = []; // Untuk simpan data yang akan diexport
+  List<QueryDocumentSnapshot> _filteredDocs = []; 
   int _blnPemasukan = 0;
   int _blnPengeluaran = 0;
 
   final List<int> _years = List.generate(5, (index) => DateTime.now().year - index);
   final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
-  // 👇 FUNGSI EKSPORT PDF KAS OPERASIONAL 👇
   Future<void> _exportToPDF() async {
     if (_filteredDocs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada data untuk diekspor!")));
@@ -139,7 +138,6 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     await Share.shareXFiles([XFile(file.path)], text: 'Laporan Kas Daerah ${widget.namaDaerah}');
   }
 
-  // 👇 FUNGSI EKSPORT CSV (EXCEL) KAS OPERASIONAL 👇
   Future<void> _exportToCSV() async {
     if (_filteredDocs.isEmpty) return;
 
@@ -148,7 +146,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
       var d = doc.data() as Map<String, dynamic>;
       DateTime dt = (d['tanggal'] as Timestamp).toDate();
       String tgl = DateFormat('yyyy-MM-dd').format(dt);
-      String ket = d['keterangan'].toString().replaceAll('"', '""'); // Escape quotes
+      String ket = d['keterangan'].toString().replaceAll('"', '""'); 
       csvData += "$tgl,${d['jenis']},\"$ket\",${d['nominal']}\n";
     }
 
@@ -159,7 +157,6 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     await Share.shareXFiles([XFile(file.path)], text: 'Data CSV Kas ${widget.namaDaerah}');
   }
 
-  // 👇 TAMPILKAN OPSI EKSPORT 👇
   void _showExportOptions() {
     showModalBottomSheet(
       context: context,
@@ -207,7 +204,6 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
   }
 
   void _showTransactionForm({required bool isPemasukan, String? docId, String? initialNominal, String? initialKeterangan, DateTime? initialDate}) {
-    // 🔥 FORMAT AWAL SAAT EDIT 🔥
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
       formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
@@ -259,7 +255,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   keyboardType: TextInputType.number,
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    CurrencyInputFormatter() // 👈 SISIPKAN FORMATTER TITIK OTOMATIS
+                    CurrencyInputFormatter() 
                   ],
                   decoration: const InputDecoration(labelText: "Nominal", border: OutlineInputBorder(), prefixText: "Rp "),
                 ),
@@ -373,9 +369,9 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF5F7FA),
-      child: Column(
+    return Scaffold( // 👈 INI SUDAH DIBUAT JADI SCAFFOLD AGAR AMAN
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
@@ -419,7 +415,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                 
                 int thnPemasukan = 0, thnPengeluaran = 0;
                 _blnPemasukan = 0; _blnPengeluaran = 0;
-                _filteredDocs = []; // Reset filtered docs
+                _filteredDocs = []; 
 
                 for (var doc in docs) {
                   var data = doc.data() as Map<String, dynamic>;
@@ -528,7 +524,6 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                     ),
                     const SizedBox(height: 25),
 
-                    // 👇 JUDUL RIWAYAT + TOMBOL DOWNLOAD SULTAN 👇
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -639,7 +634,6 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     }
   }
 
-  // 👇 FUNGSI EKSPORT PDF PERPULUHAN 👇
   Future<void> _exportToPDF() async {
     if (_filteredDocs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada data untuk diekspor!")));
@@ -689,7 +683,6 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     await Share.shareXFiles([XFile(file.path)], text: 'Laporan Perpuluhan Daerah ${widget.namaDaerah}');
   }
 
-  // 👇 FUNGSI EKSPORT CSV (EXCEL) PERPULUHAN 👇
   Future<void> _exportToCSV() async {
     if (_filteredDocs.isEmpty) return;
 
@@ -750,7 +743,6 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   }
 
   void _showPerpuluhanForm({String? docId, String? initialTipe, String? initialNama, String? initialNominal, DateTime? initialDate}) {
-    // 🔥 FORMAT AWAL SAAT EDIT 🔥
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
       formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
@@ -854,7 +846,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                   keyboardType: TextInputType.number, 
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    CurrencyInputFormatter() // 👈 SISIPKAN FORMATTER TITIK OTOMATIS
+                    CurrencyInputFormatter() 
                   ],
                   decoration: const InputDecoration(labelText: "Nominal", border: OutlineInputBorder(), prefixText: "Rp ")
                 ),
@@ -979,9 +971,10 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF5F7FA),
-      child: Column(
+    // 👇 INI DIA RUMAH SCAFFOLD-NYA! 👇
+    return Scaffold(
+      backgroundColor: const Color(0xFFF5F7FA),
+      body: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
@@ -1074,7 +1067,6 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                     ),
                     const SizedBox(height: 25),
 
-                    // 👇 JUDUL RIWAYAT + TOMBOL DOWNLOAD SULTAN 👇
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -1123,6 +1115,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
           ),
         ],
       ),
+      // 👇 DAN INILAH TEMPAT TOMBOL MELAYANG ITU SEHARUSNYA BERADA 👇
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddPerpuluhanDialog,
         backgroundColor: Colors.orange,

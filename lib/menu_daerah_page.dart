@@ -69,8 +69,8 @@ class MenuDaerahPage extends StatelessWidget {
                   Navigator.push(context, MaterialPageRoute(builder: (c) => DataGerejaDaerahPage(namaDaerah: namaDaerah)));
                 }),
                 _buildMenuSultan(context, Icons.analytics, "Dashboard\nStatistik", Colors.purple, () {
-                  // 👇 (Nanti kita update dashboardnya biar bisa filter berdasarkan daerah) 👇
-                  Navigator.push(context, MaterialPageRoute(builder: (c) => const DashboardDaerahPage()));
+                  // 👇 TAMBAHKAN KODE namaDaerah: namaDaerah DI SINI 👇
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => DashboardDaerahPage(namaDaerah: namaDaerah)));
                 }),
                 _buildMenuSultan(context, Icons.account_balance_wallet, "Laporan\nKeuangan", Colors.green, () {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Keuangan $namaDaerah segera hadir")));

@@ -14,12 +14,13 @@ class UserManager {
   static const String _keyActiveChurchId = "active_church_id";
   static const String _keyActiveChurchName = "active_church_name";
   static const String _keyIsPengurus = "is_pengurus";
-  
-  // 👇 KUNCI BARU UNTUK SINKRONISASI JEMAAT 👇
   static const String _keyJemaatId = "jemaat_id";
+  
+  // KUNCI UNTUK ADMIN DAERAH
+  static const String _keyAdminDaerahArea = "admin_daerah_area";
 
   // Variabel Data
-  String? userRole;
+  String? userRole; // 👈 HANYA BERISI: "jemaat", "admin", atau "superadmin"
   String? userId;
   String? userNama;
   String? userFotoUrl;
@@ -29,9 +30,10 @@ class UserManager {
   String? activeChurchId;
   String? activeChurchName;
   bool isPengurus = false;
-  
-  // 👇 VARIABEL BARU UNTUK SINKRONISASI JEMAAT 👇
   String? jemaatId;
+  
+  // VARIABEL JABATAN TAMBAHAN (BISA DIRANGKAP)
+  String? adminDaerahArea;
 
   // Singleton pattern
   static final UserManager _instance = UserManager._internal();
@@ -53,7 +55,8 @@ class UserManager {
     String? uFoto,
     String uKomisi = "Umum",
     bool uIsPengurus = false,
-    String? uJemaatId, // 👈 PARAMETER BARU UNTUK SINKRONISASI
+    String? uJemaatId, 
+    String? uAdminDaerahArea, // 👈 PARAMETER JABATAN DAERAH
   }) async {
     userRole = role;
     userId = uId;
@@ -65,7 +68,8 @@ class UserManager {
     activeChurchId = churchId;
     activeChurchName = churchName;
     isPengurus = uIsPengurus; 
-    jemaatId = uJemaatId; // 👈 SIMPAN JEMAAT ID
+    jemaatId = uJemaatId; 
+    adminDaerahArea = uAdminDaerahArea; 
     await saveToPrefs();
   }
 
@@ -82,7 +86,8 @@ class UserManager {
     await prefs.setString(_keyActiveChurchId, activeChurchId ?? "");
     await prefs.setString(_keyActiveChurchName, activeChurchName ?? "");
     await prefs.setBool(_keyIsPengurus, isPengurus); 
-    await prefs.setString(_keyJemaatId, jemaatId ?? ""); // 👈 SIMPAN KE MEMORI HP
+    await prefs.setString(_keyJemaatId, jemaatId ?? ""); 
+    await prefs.setString(_keyAdminDaerahArea, adminDaerahArea ?? ""); 
   }
 
   // Load data saat aplikasi baru dibuka
@@ -102,17 +107,27 @@ class UserManager {
     activeChurchName = prefs.getString(_keyActiveChurchName);
     isPengurus = prefs.getBool(_keyIsPengurus) ?? false; 
     
-    // 👇 BACA DARI MEMORI HP 👇
     String? loadedJemaatId = prefs.getString(_keyJemaatId);
     jemaatId = (loadedJemaatId != null && loadedJemaatId.isNotEmpty) ? loadedJemaatId : null;
+
+    String? loadedArea = prefs.getString(_keyAdminDaerahArea);
+    adminDaerahArea = (loadedArea != null && loadedArea.isNotEmpty) ? loadedArea : null;
     
     return true;
   }
 
+  // 👇 PENGECEKAN HAK AKSES YANG SUDAH DIPISAHKAN (DECOUPLED) 👇
+  
+  // 1. HAK AKSES LOKAL (Tidak peduli dia pengurus daerah atau bukan)
   bool isAdmin() => userRole == "admin" || userRole == "superadmin";
+  
+  // 2. HAK AKSES SUPERADMIN PUSAT
   bool isSuperAdmin() => userRole == "superadmin";
   
-  // 👇 FUNGSI SAKTI PENGECEK STATUS SINKRONISASI 👇
+  // 3. HAK AKSES DAERAH (Dicek dari atribut adminDaerahArea, bukan dari userRole)
+  bool isAdminDaerah() => adminDaerahArea != null && adminDaerahArea!.trim().isNotEmpty;
+
+  // Cek apakah akun tertaut dengan database jemaat
   bool isLinked() => jemaatId != null && jemaatId!.trim().isNotEmpty;
 
   String? getChurchIdForCurrentView() => activeChurchId ?? originalChurchId;
@@ -145,7 +160,6 @@ class UserManager {
     await saveToPrefs();
   }
 
-  // 👇 FUNGSI KHUSUS UPDATE JEMAAT ID SAAT SINKRONISASI BERHASIL 👇
   Future<void> linkJemaatId(String newJemaatId) async {
     jemaatId = newJemaatId;
     await saveToPrefs();
@@ -162,7 +176,8 @@ class UserManager {
     activeChurchId = null;
     activeChurchName = null;
     isPengurus = false; 
-    jemaatId = null; // 👈 RESET STATUS SINKRONISASI
+    jemaatId = null; 
+    adminDaerahArea = null; 
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }

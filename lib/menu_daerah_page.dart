@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'data_gereja_daerah_page.dart';
 import 'dashboard_daerah_page.dart';
 import 'keuangan_daerah_page.dart';
+import 'info_surat_daerah_page.dart';
 
 class MenuDaerahPage extends StatelessWidget {
   final String namaDaerah; // 👈 MENERIMA NAMA DAERAH DARI HALAMAN SEBELUMNYA
@@ -80,9 +81,10 @@ class MenuDaerahPage extends StatelessWidget {
                 _buildMenuSultan(context, Icons.assignment_ind, "Badan\nPengurus", Colors.orange, () {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pengurus $namaDaerah segera hadir")));
                 }),
-                _buildMenuSultan(context, Icons.notifications_active, "Info & Surat\nDaerah", Colors.red, () {
-                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Surat $namaDaerah segera hadir")));
-                }),
+                _buildMenuSultan(context, Icons.notifications_active, "Info & Surat\nDaerah", Colors.redAccent, () {
+               // 👇 KODE NAVIGASI BARU 👇
+                  Navigator.push(context, MaterialPageRoute(builder: (c) => InfoSuratDaerahPage(namaDaerah: namaDaerah)));
+                 }),
                 _buildMenuSultan(context, Icons.settings_suggest, "Pengaturan\nDaerah", Colors.grey.shade700, () {
                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pengaturan $namaDaerah")));
                 }),

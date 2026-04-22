@@ -57,7 +57,7 @@ dependencies:
   gal: ^2.3.0          # Untuk fitur Save foto ke Galeri HP
 
   # 👇 INI DIA MESIN SCANNER CANGGIH DARI GOOGLE BOS! 👇
-  google_mlkit_document_scanner: ^0.14.0
+  google_mlkit_document_scanner: ^0.4.1
 
 dev_dependencies:
   flutter_test:

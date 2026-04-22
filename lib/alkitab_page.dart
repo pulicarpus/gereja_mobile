@@ -483,8 +483,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
     } else if (v == 'offline_audio') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => const OfflineAudioPage()));
     } else if (v == 'notes') {
-      // Pastikan nama class NotesManagerPage sesuai dengan di file notes_pages.dart Bos ya!
-      Navigator.push(context, MaterialPageRoute(builder: (c) => NotesManagerPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) {
+      // 👇 INI DIA BOS! SUDAH SAYA GANTI JADI NoteListPage SESUAI FILE notes_pages.dart BOS! 👇
+      Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) {
         _syncNotes();
         setState(() {});
       });

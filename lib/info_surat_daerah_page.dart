@@ -29,19 +29,17 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
   }
 
-  // 👇 FUNGSI SCANNER SULTAN (SUDAH DISESUAIKAN DENGAN VERSI 0.4.1) 👇
+  // 👇 FUNGSI SCANNER SULTAN (SUDAH BENAR-BENAR BERSIH) 👇
   Future<File?> _scanDocument() async {
     try {
       DocumentScannerOptions options = DocumentScannerOptions(
-        // documentFormat: DocumentFormat.jpeg, <-- Ini dihapus karena versi 0.4.1 belum kenal
         mode: ScannerMode.filter,
         pageLimit: 1,
-        isGalleryImportAllowed: true,
+        // parameter 'isGalleryImportAllowed' dicabut karena tidak dikenali di versi 0.4.1
       );
       DocumentScanner scanner = DocumentScanner(options: options);
       DocumentScanningResult result = await scanner.scanDocument();
       
-      // 👇 Ditambah pengecekan null (!= null) agar Flutter tidak protes 👇
       if (result.images != null && result.images!.isNotEmpty) {
         return File(result.images!.first);
       }

@@ -5,9 +5,8 @@ import 'package:flutter/gestures.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 WAJIB UNTUK CLOUD
+import 'package:firebase_auth/firebase_auth.dart';     // 👈 WAJIB UNTUK CLOUD
 import 'bible_models.dart';
 
 class NoteListPage extends StatefulWidget {
@@ -30,6 +29,7 @@ class _NoteListPageState extends State<NoteListPage> {
   List<NoteModel> _allNotes = [];
   List<NoteModel> _filteredNotes = [];
   final _searchCtrl = TextEditingController();
+  bool _isSyncing = false; // Indikator loading awan
 
   @override
   void initState() { super.initState(); _loadNotes(); }
@@ -45,52 +45,93 @@ class _NoteListPageState extends State<NoteListPage> {
     setState(() { _allNotes = temp; _filteredNotes = temp; });
   }
 
-  // 👇 FUNGSI BACKUP CATATAN 👇
-  Future<void> _backupNotes() async {
+  // 👇 FUNGSI BACKUP KE CLOUD (FIRESTORE) 👇
+  Future<void> _backupToCloud() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Anda harus Login dulu untuk Backup ke Cloud!"), backgroundColor: Colors.orange));
+      return;
+    }
+
+    final keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+    if (keys.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada catatan untuk dibackup.")));
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("🚀 Mengunggah catatan ke Cloud...")));
+
     try {
-      Map<String, String> backupData = {};
-      final keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-      if (keys.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada catatan untuk dibackup.")));
-        return;
+      // Kita pakai fungsi BATCH agar ratusan catatan bisa dikirim dalam 1 kedipan mata
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      CollectionReference notesRef = FirebaseFirestore.instance.collection('users').doc(user.uid).collection('notes');
+
+      for (var k in keys) {
+        String rawData = widget.prefs.getString(k) ?? "";
+        if (rawData.isNotEmpty) {
+          batch.set(notesRef.doc(k), {
+            'key': k,
+            'raw_data': rawData,
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+        }
       }
-      for (var k in keys) { backupData[k] = widget.prefs.getString(k) ?? ""; }
+
+      await batch.commit(); // Eksekusi pengiriman massal
       
-      String jsonStr = jsonEncode(backupData);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/Backup_Catatan_GKII.json');
-      await file.writeAsString(jsonStr);
-      
-      await Share.shareXFiles([XFile(file.path)], text: "File Backup Catatan Alkitab GKII");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Backup Cloud Berhasil! Aman dari HP rusak/hilang."), backgroundColor: Colors.green));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal backup: $e")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal backup: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
-  // 👇 FUNGSI RESTORE CATATAN 👇
-  Future<void> _restoreNotes() async {
+  // 👇 FUNGSI RESTORE DARI CLOUD (FIRESTORE) 👇
+  Future<void> _restoreFromCloud() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Anda harus Login dulu untuk Restore dari Cloud!"), backgroundColor: Colors.orange));
+      return;
+    }
+
+    setState(() => _isSyncing = true);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("☁ Mengunduh catatan dari Cloud...")));
+
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
-      if (result != null && result.files.single.path != null) {
-        File file = File(result.files.single.path!);
-        String content = await file.readAsString();
-        Map<String, dynamic> backupData = jsonDecode(content);
+      // Sedot semua dokumen dari brankas user
+      QuerySnapshot snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).collection('notes').get();
+      
+      if (snap.docs.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada backup catatan di Cloud Anda.")));
+        setState(() => _isSyncing = false);
+        return;
+      }
+
+      List<String> existingKeys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+      int restoredCount = 0;
+      
+      for (var doc in snap.docs) {
+        Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+        String key = data['key'] ?? doc.id;
+        String rawData = data['raw_data'] ?? "";
         
-        List<String> existingKeys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
-        int restoredCount = 0;
-        
-        for (var k in backupData.keys) {
-          if (!existingKeys.contains(k)) existingKeys.add(k);
-          await widget.prefs.setString(k, backupData[k].toString());
+        if (rawData.isNotEmpty) {
+          if (!existingKeys.contains(key)) existingKeys.add(key);
+          await widget.prefs.setString(key, rawData); // Simpan ke HP
           restoredCount++;
         }
-        await widget.prefs.setStringList("ALL_NOTE_KEYS", existingKeys);
-        
-        _loadNotes();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$restoredCount Catatan berhasil direstore!"), backgroundColor: Colors.green));
       }
+      
+      await widget.prefs.setStringList("ALL_NOTE_KEYS", existingKeys);
+      
+      _loadNotes(); // Segarkan layar
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $restoredCount Catatan berhasil disedot dari Cloud!"), backgroundColor: Colors.green));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("File tidak valid atau gagal restore: $e"), backgroundColor: Colors.red));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal restore: $e"), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
@@ -102,8 +143,13 @@ class _NoteListPageState extends State<NoteListPage> {
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         actions: [
-          IconButton(icon: const Icon(Icons.upload_file), tooltip: "Restore Backup (.json)", onPressed: _restoreNotes),
-          IconButton(icon: const Icon(Icons.download), tooltip: "Backup Catatan", onPressed: _backupNotes),
+          // 👇 TOMBOL AWAN SULTAN 👇
+          if (_isSyncing)
+            const Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))))
+          else ...[
+            IconButton(icon: const Icon(Icons.cloud_download), tooltip: "Restore dari Cloud", onPressed: _restoreFromCloud),
+            IconButton(icon: const Icon(Icons.cloud_upload), tooltip: "Backup ke Cloud", onPressed: _backupToCloud),
+          ]
         ],
       ),
       body: Column(
@@ -149,7 +195,7 @@ class _NoteListPageState extends State<NoteListPage> {
                             )
                           )).then((res) {
                             if (res != null) {
-                              Navigator.pop(context, res); // Otomatis lempar sinyal loncat ayat ke AlkitabPage!
+                              Navigator.pop(context, res); 
                             } else {
                               _loadNotes(); 
                             }
@@ -182,6 +228,7 @@ class _NoteListPageState extends State<NoteListPage> {
             await widget.prefs.remove(key);
             Navigator.pop(context);
             _loadNotes();
+            // Catatan: Ini hanya menghapus di lokal HP, jika ingin dihapus di Cloud juga, user tinggal klik tombol Backup lagi (untuk menimpa Cloud dengan kondisi HP saat ini).
           }, 
           child: const Text("HAPUS", style: TextStyle(color: Colors.white))
         ),
@@ -259,7 +306,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       _isEditing = false; 
     });
     
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan disimpan!")));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan disimpan (Lokal)!")));
   }
 
   void _showFloatingAyat({String? customNas}) async {

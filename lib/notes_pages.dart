@@ -1,8 +1,13 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart'; // Wajib untuk TapGestureRecognizer (teks bisa diklik)
+import 'package:flutter/gestures.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'bible_models.dart';
 
 class NoteListPage extends StatefulWidget {
@@ -40,6 +45,55 @@ class _NoteListPageState extends State<NoteListPage> {
     setState(() { _allNotes = temp; _filteredNotes = temp; });
   }
 
+  // 👇 FUNGSI BACKUP CATATAN 👇
+  Future<void> _backupNotes() async {
+    try {
+      Map<String, String> backupData = {};
+      final keys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+      if (keys.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada catatan untuk dibackup.")));
+        return;
+      }
+      for (var k in keys) { backupData[k] = widget.prefs.getString(k) ?? ""; }
+      
+      String jsonStr = jsonEncode(backupData);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/Backup_Catatan_GKII.json');
+      await file.writeAsString(jsonStr);
+      
+      await Share.shareXFiles([XFile(file.path)], text: "File Backup Catatan Alkitab GKII");
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal backup: $e")));
+    }
+  }
+
+  // 👇 FUNGSI RESTORE CATATAN 👇
+  Future<void> _restoreNotes() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json']);
+      if (result != null && result.files.single.path != null) {
+        File file = File(result.files.single.path!);
+        String content = await file.readAsString();
+        Map<String, dynamic> backupData = jsonDecode(content);
+        
+        List<String> existingKeys = widget.prefs.getStringList("ALL_NOTE_KEYS") ?? [];
+        int restoredCount = 0;
+        
+        for (var k in backupData.keys) {
+          if (!existingKeys.contains(k)) existingKeys.add(k);
+          await widget.prefs.setString(k, backupData[k].toString());
+          restoredCount++;
+        }
+        await widget.prefs.setStringList("ALL_NOTE_KEYS", existingKeys);
+        
+        _loadNotes();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$restoredCount Catatan berhasil direstore!"), backgroundColor: Colors.green));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("File tidak valid atau gagal restore: $e"), backgroundColor: Colors.red));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -47,6 +101,10 @@ class _NoteListPageState extends State<NoteListPage> {
         title: const Text("Catatan Saya"),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(icon: const Icon(Icons.upload_file), tooltip: "Restore Backup (.json)", onPressed: _restoreNotes),
+          IconButton(icon: const Icon(Icons.download), tooltip: "Backup Catatan", onPressed: _backupNotes),
+        ],
       ),
       body: Column(
         children: [
@@ -91,7 +149,7 @@ class _NoteListPageState extends State<NoteListPage> {
                             )
                           )).then((res) {
                             if (res != null) {
-                              Navigator.pop(context, res);
+                              Navigator.pop(context, res); // Otomatis lempar sinyal loncat ayat ke AlkitabPage!
                             } else {
                               _loadNotes(); 
                             }
@@ -204,9 +262,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Catatan disimpan!")));
   }
 
-  // DIUBAH: Sekarang menerima parameter opsional (Bisa ayat utama, bisa ayat di dalam isi teks)
   void _showFloatingAyat({String? customNas}) async {
-    // Gunakan customNas jika ada (saat di-klik dari dalam teks), jika tidak gunakan nas utama
     String nasToSearch = customNas ?? widget.nas;
 
     final regex = RegExp(r'(.+?)\s+(\d+):(\d+)(?:-(\d+))?');
@@ -291,16 +347,13 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
-  // FUNGSI BARU: Mendeteksi nama kitab di dalam isi teks dan mengubahnya jadi Link biru
   Widget _buildClickableContent(String text) {
-    // Mengumpulkan semua nama dan singkatan kitab dari Database untuk dijadikan target Regex
     List<String> bookNames = [];
     for (var b in widget.allBooks) {
       bookNames.add(RegExp.escape(b.name));
       bookNames.add(RegExp.escape(b.shortName));
     }
     
-    // Pola Regex pintar: Hanya mendeteksi jika teks adalah [Nama Kitab di Database] [Angka]:[Angka]-[Angka]
     String pattern = r'(' + bookNames.join('|') + r')\s+(\d+):(\d+)(?:-(\d+))?';
     RegExp exp = RegExp(pattern, caseSensitive: false);
 
@@ -309,7 +362,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     text.splitMapJoin(
       exp,
       onMatch: (Match m) {
-        String fullRef = m.group(0)!; // Contoh: "Lukas 2:3-4"
+        String fullRef = m.group(0)!; 
         spans.add(TextSpan(
           text: fullRef,
           style: const TextStyle(
@@ -318,14 +371,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             decoration: TextDecoration.underline
           ),
           recognizer: TapGestureRecognizer()..onTap = () {
-            // Ketika diklik, panggil Floating Ayat dengan referensi ayat yang diklik
             _showFloatingAyat(customNas: fullRef); 
           }
         ));
         return "";
       },
       onNonMatch: (String nonMatchText) {
-        // Teks biasa
         spans.add(TextSpan(text: nonMatchText, style: const TextStyle(color: Colors.black87)));
         return "";
       }
@@ -359,9 +410,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // TOMBOL FLOATING AYAT UTAMA (Ayat yang di-mark)
             InkWell(
-              onTap: () => _showFloatingAyat(), // Panggil tanpa parameter untuk ayat utama
+              onTap: () => _showFloatingAyat(), 
               borderRadius: BorderRadius.circular(8),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -391,7 +441,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
-  // WIDGET KETIKA MODE BACA
   Widget _buildReadMode() {
     return SingleChildScrollView(
       child: Column(
@@ -411,14 +460,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             ],
           ),
           const Divider(height: 30, thickness: 1),
-          // MENGGUNAKAN FUNGSI BARU UNTUK KONTEN BACAAN
           _buildClickableContent(_contentCtrl.text),
         ],
       ),
     );
   }
 
-  // WIDGET KETIKA MODE EDIT
   Widget _buildEditMode() {
     return Column(
       children: [

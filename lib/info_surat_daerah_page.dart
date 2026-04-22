@@ -7,6 +7,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart'; // 👈 UNTUK FOLDER SEMENTARA
+import 'package:http/http.dart' as http;           // 👈 UNTUK DOWNLOAD DIAM-DIAM
+import 'package:open_filex/open_filex.dart';       // 👈 UNTUK BUKA WPS / PDF READER
 import 'user_manager.dart';
 
 class InfoSuratDaerahPage extends StatefulWidget {
@@ -29,13 +32,11 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
   }
 
-  // 👇 FUNGSI SCANNER SULTAN (SUDAH BENAR-BENAR BERSIH) 👇
   Future<File?> _scanDocument() async {
     try {
       DocumentScannerOptions options = DocumentScannerOptions(
         mode: ScannerMode.filter,
         pageLimit: 1,
-        // parameter 'isGalleryImportAllowed' dicabut karena tidak dikenali di versi 0.4.1
       );
       DocumentScanner scanner = DocumentScanner(options: options);
       DocumentScanningResult result = await scanner.scanDocument();
@@ -49,7 +50,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return null;
   }
 
-  // 👇 FUNGSI PILIH FILE DOKUMEN (PDF, DOCX, XLSX, PPTX) 👇
   Future<File?> _pickDocument() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -61,7 +61,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return null;
   }
 
-  // 👇 FUNGSI SHARE KE CHATROOM GEREJA LOKAL 👇
   Future<void> _shareToLocalChat(Map<String, dynamic> data) async {
     String? churchId = _user.activeChurchId;
     if (churchId == null) return;
@@ -88,6 +87,61 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal Share: $e"), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // 👇 FUNGSI SAKTI: DOWNLOAD & LANGSUNG BUKA DI WPS/PDF READER 👇
+  Future<void> _downloadAndOpenFile(String url, String originalFileName) async {
+    // 1. Tampilkan loading Pop-Up
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(color: Colors.indigo),
+            SizedBox(width: 15),
+            Expanded(child: Text("Membuka dokumen...")),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // 2. Download file secara diam-diam
+      final response = await http.get(Uri.parse(url));
+      
+      if (response.statusCode == 200) {
+        // 3. Simpan di folder cache / sementara HP
+        final directory = await getTemporaryDirectory();
+        
+        // Ambil ekstensi aslinya dari URL (misal: .pdf, .docx)
+        String ext = ".pdf"; // default fallback
+        if (url.contains(".doc")) ext = ".docx";
+        else if (url.contains(".xls")) ext = ".xlsx";
+        else if (url.contains(".ppt")) ext = ".pptx";
+        
+        String filePath = '${directory.path}/Dokumen_GKII_${DateTime.now().millisecondsSinceEpoch}$ext';
+        final file = File(filePath);
+        await file.writeAsBytes(response.bodyBytes);
+
+        // 4. Tutup loading
+        if (mounted) Navigator.pop(context);
+
+        // 5. Buka langsung pakai WPS / Aplikasi pembaca dokumen bawaan HP
+        final result = await OpenFilex.open(file.path);
+        
+        if (result.type != ResultType.done) {
+          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada aplikasi untuk membuka file ini (Coba install WPS/PDF Reader)."), backgroundColor: Colors.orange));
+        }
+      } else {
+        throw Exception("Gagal mengunduh file.");
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Tutup loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Terjadi kesalahan: $e"), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -177,7 +231,10 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
 
                 try {
                   String? fileUrl;
+                  String? fileNameOriginal;
+
                   if (attachedFile != null) {
+                    fileNameOriginal = attachedFile!.path.split('/').last;
                     String ext = attachedFile!.path.split('.').last;
                     String fileName = "doc_${DateTime.now().millisecondsSinceEpoch}.$ext";
                     Reference ref = _storage.ref().child("info_daerah/${widget.namaDaerah}/$fileName");
@@ -192,6 +249,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     "isi": txtIsi.text.trim(),
                     "tanggal": FieldValue.serverTimestamp(),
                     "lampiranUrl": fileUrl,
+                    "namaFile": fileNameOriginal, // Simpan nama aslinya
                     "pengirim": _user.userNama ?? "Pengurus",
                     "isImage": isImage,
                   });
@@ -242,6 +300,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                   bool isSurat = data['kategori'] == "Surat Resmi";
                   bool isImage = data['isImage'] ?? false;
                   String? url = data['lampiranUrl'];
+                  String fileDisplay = data['namaFile'] ?? "Dokumen Lampiran";
 
                   return Card(
                     margin: const EdgeInsets.only(bottom: 20),
@@ -280,9 +339,8 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                                 if (isImage) {
                                   Navigator.push(context, MaterialPageRoute(builder: (c) => FullScreenImagePage(imageUrl: url, heroTag: docs[index].id)));
                                 } else {
-                                  if (await canLaunchUrl(Uri.parse(url))) {
-                                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                                  }
+                                  // 👇 PANGGIL FUNGSI SAKTI DI SINI 👇
+                                  await _downloadAndOpenFile(url, fileDisplay);
                                 }
                               },
                               child: Container(
@@ -292,7 +350,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                                   children: [
                                     Icon(isImage ? Icons.image : Icons.description, color: Colors.indigo),
                                     const SizedBox(width: 10),
-                                    const Expanded(child: Text("Buka Lampiran Dokumen/Foto", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 12))),
+                                    Expanded(child: Text(isImage ? "Lihat Dokumen Scan" : "Buka Dokumen", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 12))),
                                     const Icon(Icons.open_in_new, size: 16, color: Colors.indigo),
                                   ],
                                 ),

@@ -23,7 +23,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   
   bool _isLoading = false;
 
-  // Cek apakah dia punya hak untuk tambah/hapus postingan
   bool get _canEdit {
     return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
   }
@@ -67,7 +66,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                 ),
                 const SizedBox(height: 15),
                 
-                // TOMBOL UPLOAD LAMPIRAN SURAT
                 const Text("Lampiran (Opsional)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 5),
                 InkWell(
@@ -125,12 +123,11 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                 }
 
                 setState(() => _isLoading = true);
-                setStateDialog(() {}); // Update dialog UI (disable buttons)
+                setStateDialog(() {}); 
 
                 try {
                   String? lampiranUrl;
                   
-                  // Kalau ada foto, upload dulu ke Firebase Storage
                   if (imageFile != null) {
                     String fileName = "surat_${DateTime.now().millisecondsSinceEpoch}.jpg";
                     Reference ref = _storage.ref().child("info_daerah/${widget.namaDaerah}/$fileName");
@@ -138,7 +135,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     lampiranUrl = await ref.getDownloadURL();
                   }
 
-                  // Simpan ke Firestore
                   await _db.collection("info_surat_daerah").add({
                     "daerah": widget.namaDaerah,
                     "kategori": kategori,
@@ -180,16 +176,27 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       body: Stack(
         children: [
           StreamBuilder<QuerySnapshot>(
+            // 👇 FIREBASE INDEX ERROR BYPASS: orderBy() Dihapus 👇
             stream: _db.collection("info_surat_daerah")
                        .where("daerah", isEqualTo: widget.namaDaerah)
-                       .orderBy("tanggal", descending: true)
                        .snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+              }
+
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              var docs = snapshot.data?.docs ?? [];
+              var docs = snapshot.data?.docs.toList() ?? [];
+
+              // 👇 PENGURUTAN DIAMBIL ALIH FLUTTER AGAR AMAN 👇
+              docs.sort((a, b) {
+                Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                return tB.compareTo(tA); // Mengurutkan dari terbaru ke terlama
+              });
 
               if (docs.isEmpty) {
                 return Center(
@@ -228,7 +235,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // HEADER KARTU (KATEGORI & TANGGAL)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -252,18 +258,15 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                           ),
                           const SizedBox(height: 15),
 
-                          // JUDUL & ISI
                           Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black87)),
                           const SizedBox(height: 8),
                           Text(isi, style: const TextStyle(fontSize: 14, color: Colors.black54, height: 1.5)),
                           const SizedBox(height: 15),
 
-                          // LAMPIRAN SURAT (JIKA ADA)
                           if (lampiranUrl != null && lampiranUrl.isNotEmpty) ...[
                              const Divider(),
                              InkWell(
                                onTap: () {
-                                 // BUKA GAMBAR FULL SCREEN
                                  Navigator.push(context, MaterialPageRoute(builder: (ctx) => FullScreenImagePage(imageUrl: lampiranUrl, heroTag: docId)));
                                },
                                child: Container(
@@ -289,7 +292,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
 
                           const SizedBox(height: 15),
                           
-                          // PENGIRIM & TOMBOL HAPUS
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -317,7 +319,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                                             onPressed: () async {
                                               Navigator.pop(ctx);
                                               await _db.collection("info_surat_daerah").doc(docId).delete();
-                                              // Catatan: Idealnya hapus file di Storage juga, tapi untuk efisiensi kita hapus document-nya saja.
                                               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Dihapus")));
                                             },
                                             child: const Text("Hapus", style: TextStyle(color: Colors.white)),
@@ -343,7 +344,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
         ],
       ),
       
-      // 👇 TOMBOL HANYA MUNCUL JIKA PUNYA HAK AKSES 👇
       floatingActionButton: _canEdit 
         ? FloatingActionButton.extended(
             onPressed: _showAddPostDialog,
@@ -357,7 +357,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   }
 }
 
-// HALAMAN KHUSUS UNTUK MELIHAT LAMPIRAN SURAT FULL SCREEN
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;

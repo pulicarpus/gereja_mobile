@@ -2,11 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart'; // 👈 UNTUK PILIH DOC/PDF/XLS
+import 'package:file_picker/file_picker.dart'; 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user_manager.dart';
 
@@ -30,18 +29,22 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
   }
 
-  // 👇 FUNGSI SCANNER SULTAN 👇
+  // 👇 FUNGSI SCANNER SULTAN (SUDAH DISESUAIKAN DENGAN VERSI 0.4.1) 👇
   Future<File?> _scanDocument() async {
     try {
       DocumentScannerOptions options = DocumentScannerOptions(
-        documentFormat: DocumentFormat.jpeg,
+        // documentFormat: DocumentFormat.jpeg, <-- Ini dihapus karena versi 0.4.1 belum kenal
         mode: ScannerMode.filter,
         pageLimit: 1,
         isGalleryImportAllowed: true,
       );
       DocumentScanner scanner = DocumentScanner(options: options);
       DocumentScanningResult result = await scanner.scanDocument();
-      if (result.images.isNotEmpty) return File(result.images.first);
+      
+      // 👇 Ditambah pengecekan null (!= null) agar Flutter tidak protes 👇
+      if (result.images != null && result.images!.isNotEmpty) {
+        return File(result.images!.first);
+      }
     } catch (e) {
       debugPrint("Scanner Error: $e");
     }
@@ -72,13 +75,12 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       String? link = data['lampiranUrl'];
       String tipe = data['kategori'] ?? "INFO";
 
-      // Kirim sebagai pesan chat spesial
       await _db.collection("churches").doc(churchId).collection("chats").add({
         "senderId": _user.userId,
         "senderNama": "📢 PENGURUS DAERAH",
         "pesan": "📌 *[$tipe]*\n\n*${judul.toUpperCase()}*\n$isi\n\n${link != null ? '⬇️ Lampiran: $link' : ''}",
         "timestamp": FieldValue.serverTimestamp(),
-        "isInfoDaerah": true, // Penanda pesan spesial
+        "isInfoDaerah": true, 
       });
 
       if (mounted) {
@@ -195,12 +197,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     "pengirim": _user.userNama ?? "Pengurus",
                     "isImage": isImage,
                   });
-
-                  // 👇 KIRIM NOTIFIKASI KHUSUS PENGURUS DAERAH 👇
-                  // (OneSignal akan memfilter user yang punya tag daerah ini dan berstatus Admin)
-                  /* Catatan: Logika OneSignal butuh API Key di Backend. 
-                     Untuk sementara HP Bos akan mengirim signal lewat Tag OneSignal.
-                  */
 
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Berhasil diposting!")));
                 } catch (e) {

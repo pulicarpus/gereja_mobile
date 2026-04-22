@@ -48,9 +48,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
   bool _isSyncing = false; 
   late SharedPreferences _prefs;
 
+  // VARIABEL FONT & SENSOR CUBIT
   double _fontSize = 18.0;
   double _baseFontSize = 18.0;
+  Map<int, Offset> _pointerPositions = {};
+  double _initialPinchDistance = 0.0;
+  double _initialFontSize = 18.0;
 
+  // AUDIO PLAYER
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
   bool _isAudioLoading = false;
@@ -282,6 +287,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _cleanText(String text) => text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   String _formatVerses(List<int> vs) { if (vs.isEmpty) return ""; vs.sort(); List<String> groups = []; int start = vs.first, end = vs.first; for (int i = 1; i < vs.length; i++) { if (vs[i] == end + 1) { end = vs[i]; } else { groups.add(start == end ? "$start" : "$start-$end"); start = vs[i]; end = vs[i]; } } groups.add(start == end ? "$start" : "$start-$end"); return groups.join(", "); }
 
+  // --- BUILD UI ---
   @override
   Widget build(BuildContext context) {
     String bName = _allBooks.isEmpty ? "" : _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name;
@@ -300,16 +306,101 @@ class _AlkitabPageState extends State<AlkitabPage> {
           PopupMenuButton<String>(icon: const Icon(Icons.menu), onSelected: _onMenuSelected, itemBuilder: (c) => [
             const PopupMenuItem(value: 'search', child: Row(children: [Icon(Icons.search, color: Colors.indigo), SizedBox(width: 10), Text("Pencarian")])),
             const PopupMenuItem(value: 'dictionary', child: Row(children: [Icon(Icons.menu_book, color: Colors.orange), SizedBox(width: 10), Text("Kamus Alkitab")])),
+            const PopupMenuItem(value: 'offline_audio', child: Row(children: [Icon(Icons.download, color: Colors.blue), SizedBox(width: 10), Text("Audio Offline")])),
             const PopupMenuItem(value: 'notes', child: Row(children: [Icon(Icons.edit_note, color: Colors.green), SizedBox(width: 10), Text("Kelola Catatan")])),
           ]),
         ],
       ),
-      body: _isLoading ? LoadingSultan(size: 80) : ListView(
-        controller: _scrollController, padding: const EdgeInsets.all(15),
-        children: [
-          Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildContent()))
-        ],
+      
+      body: _isLoading ? LoadingSultan(size: 80) : Listener(
+        onPointerDown: (event) {
+          _pointerPositions[event.pointer] = event.position;
+          if (_pointerPositions.length == 2) {
+            var pos = _pointerPositions.values.toList();
+            _initialPinchDistance = (pos[0] - pos[1]).distance;
+            _initialFontSize = _fontSize;
+          }
+        },
+        onPointerMove: (event) {
+          if (_pointerPositions.containsKey(event.pointer)) {
+            _pointerPositions[event.pointer] = event.position;
+          }
+          if (_pointerPositions.length == 2) {
+            var pos = _pointerPositions.values.toList();
+            double currentDistance = (pos[0] - pos[1]).distance;
+            double scale = currentDistance / _initialPinchDistance;
+            setState(() {
+              _fontSize = (_initialFontSize * scale).clamp(12.0, 45.0);
+            });
+          }
+        },
+        onPointerUp: (event) {
+          _pointerPositions.remove(event.pointer);
+          if (_pointerPositions.isEmpty) _prefs.setDouble('LAST_FONT_SIZE', _fontSize);
+        },
+        onPointerCancel: (event) {
+          _pointerPositions.remove(event.pointer);
+        },
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragEnd: (details) {
+            int sensitivity = 300; 
+            if (details.primaryVelocity! < -sensitivity) {
+              _goToNextChapter(); 
+            } else if (details.primaryVelocity! > sensitivity) {
+              _goToPrevChapter(); 
+            }
+          },
+          child: ListView(
+            controller: _scrollController, 
+            padding: const EdgeInsets.all(15),
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20), 
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), 
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: _buildContent())
+              )
+            ],
+          ),
+        ),
       ),
+
+      bottomNavigationBar: (_isPlaying || _isAudioLoading || _position > Duration.zero) 
+        ? Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.indigo[900], 
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, -2))]
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    _isAudioLoading 
+                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.orange, strokeWidth: 2))
+                      : IconButton(icon: Icon(_isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill, color: Colors.orange, size: 35), onPressed: _playPauseAudio),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: SliderTheme(
+                        data: SliderTheme.of(context).copyWith(trackHeight: 4, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
+                        child: Slider(
+                          activeColor: Colors.orange, inactiveColor: Colors.white30,
+                          min: 0, max: _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1,
+                          value: _position.inSeconds.toDouble().clamp(0, _duration.inSeconds.toDouble() > 0 ? _duration.inSeconds.toDouble() : 1),
+                          onChanged: (val) => _audioPlayer.seek(Duration(seconds: val.toInt())),
+                        ),
+                      ),
+                    ),
+                    Text("${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}", style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    IconButton(icon: const Icon(Icons.close, color: Colors.white54), onPressed: () { _audioPlayer.stop(); setState(() { _isPlaying = false; _position = Duration.zero; }); })
+                  ],
+                )
+              ],
+            ),
+          )
+        : null,
     ); 
   }
 
@@ -325,6 +416,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       Map<String, dynamic>? highlightData = _highlights[key];
       Color? stabiloColor = highlightData != null ? Color(highlightData['color']) : null;
       String? labelText = highlightData?['label'];
+      
+      // CEK CATATAN
+      bool hasNote = _verseNotesMap.containsKey(vNum) && _verseNotesMap[vNum]!.isNotEmpty;
 
       if (_perikopMap.containsKey(vNum)) { for (var t in _perikopMap[vNum]!) { content.add(Container(width: double.infinity, padding: const EdgeInsets.only(top: 25, bottom: 10), child: RichText(textAlign: TextAlign.center, text: TextSpan(style: TextStyle(fontWeight: FontWeight.bold, fontSize: _fontSize + 2, color: Colors.indigo.shade900), children: _parseTextWithLinks(t))))); } }
       
@@ -347,6 +441,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                 TextSpan(text: "$vNum. ", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
                 ..._parseTextWithLinks(v['text'].toString()),
               ])),
+              
               if (labelText != null && labelText.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4, left: 20),
@@ -356,6 +451,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
                     child: Text(labelText, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.indigo)),
                   ),
                 ),
+                
+              if (hasNote)
+                GestureDetector(
+                  onTap: () => _handleNoteClick(vNum, _verseNotesMap[vNum]), 
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8.0, left: 20.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_document, color: Colors.green.shade700, size: _fontSize * 0.9),
+                        const SizedBox(width: 5),
+                        Text("Lihat Catatan (${_verseNotesMap[vNum]!.length})", style: TextStyle(color: Colors.green.shade700, fontSize: _fontSize * 0.7, fontWeight: FontWeight.bold, fontStyle: FontStyle.italic)),
+                      ]
+                    )
+                  )
+                )
             ],
           ),
         ),
@@ -365,7 +475,22 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   // --- AUDIO & NAVIGATION  ---
-  void _onMenuSelected(String v) { if (v == 'search') Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); else if (v == 'dictionary') Navigator.push(context, MaterialPageRoute(builder: (c) => const KamusPage())); }
+  void _onMenuSelected(String v) { 
+    if (v == 'search') {
+      Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); 
+    } else if (v == 'dictionary') {
+      Navigator.push(context, MaterialPageRoute(builder: (c) => const KamusPage())); 
+    } else if (v == 'offline_audio') {
+      Navigator.push(context, MaterialPageRoute(builder: (c) => const OfflineAudioPage()));
+    } else if (v == 'notes') {
+      // Pastikan nama class NotesManagerPage sesuai dengan di file notes_pages.dart Bos ya!
+      Navigator.push(context, MaterialPageRoute(builder: (c) => NotesManagerPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((_) {
+        _syncNotes();
+        setState(() {});
+      });
+    }
+  }
+  
   void _handleNavResult(dynamic res) { if (res != null && res is Map) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(scrollToVerse: res['verse']); } }
   void _goToNextChapter() { if (_currentChapter < (_chaptersPerBook[_currentBookNum >= 470 ? (((_currentBookNum - 470) ~/ 10) + 40) : (_currentBookNum ~/ 10)] ?? 1)) { _currentChapter++; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx < _allBooks.length - 1) { _currentBookNum = _allBooks[idx + 1].bookNumber; _currentChapter = 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }
   void _goToPrevChapter() { if (_currentChapter > 1) { _currentChapter--; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx > 0) { _currentBookNum = _allBooks[idx - 1].bookNumber; _currentChapter = _chaptersPerBook[(_currentBookNum ~/ 10)] ?? 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart'; // 👈 IMPORT SCANNER CANGGIH
 import 'user_manager.dart';
 
 class InfoSuratDaerahPage extends StatefulWidget {
@@ -25,6 +26,32 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
 
   bool get _canEdit {
     return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
+  }
+
+  // 👇 FUNGSI KAMERA SCANNER SULTAN 👇
+  Future<File?> _scanDocument() async {
+    try {
+      // Mengaktifkan Scanner Canggih dari Google ML Kit
+      DocumentScannerOptions options = DocumentScannerOptions(
+        documentFormat: DocumentFormat.jpeg, // Simpan sbg JPEG agar bisa di-preview
+        mode: ScannerMode.filter, // Mengizinkan mode pembersihan teks (Hitam Putih / Warna)
+        pageLimit: 1, // Batas 1 halaman surat
+        isGalleryImportAllowed: true, // Bisa import dari galeri juga lalu otomatis di-crop
+      );
+      
+      DocumentScanner scanner = DocumentScanner(options: options);
+      DocumentScanningResult result = await scanner.scanDocument();
+      
+      if (result.images.isNotEmpty) {
+        return File(result.images.first); // Ambil hasil scan yang sudah di-crop rapi
+      }
+    } catch (e) {
+      debugPrint("Scanner Error (Fallback ke Galeri biasa): $e");
+      // Jika HP tidak support (OS lama), otomatis mundur pakai Galeri biasa
+      final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 75);
+      if (picked != null) return File(picked.path);
+    }
+    return null;
   }
 
   void _showAddPostDialog() {
@@ -66,30 +93,33 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                 ),
                 const SizedBox(height: 15),
                 
-                const Text("Lampiran (Opsional)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                const Text("Lampiran Surat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 5),
+                
+                // 👇 TOMBOL SCANNER 👇
                 InkWell(
                   onTap: () async {
-                    final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 75);
-                    if (picked != null) {
-                      setStateDialog(() => imageFile = File(picked.path));
+                    File? scannedFile = await _scanDocument();
+                    if (scannedFile != null) {
+                      setStateDialog(() => imageFile = scannedFile);
                     }
                   },
                   child: Container(
                     width: double.infinity,
-                    height: 100,
+                    height: 120,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid),
+                      color: Colors.blue.shade50,
+                      border: Border.all(color: Colors.blue.shade200, style: BorderStyle.solid),
                       borderRadius: BorderRadius.circular(10)
                     ),
                     child: imageFile == null
-                        ? const Column(
+                        ? Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.add_a_photo, color: Colors.grey),
-                              SizedBox(height: 5),
-                              Text("Ketuk untuk tambah foto/scan surat", style: TextStyle(fontSize: 11, color: Colors.grey))
+                              Icon(Icons.document_scanner, color: Colors.blue.shade800, size: 30),
+                              const SizedBox(height: 8),
+                              const Text("Ketuk untuk Scan Surat", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blue)),
+                              const Text("(Otomatis memotong latar meja)", style: TextStyle(fontSize: 10, color: Colors.grey))
                             ],
                           )
                         : ClipRRect(
@@ -103,7 +133,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     alignment: Alignment.centerRight,
                     child: TextButton(
                       onPressed: () => setStateDialog(() => imageFile = null),
-                      child: const Text("Hapus Foto", style: TextStyle(color: Colors.red, fontSize: 12)),
+                      child: const Text("Hapus Lampiran", style: TextStyle(color: Colors.red, fontSize: 12)),
                     ),
                   )
               ],
@@ -176,26 +206,17 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       body: Stack(
         children: [
           StreamBuilder<QuerySnapshot>(
-            // 👇 FIREBASE INDEX ERROR BYPASS: orderBy() Dihapus 👇
-            stream: _db.collection("info_surat_daerah")
-                       .where("daerah", isEqualTo: widget.namaDaerah)
-                       .snapshots(),
+            stream: _db.collection("info_surat_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
-              }
-
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+              if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
 
               var docs = snapshot.data?.docs.toList() ?? [];
 
-              // 👇 PENGURUTAN DIAMBIL ALIH FLUTTER AGAR AMAN 👇
               docs.sort((a, b) {
                 Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
                 Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
-                return tB.compareTo(tA); // Mengurutkan dari terbaru ke terlama
+                return tB.compareTo(tA); 
               });
 
               if (docs.isEmpty) {
@@ -274,9 +295,9 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                                  decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(10)),
                                  child: Row(
                                    children: [
-                                     const Icon(Icons.attach_file, color: Colors.indigo),
+                                     const Icon(Icons.document_scanner, color: Colors.indigo),
                                      const SizedBox(width: 10),
-                                     const Expanded(child: Text("Lihat Lampiran Edaran", style: TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold))),
+                                     const Expanded(child: Text("Lihat Dokumen Scan", style: TextStyle(color: Colors.indigo, fontWeight: FontWeight.bold))),
                                      Hero(
                                        tag: docId,
                                        child: ClipRRect(

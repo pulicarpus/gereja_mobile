@@ -56,6 +56,9 @@ dependencies:
   photo_view: ^0.15.0  # Untuk fitur Zoom in/out pakai 2 jari
   gal: ^2.3.0          # Untuk fitur Save foto ke Galeri HP
 
+  # 👇 INI DIA MESIN SCANNER CANGGIH DARI GOOGLE BOS! 👇
+  google_mlkit_document_scanner: ^0.14.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -76,7 +79,7 @@ flutter:
 dependency_overrides:
   record_platform_interface: 1.2.0
   
-  # 👇 MANTRA IKON APLIKASI 👇
+# 👇 MANTRA IKON APLIKASI 👇
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false

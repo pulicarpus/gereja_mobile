@@ -71,13 +71,19 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       String isi = data['isi'] ?? "";
       String? link = data['lampiranUrl'];
       String tipe = data['kategori'] ?? "INFO";
+      bool isImage = data['isImage'] ?? false;
+      String namaFile = data['namaFile'] ?? "Dokumen Lampiran";
 
       await _db.collection("churches").doc(churchId).collection("chats").add({
         "senderId": _user.userId,
         "senderNama": "📢 PENGURUS DAERAH",
-        "pesan": "📌 *[$tipe]*\n\n*${judul.toUpperCase()}*\n$isi\n\n${link != null ? '⬇️ Lampiran: $link' : ''}",
+        // 👇 LINK DIHAPUS DARI TEKS PESAN AGAR TIDAK JELEK 👇
+        "pesan": "📌 *[$tipe]*\n\n*${judul.toUpperCase()}*\n$isi", 
         "timestamp": FieldValue.serverTimestamp(),
         "isInfoDaerah": true, 
+        "lampiranUrl": link, // 👈 DIKIRIM SEBAGAI DATA TERPISAH
+        "isImage": isImage,
+        "namaFile": namaFile,
       });
 
       if (mounted) {

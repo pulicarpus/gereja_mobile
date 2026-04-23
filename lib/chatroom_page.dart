@@ -48,7 +48,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
   bool _isTyping = false;
   bool _isUploading = false;
   
-  // 👇 STATUS MODERATOR (PENGURUS) 👇
   bool _isModerator = false;
 
   Map<String, dynamic>? _replyMessage;
@@ -65,7 +64,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     
-    // 👇 CEK APAKAH DIA ADMIN ATAU PENGURUS KOMISI INI 👇
     final userManager = UserManager();
     bool isGlobalAdmin = userManager.isAdmin();
     bool isPengurusKomisiIni = false;
@@ -101,7 +99,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return DateFormat('HH:mm').format(date);
   }
 
-  // 👇 FUNGSI CEGAH JEMAAT RUSUH (CEK MUTE) 👇
   Future<bool> _checkIfMuted() async {
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return true;
@@ -119,14 +116,14 @@ class _ChatroomPageState extends State<ChatroomPage> {
           actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Mengerti"))],
         )
       );
-      return true; // Berarti dia kena Mute!
+      return true; 
     }
-    return false; // Aman, silakan lanjut!
+    return false; 
   }
 
   // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
   Future<void> _uploadImage() async {
-    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM UPLOAD
+    if (await _checkIfMuted()) return; 
     
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
     if (image == null) return;
@@ -186,7 +183,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 2. UPLOAD FILE DOKUMEN ---
   Future<void> _uploadFile() async {
-    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM UPLOAD
+    if (await _checkIfMuted()) return; 
     
     FilePickerResult? result = await FilePicker.platform.pickFiles();
     if (result == null) return;
@@ -214,7 +211,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 3. VOICE NOTE DEWA ---
   Future<void> _startRecording() async {
-    if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM RECORDING
+    if (await _checkIfMuted()) return; 
     
     try {
       if (await _audioRecorder.hasPermission()) {
@@ -231,7 +228,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<void> _stopRecording() async {
-    if (!_isRecording) return; // Mencegah crash jika distop sebelum mulai karena Mute
+    if (!_isRecording) return; 
     
     HapticFeedback.mediumImpact(); 
     
@@ -296,7 +293,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
   Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
     if (tipe == "text") {
-      if (await _checkIfMuted()) return; // 👈 CEGAT SEBELUM KIRIM TEKS
+      if (await _checkIfMuted()) return; 
     }
     
     String? churchId = UserManager().activeChurchId;
@@ -374,25 +371,24 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   void _showChatMenu(Map<String, dynamic> chat, String docId) {
-    bool isMe = chat['pengirimId'] == _auth.currentUser?.uid;
+    String uidPesan = chat['pengirimId'] ?? chat['senderId'] ?? "";
+    bool isMe = uidPesan == _auth.currentUser?.uid;
     showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       ListTile(leading: const Icon(Icons.reply), title: const Text("Balas"), onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }),
       if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit Pesan"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _replyMessage = null; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
-      // 👇 PERBAIKAN: HANYA SAYA ATAU MODERATOR YANG BISA MENGHAPUS 👇
       if (isMe || _isModerator) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
     ])));
   }
 
-  // 👇 MENU MODERASI: KETIKA PENGURUS KLIK FOTO PROFIL JEMAAT 👇
   void _showModerationMenu(String targetUid, String targetName) async {
-    if (!_isModerator || targetUid == _auth.currentUser?.uid) return;
+    if (!_isModerator || targetUid == _auth.currentUser?.uid || targetUid.isEmpty) return;
 
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;
 
     showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
     var doc = await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).get();
-    Navigator.pop(context); // Tutup loading
+    Navigator.pop(context);
 
     bool isMuted = doc.exists;
 
@@ -454,7 +450,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
             var docs = snap.data!.docs;
             return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: docs.length, itemBuilder: (context, i) {
               var chat = docs[i].data() as Map<String, dynamic>;
-              return _buildChatBubble(chat, docs[i].id, chat['pengirimId'] == _auth.currentUser?.uid);
+              return _buildChatBubble(chat, docs[i].id);
             });
           },
         )),
@@ -463,8 +459,63 @@ class _ChatroomPageState extends State<ChatroomPage> {
     );
   }
 
-  Widget _buildChatBubble(Map<String, dynamic> chat, String docId, bool isMe) {
+  // 👇 RENDER KARTU LAMPIRAN SULTAN UNTUK INFO DAERAH 👇
+  Widget _buildInfoDaerahUI(Map<String, dynamic> chat) {
+    String pesan = chat['pesan'] ?? "";
+    String? url = chat['lampiranUrl'] ?? chat['fileUrl'];
+    bool isImage = chat['isImage'] == true || chat['tipe'] == 'image';
+    String fileName = chat['namaFile'] ?? chat['fileName'] ?? "Dokumen Edaran Daerah";
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(pesan, style: const TextStyle(color: Colors.black87, fontSize: 15)),
+        if (url != null && url.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          InkWell(
+            onTap: () {
+              if (isImage) {
+                _showFullImage(url);
+              } else {
+                _bukaFile(url, fileName);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                border: Border.all(color: Colors.red.shade200),
+                borderRadius: BorderRadius.circular(8)
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(isImage ? Icons.image : Icons.picture_as_pdf, color: Colors.red.shade700, size: 28),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isImage ? "Lihat Gambar Edaran" : "Buka Dokumen Edaran",
+                      style: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.bold, fontSize: 13),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                    )
+                  )
+                ]
+              )
+            )
+          )
+        ]
+      ]
+    );
+  }
+
+  Widget _buildChatBubble(Map<String, dynamic> chat, String docId) {
     DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
+    
+    // PENYESUAIAN PINTAR KARENA PERBEDAAN LABEL DAERAH & LOKAL
+    bool isInfoDaerah = chat['isInfoDaerah'] == true;
+    String uidPesan = chat['pengirimId'] ?? chat['senderId'] ?? "";
+    bool isMe = uidPesan == _auth.currentUser?.uid;
+    String pengirimNama = chat['pengirimNama'] ?? chat['senderNama'] ?? "Jemaat";
     
     return GestureDetector(
       onLongPress: () => _showChatMenu(chat, docId),
@@ -475,10 +526,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
             mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start, 
             crossAxisAlignment: CrossAxisAlignment.start, 
             children: [
-              // 👇 FOTO PROFIL BISA DIKLIK OLEH MODERATOR 👇
               if (!isMe) 
                 GestureDetector(
-                  onTap: () => _showModerationMenu(chat['pengirimId'], chat['pengirimNama'] ?? "Jemaat"),
+                  onTap: () => _showModerationMenu(uidPesan, pengirimNama),
                   child: CircleAvatar(
                     radius: 16, 
                     backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, 
@@ -491,18 +541,29 @@ class _ChatroomPageState extends State<ChatroomPage> {
                 margin: EdgeInsets.only(left: isMe ? 50 : 8, right: isMe ? 8 : 50, top: 4, bottom: 4),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: isMe ? const Color(0xFFDCF8C6) : Colors.white, 
+                  color: isInfoDaerah ? Colors.white : (isMe ? const Color(0xFFDCF8C6) : Colors.white), 
                   borderRadius: BorderRadius.only(topLeft: const Radius.circular(12), topRight: const Radius.circular(12), bottomLeft: Radius.circular(isMe ? 12 : 0), bottomRight: Radius.circular(isMe ? 0 : 12)), 
+                  border: isInfoDaerah ? Border.all(color: Colors.red.shade300, width: 1.5) : null,
                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 2, offset: const Offset(0, 1))]
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start, 
                   children: [
-                    if (!isMe) Text(chat['pengirimNama'] ?? "Jemaat", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blueGrey)),
+                    if (!isMe) Text(
+                      pengirimNama, 
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold, 
+                        fontSize: 12, 
+                        color: isInfoDaerah ? Colors.red.shade700 : Colors.blueGrey
+                      )
+                    ),
                     if (chat['isReply'] == true) _buildReplyUI(chat, isMe),
                     
+                    // RENDER INFO DAERAH KHUSUS
+                    if (isInfoDaerah)
+                      _buildInfoDaerahUI(chat)
                     // RENDER GAMBAR
-                    if (chat['tipe'] == 'image') 
+                    else if (chat['tipe'] == 'image') 
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start, 
                         children: [

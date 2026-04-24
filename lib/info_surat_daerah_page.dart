@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert'; // 👈 DITAMBAHKAN UNTUK JSON ENCODE NOTIFIKASI
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -7,10 +8,11 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_mlkit_document_scanner/google_mlkit_document_scanner.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:path_provider/path_provider.dart'; // 👈 UNTUK FOLDER SEMENTARA
-import 'package:http/http.dart' as http;           // 👈 UNTUK DOWNLOAD DIAM-DIAM
-import 'package:open_filex/open_filex.dart';       // 👈 UNTUK BUKA WPS / PDF READER
+import 'package:path_provider/path_provider.dart'; 
+import 'package:http/http.dart' as http;           
+import 'package:open_filex/open_filex.dart';       
 import 'user_manager.dart';
+import 'secrets.dart'; // 👈 WAJIB IMPORT KUNCI RAHASIA ONESIGNAL BOS
 
 class InfoSuratDaerahPage extends StatefulWidget {
   final String namaDaerah;
@@ -28,8 +30,56 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   
   bool _isLoading = false;
 
+  // 👇 GEMBALA & BPJ SEKARANG OTOMATIS BISA EDIT/HAPUS (MASUK ANGGOTA DAERAH) 👇
   bool get _canEdit {
-    return _user.isSuperAdmin() || (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
+    return _user.isSuperAdmin() || 
+           (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah) ||
+           _user.isGembala() ||
+           _user.isBPJ();
+  }
+
+  // 👇 FUNGSI TEMBAK NOTIFIKASI EKSKLUSIF (HANYA PENGURUS, GEMBALA, BPJ) 👇
+  Future<void> _kirimNotifDaerah(String judul, String kategori) async {
+    final String osRestKey = teleBotTokenSecret; // Ambil dari secrets.dart (sesuaikan nama variabel Bos jika beda, misal osRestKeySecret)
+    // Catatan: Jika di secrets.dart Bos ada osRestKeySecret khusus, gunakan itu! Di sini saya asumsikan namanya osRestKeySecret.
+    final String apiKey = osRestKeySecret; 
+    final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
+
+    if (apiKey.isEmpty) return;
+
+    try {
+      var response = await http.post(
+        Uri.parse('https://onesignal.com/api/v1/notifications'),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8', 
+          'Authorization': 'Basic $apiKey'
+        },
+        body: jsonEncode({
+          "app_id": osAppId,
+          // LOGIKA FILTER ONESIGNAL SULTAN:
+          // (Daerah ini & Admin) ATAU (Daerah ini & Gembala) ATAU (Daerah ini & BPJ)
+          "filters": [
+            {"field": "tag", "key": "daerah", "relation": "=", "value": widget.namaDaerah},
+            {"field": "tag", "key": "role", "relation": "=", "value": "admin_daerah"},
+            {"operator": "OR"},
+            {"field": "tag", "key": "daerah", "relation": "=", "value": widget.namaDaerah},
+            {"field": "tag", "key": "role", "relation": "=", "value": "gembala"},
+            {"operator": "OR"},
+            {"field": "tag", "key": "daerah", "relation": "=", "value": widget.namaDaerah},
+            {"field": "tag", "key": "role", "relation": "=", "value": "bpj"}
+          ],
+          "headings": {"en": "📢 Info Daerah: ${widget.namaDaerah}"},
+          "contents": {"en": "[$kategori] $judul"},
+          "data": {
+             "type": "info_daerah",
+             "daerah": widget.namaDaerah
+          }
+        }),
+      );
+      debugPrint("Notif Daerah Response: ${response.body}");
+    } catch (e) {
+      debugPrint("ERROR FATAL NOTIF DAERAH: $e");
+    }
   }
 
   Future<File?> _scanDocument() async {
@@ -77,11 +127,10 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       await _db.collection("churches").doc(churchId).collection("chats").add({
         "senderId": _user.userId,
         "senderNama": "📢 PENGURUS DAERAH",
-        // 👇 LINK DIHAPUS DARI TEKS PESAN AGAR TIDAK JELEK 👇
         "pesan": "📌 *[$tipe]*\n\n*${judul.toUpperCase()}*\n$isi", 
         "timestamp": FieldValue.serverTimestamp(),
         "isInfoDaerah": true, 
-        "lampiranUrl": link, // 👈 DIKIRIM SEBAGAI DATA TERPISAH
+        "lampiranUrl": link, 
         "isImage": isImage,
         "namaFile": namaFile,
       });
@@ -96,9 +145,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     }
   }
 
-  // 👇 FUNGSI SAKTI: DOWNLOAD & LANGSUNG BUKA DI WPS/PDF READER 👇
   Future<void> _downloadAndOpenFile(String url, String originalFileName) async {
-    // 1. Tampilkan loading Pop-Up
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -114,15 +161,11 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     );
 
     try {
-      // 2. Download file secara diam-diam
       final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
-        // 3. Simpan di folder cache / sementara HP
         final directory = await getTemporaryDirectory();
-        
-        // Ambil ekstensi aslinya dari URL (misal: .pdf, .docx)
-        String ext = ".pdf"; // default fallback
+        String ext = ".pdf"; 
         if (url.contains(".doc")) ext = ".docx";
         else if (url.contains(".xls")) ext = ".xlsx";
         else if (url.contains(".ppt")) ext = ".pptx";
@@ -131,10 +174,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
         final file = File(filePath);
         await file.writeAsBytes(response.bodyBytes);
 
-        // 4. Tutup loading
         if (mounted) Navigator.pop(context);
-
-        // 5. Buka langsung pakai WPS / Aplikasi pembaca dokumen bawaan HP
         final result = await OpenFilex.open(file.path);
         
         if (result.type != ResultType.done) {
@@ -145,7 +185,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       }
     } catch (e) {
       if (mounted) {
-        Navigator.pop(context); // Tutup loading
+        Navigator.pop(context); 
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Terjadi kesalahan: $e"), backgroundColor: Colors.red));
       }
     }
@@ -255,10 +295,13 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     "isi": txtIsi.text.trim(),
                     "tanggal": FieldValue.serverTimestamp(),
                     "lampiranUrl": fileUrl,
-                    "namaFile": fileNameOriginal, // Simpan nama aslinya
+                    "namaFile": fileNameOriginal, 
                     "pengirim": _user.userNama ?? "Pengurus",
                     "isImage": isImage,
                   });
+
+                  // 👇 TEMBAK NOTIFIKASI SETELAH SUKSES POSTING 👇
+                  _kirimNotifDaerah(txtJudul.text.trim(), kategori);
 
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Berhasil diposting!")));
                 } catch (e) {
@@ -345,7 +388,6 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                                 if (isImage) {
                                   Navigator.push(context, MaterialPageRoute(builder: (c) => FullScreenImagePage(imageUrl: url, heroTag: docs[index].id)));
                                 } else {
-                                  // 👇 PANGGIL FUNGSI SAKTI DI SINI 👇
                                   await _downloadAndOpenFile(url, fileDisplay);
                                 }
                               },

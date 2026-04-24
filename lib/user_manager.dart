@@ -20,7 +20,7 @@ class UserManager {
   static const String _keyAdminDaerahArea = "admin_daerah_area";
 
   // Variabel Data
-  String? userRole; // 👈 HANYA BERISI: "jemaat", "admin", atau "superadmin"
+  String? userRole; // 👈 BERISI: "user", "admin", "superadmin", "gembala", "bpj" dll
   String? userId;
   String? userNama;
   String? userFotoUrl;
@@ -56,7 +56,7 @@ class UserManager {
     String uKomisi = "Umum",
     bool uIsPengurus = false,
     String? uJemaatId, 
-    String? uAdminDaerahArea, // 👈 PARAMETER JABATAN DAERAH
+    String? uAdminDaerahArea, 
   }) async {
     userRole = role;
     userId = uId;
@@ -116,16 +116,21 @@ class UserManager {
     return true;
   }
 
-  // 👇 PENGECEKAN HAK AKSES YANG SUDAH DIPISAHKAN (DECOUPLED) 👇
+  // 👇 PENGECEKAN HAK AKSES YANG SUDAH DILENGKAPI 👇
   
-  // 1. HAK AKSES LOKAL (Tidak peduli dia pengurus daerah atau bukan)
+  // 1. HAK AKSES LOKAL 
   bool isAdmin() => userRole == "admin" || userRole == "superadmin";
   
   // 2. HAK AKSES SUPERADMIN PUSAT
   bool isSuperAdmin() => userRole == "superadmin";
   
-  // 3. HAK AKSES DAERAH (Dicek dari atribut adminDaerahArea, bukan dari userRole)
+  // 3. HAK AKSES DAERAH (Pembuat Postingan)
   bool isAdminDaerah() => adminDaerahArea != null && adminDaerahArea!.trim().isNotEmpty;
+
+  // 👇 4. HAK AKSES TAMBAHAN UNTUK GEMBALA & BPJ 👇
+  bool isGembala() => userRole == "gembala";
+  
+  bool isBPJ() => userRole == "bpj";
 
   // Cek apakah akun tertaut dengan database jemaat
   bool isLinked() => jemaatId != null && jemaatId!.trim().isNotEmpty;

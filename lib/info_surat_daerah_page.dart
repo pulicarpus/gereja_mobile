@@ -30,12 +30,13 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   
   bool _isLoading = false;
 
-  // 👇 GEMBALA & BPJ SEKARANG OTOMATIS BISA EDIT/HAPUS (MASUK ANGGOTA DAERAH) 👇
+// 👇 KUNCI SULTAN: HANYA SUPERADMIN & ADMIN DAERAH YANG BISA EDIT/POSTING 👇
   bool get _canEdit {
     return _user.isSuperAdmin() || 
-           (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah) ||
-           _user.isGembala() ||
-           _user.isBPJ();
+           (_user.isAdminDaerah() && _user.adminDaerahArea == widget.namaDaerah);
+           
+    // Gembala dan BPJ sengaja dihapus dari sini supaya mereka TIDAK BISA 
+    // melihat tombol "+" (Buat Postingan) dan tombol "Hapus" (Tong Sampah).
   }
 
   // 👇 FUNGSI TEMBAK NOTIFIKASI EKSKLUSIF (HANYA PENGURUS, GEMBALA, BPJ) 👇

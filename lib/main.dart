@@ -374,24 +374,26 @@ class _MainActivityState extends State<MainActivity> {
   }
 
   // 👇 ============================================================== 👇
-  // 👇 INI ADALAH TAMPILAN UTAMA (BUILD METHOD) YANG SUDAH DIUPDATE 👇
+  // 👇 TAMPILAN UTAMA (SULTAN ROLE MANAGEMENT) 👇
   // 👇 ============================================================== 👇
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
     bool isAdmin = user.isAdmin();
     bool isSuperAdmin = user.isSuperAdmin();
-    bool isAdminDaerah = user.isAdminDaerah(); // 👈 CEK APAKAH DIA ADMIN DAERAH
+    bool isAdminDaerah = user.isAdminDaerah(); 
+    bool isGembala = user.isGembala(); 
+    bool isBPJ = user.isBPJ();         
     
-    // Apakah dia punya hak geser ke kanan? (Hanya SuperAdmin & Admin Daerah)
-    bool hasSwipeAccess = isSuperAdmin || isAdminDaerah;
+    // 👇 SEKARANG GEMBALA & BPJ JUGA PUNYA AKSES GESER KE KANAN 👇
+    bool hasSwipeAccess = isSuperAdmin || isAdminDaerah || isGembala || isBPJ;
     
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 
     // BUNGKUS HALAMAN GEREJA LOKAL
     Widget berandaLokal = _buildBerandaGerejaLokal(user, isAdmin, isSuperAdmin, isMemantau);
 
-    // JIKA BUKAN SUPERADMIN / ADMIN DAERAH, LANGSUNG TAMPILKAN GEREJA LOKAL
+    // JIKA BUKAN SUPERADMIN / ADMIN DAERAH / GEMBALA / BPJ, TAMPILKAN LOKAL SAJA
     if (!hasSwipeAccess) {
       return berandaLokal;
     }
@@ -402,7 +404,7 @@ class _MainActivityState extends State<MainActivity> {
       // Superadmin melihat daftar semua daerah
       halamanPusatKendali = const ListDaerahPage(); 
     } else {
-      // Admin Daerah langsung masuk ke menu daerahnya sendiri (Bypass)
+      // Admin Daerah, Gembala, dan BPJ langsung masuk ke menu daerahnya masing-masing
       halamanPusatKendali = MenuDaerahPage(namaDaerah: user.adminDaerahArea ?? "Belum Diatur");
     }
 
@@ -418,7 +420,7 @@ class _MainActivityState extends State<MainActivity> {
         },
         children: [
           berandaLokal,          // HALAMAN 1: GEREJA LOKAL
-          halamanPusatKendali,   // HALAMAN 2: PUSAT KENDALI (Disesuaikan otomatis)
+          halamanPusatKendali,   // HALAMAN 2: PUSAT KENDALI DAERAH
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(

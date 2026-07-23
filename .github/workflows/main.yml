@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+        
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -52,7 +52,7 @@ jobs:
           dart run flutter_launcher_icons
         working-directory: . 
 
-# JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
+      # JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
       - name: Create Secrets File
         run: |
           mkdir -p lib
@@ -60,13 +60,37 @@ jobs:
           echo "const String teleBotTokenSecret = '${{ secrets.TELE_BOT_TOKEN }}';" >> lib/secrets.dart
           echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
           echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
-      
+        
       - name: Build APK
         run: flutter build apk --release
         working-directory: .
 
-      - name: Upload APK
+      # =========================================================
+      # 📦 3. KOMPRES APK MENJADI FILE ZIP (HEMAT PENYIMPANAN)
+      # =========================================================
+      - name: Kompres APK ke ZIP
+        run: |
+          cd build/app/outputs/flutter-apk
+          zip -j app-release.zip app-release.apk
+
+      # =========================================================
+      # 🚀 4. KIRIM FILE ZIP LANGSUNG KE TELEGRAM
+      # =========================================================
+      - name: Kirim ZIP ke Telegram
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          document: build/app/outputs/flutter-apk/app-release.zip
+          message: |
+            🚀 *Build APK Selesai!*
+            
+            📦 File APK sudah dikompresi ke format `.zip` agar lebih hemat kuota & penyimpanan. 
+            Silakan unduh dan ekstrak untuk menginstal.
+
+      # Upload Artifact di GitHub (Format ZIP)
+      - name: Upload ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: app-release-zip
+          path: build/app/outputs/flutter-apk/app-release.zip

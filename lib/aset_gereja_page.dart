@@ -1,9 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AsetGerejaPage extends StatefulWidget {
-  final String? churchId; // Opsional: pasang churchId jika sistem multi-gereja
+  final String? churchId; // Opsional: diambil dari UserManager().getChurchIdForCurrentView()
 
   const AsetGerejaPage({super.key, this.churchId});
 
@@ -13,6 +15,9 @@ class AsetGerejaPage extends StatefulWidget {
 
 class _AsetGerejaPageState extends State<AsetGerejaPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final ImagePicker _picker = ImagePicker();
+
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = "";
 
@@ -22,7 +27,74 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     super.dispose();
   }
 
-  // Fungsi untuk Menambah / Mengedit Aset
+  // Fungsi untuk Memilih Gambar (Kamera / Galeri)
+  Future<XFile?> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 80, // Kompres ukuran gambar agar hemat storage
+      );
+      return pickedFile;
+    } catch (e) {
+      debugPrint("Error pilih gambar: $e");
+      return null;
+    }
+  }
+
+  // Fungsi Upload Gambar ke Firebase Storage
+  Future<String?> _uploadImage(XFile imageFile) async {
+    try {
+      String fileName = "aset_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      Reference ref = _storage.ref().child("aset_gereja_photos").child(fileName);
+
+      UploadTask uploadTask = ref.putFile(File(imageFile.path));
+      TaskSnapshot snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      debugPrint("Error upload foto: $e");
+      return null;
+    }
+  }
+
+  // Fungsi Modal / BottomSheet untuk Pilih Sumber Foto
+  void _showImageSourceDialog(Function(XFile?) onImageSelected) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Color(0xFF1A237E)),
+                title: const Text("Pilih dari Galeri"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  XFile? img = await _pickImage(ImageSource.gallery);
+                  onImageSelected(img);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Color(0xFF1A237E)),
+                title: const Text("Ambil Foto Kamera"),
+                onTap: () async {
+                  Navigator.pop(context);
+                  XFile? img = await _pickImage(ImageSource.camera);
+                  onImageSelected(img);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // Fungsi Tambah / Edit Aset
   void _showAsetDialog({DocumentSnapshot? doc}) {
     final bool isEdit = doc != null;
     final Map<String, dynamic>? data = isEdit ? doc.data() as Map<String, dynamic>? : null;
@@ -31,26 +103,27 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     final jumlahController = TextEditingController(text: data?['jumlah']?.toString() ?? '1');
     final lokasiController = TextEditingController(text: data?['lokasi'] ?? '');
     final keteranganController = TextEditingController(text: data?['keterangan'] ?? '');
-    final customKategoriController = TextEditingController(); // Controller untuk kategori buat sendiri
+    final customKategoriController = TextEditingController();
 
     String status = data?['status'] ?? 'Baik';
     String kategoriDB = data?['kategori'] ?? 'Elektronik';
+    String? existingFotoUrl = data?['fotoUrl'];
+
+    XFile? selectedNewImage;
+    bool isLoading = false;
 
     final List<String> statusList = ['Baik', 'Rusak Ringan', 'Rusak Berat'];
-    
-    // Daftar kategori yang sudah ditambahkan Tanah, Kebun, Bangunan
     final List<String> kategoriList = [
-      'Elektronik', 
-      'Mebel', 
-      'Musik', 
-      'Kendaraan', 
-      'Tanah', 
-      'Kebun', 
-      'Bangunan', 
+      'Elektronik',
+      'Mebel',
+      'Musik',
+      'Kendaraan',
+      'Tanah',
+      'Kebun',
+      'Bangunan',
       'Lainnya (Buat Sendiri)'
     ];
 
-    // Logika jika saat edit, kategorinya adalah kategori kustom (misal "Pena" atau "Bahan")
     String kategoriTerpilih = kategoriList.contains(kategoriDB) ? kategoriDB : 'Lainnya (Buat Sendiri)';
     if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' && data != null && !kategoriList.contains(kategoriDB)) {
       customKategoriController.text = kategoriDB;
@@ -58,6 +131,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -71,6 +145,57 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // --- AREA PILIH FOTO ASET ---
+                    GestureDetector(
+                      onTap: () {
+                        _showImageSourceDialog((XFile? img) {
+                          if (img != null) {
+                            setDialogState(() {
+                              selectedNewImage = img;
+                            });
+                          }
+                        });
+                      },
+                      child: Container(
+                        height: 140,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade200,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
+                        ),
+                        child: selectedNewImage != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: Image.file(
+                                  File(selectedNewImage!.path),
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : (existingFotoUrl != null && existingFotoUrl.isNotEmpty)
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Image.network(
+                                      existingFotoUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
+                                    ),
+                                  )
+                                : const Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_a_photo, size: 40, color: Color(0xFF1A237E)),
+                                      SizedBox(height: 5),
+                                      Text(
+                                        "Ketuk untuk tambah foto aset",
+                                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                                      ),
+                                    ],
+                                  ),
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+
                     TextField(
                       controller: namaController,
                       decoration: const InputDecoration(
@@ -107,8 +232,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       ],
                     ),
                     const SizedBox(height: 10),
-                    
-                    // MUNCULKAN INPUT TEXT JIKA MEMILIH "Lainnya (Buat Sendiri)"
+
                     if (kategoriTerpilih == 'Lainnya (Buat Sendiri)') ...[
                       TextField(
                         controller: customKategoriController,
@@ -152,64 +276,86 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                 ),
               ),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text("Batal", style: TextStyle(color: Colors.grey)),
-                ),
+                if (!isLoading)
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Batal", style: TextStyle(color: Colors.grey)),
+                  ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A237E),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
-                  onPressed: () async {
-                    if (namaController.text.trim().isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Nama aset tidak boleh kosong!")),
-                      );
-                      return;
-                    }
+                  onPressed: isLoading
+                      ? null
+                      : () async {
+                          if (namaController.text.trim().isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Nama aset tidak boleh kosong!")),
+                            );
+                            return;
+                          }
 
-                    // Menentukan kategori akhir yang disimpan ke database
-                    String kategoriFinal = kategoriTerpilih;
-                    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' && customKategoriController.text.trim().isNotEmpty) {
-                      kategoriFinal = customKategoriController.text.trim();
-                    }
+                          setDialogState(() => isLoading = true);
 
-                    final payload = {
-                      'namaAset': namaController.text.trim(),
-                      'jumlah': int.tryParse(jumlahController.text.trim()) ?? 1,
-                      'kategori': kategoriFinal,
-                      'status': status,
-                      'lokasi': lokasiController.text.trim(),
-                      'keterangan': keteranganController.text.trim(),
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    };
+                          String? finalFotoUrl = existingFotoUrl;
 
-                    CollectionReference ref;
-                    if (widget.churchId != null && widget.churchId!.isNotEmpty) {
-                      ref = _db.collection('churches').doc(widget.churchId).collection('aset');
-                    } else {
-                      ref = _db.collection('aset_gereja');
-                    }
+                          // Jika pengguna memilih foto baru, upload ke Firebase Storage
+                          if (selectedNewImage != null) {
+                            String? uploadedUrl = await _uploadImage(selectedNewImage!);
+                            if (uploadedUrl != null) {
+                              finalFotoUrl = uploadedUrl;
+                            }
+                          }
 
-                    if (isEdit) {
-                      await ref.doc(doc.id).update(payload);
-                    } else {
-                      payload['createdAt'] = FieldValue.serverTimestamp();
-                      await ref.add(payload);
-                    }
+                          String kategoriFinal = kategoriTerpilih;
+                          if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' &&
+                              customKategoriController.text.trim().isNotEmpty) {
+                            kategoriFinal = customKategoriController.text.trim();
+                          }
 
-                    if (mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(isEdit ? "Aset diperbarui!" : "Aset berhasil ditambahkan!"),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    }
-                  },
-                  child: Text(isEdit ? "Simpan" : "Tambah", style: const TextStyle(color: Colors.white)),
+                          final payload = {
+                            'namaAset': namaController.text.trim(),
+                            'jumlah': int.tryParse(jumlahController.text.trim()) ?? 1,
+                            'kategori': kategoriFinal,
+                            'status': status,
+                            'lokasi': lokasiController.text.trim(),
+                            'keterangan': keteranganController.text.trim(),
+                            'fotoUrl': finalFotoUrl ?? '',
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          };
+
+                          CollectionReference ref;
+                          if (widget.churchId != null && widget.churchId!.isNotEmpty) {
+                            ref = _db.collection('churches').doc(widget.churchId).collection('aset');
+                          } else {
+                            ref = _db.collection('aset_gereja');
+                          }
+
+                          if (isEdit) {
+                            await ref.doc(doc.id).update(payload);
+                          } else {
+                            payload['createdAt'] = FieldValue.serverTimestamp();
+                            await ref.add(payload);
+                          }
+
+                          if (mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(isEdit ? "Aset diperbarui!" : "Aset berhasil ditambahkan!"),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : Text(isEdit ? "Simpan" : "Tambah", style: const TextStyle(color: Colors.white)),
                 ),
               ],
             );
@@ -220,7 +366,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
   }
 
   // Fungsi Konfirmasi Hapus Data
-  void _confirmDelete(String docId) {
+  void _confirmDelete(String docId, String? fotoUrl) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -240,7 +386,18 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                 ref = _db.collection('aset_gereja');
               }
 
+              // Hapus data dari Firestore
               await ref.doc(docId).delete();
+
+              // Opsional: Hapus file foto dari Firebase Storage jika ada
+              if (fotoUrl != null && fotoUrl.isNotEmpty) {
+                try {
+                  await _storage.refFromURL(fotoUrl).delete();
+                } catch (e) {
+                  debugPrint("Error hapus file foto: $e");
+                }
+              }
+
               if (mounted) {
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -381,97 +538,128 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                     String lokasi = data['lokasi'] ?? '-';
                     String kategori = data['kategori'] ?? 'Umum';
                     String keterangan = data['keterangan'] ?? '';
+                    String? fotoUrl = data['fotoUrl'];
 
                     Color statusColor = _getStatusColor(status);
 
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 10),
+                      margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 2,
                       child: Padding(
                         padding: const EdgeInsets.all(12),
-                        child: Column(
+                        child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    namaAset,
-                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: statusColor.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Text(
-                                    status,
-                                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 11),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                const Icon(Icons.category, size: 14, color: Colors.grey),
-                                const SizedBox(width: 5),
-                                Text("$kategori ($jumlah Unit)", style: const TextStyle(fontSize: 13, color: Colors.black87)),
-                                const SizedBox(width: 15),
-                                const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                                const SizedBox(width: 5),
-                                Expanded(
-                                  child: Text(
-                                    lokasi,
-                                    style: const TextStyle(fontSize: 13, color: Colors.black87),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (keterangan.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                "Ket: $keterangan",
-                                style: const TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
+                            // Gambar Thumbnail Aset
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 70,
+                                height: 70,
+                                color: Colors.grey.shade200,
+                                child: (fotoUrl != null && fotoUrl.isNotEmpty)
+                                    ? Image.network(
+                                        fotoUrl,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey),
+                                      )
+                                    : const Icon(Icons.inventory_2, color: Color(0xFF1A237E), size: 35),
                               ),
-                            ],
-                            const Divider(height: 20),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                InkWell(
-                                  onTap: () => _showAsetDialog(doc: doc),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit, size: 16, color: Colors.blue),
-                                        SizedBox(width: 4),
-                                        Text("Edit", style: TextStyle(color: Colors.blue, fontSize: 12)),
-                                      ],
-                                    ),
+                            ),
+                            const SizedBox(width: 12),
+
+                            // Detail Aset
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          namaAset,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          status,
+                                          style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 15),
-                                InkWell(
-                                  onTap: () => _confirmDelete(doc.id),
-                                  child: const Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete, size: 16, color: Colors.red),
-                                        SizedBox(width: 4),
-                                        Text("Hapus", style: TextStyle(color: Colors.red, fontSize: 12)),
-                                      ],
-                                    ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.category, size: 13, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Text("$kategori ($jumlah Unit)", style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on, size: 13, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          lokasi,
+                                          style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (keterangan.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Ket: $keterangan",
+                                      style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      InkWell(
+                                        onTap: () => _showAsetDialog(doc: doc),
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit, size: 14, color: Colors.blue),
+                                              SizedBox(width: 3),
+                                              Text("Edit", style: TextStyle(color: Colors.blue, fontSize: 11)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      InkWell(
+                                        onTap: () => _confirmDelete(doc.id, fotoUrl),
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete, size: 14, color: Colors.red),
+                                              SizedBox(width: 3),
+                                              Text("Hapus", style: TextStyle(color: Colors.red, fontSize: 11)),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -485,7 +673,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
         ],
       ),
 
-      // Floating Action Button untuk Tambah Aset
+      // Floating Action Button
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFF1A237E),
         foregroundColor: Colors.white,

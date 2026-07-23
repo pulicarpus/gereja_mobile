@@ -31,12 +31,30 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     final jumlahController = TextEditingController(text: data?['jumlah']?.toString() ?? '1');
     final lokasiController = TextEditingController(text: data?['lokasi'] ?? '');
     final keteranganController = TextEditingController(text: data?['keterangan'] ?? '');
+    final customKategoriController = TextEditingController(); // Controller untuk kategori buat sendiri
 
     String status = data?['status'] ?? 'Baik';
-    String kategori = data?['kategori'] ?? 'Elektronik';
+    String kategoriDB = data?['kategori'] ?? 'Elektronik';
 
     final List<String> statusList = ['Baik', 'Rusak Ringan', 'Rusak Berat'];
-    final List<String> kategoriList = ['Elektronik', 'Mebel', 'Musik', 'Kendaraan', 'Lainnya'];
+    
+    // Daftar kategori yang sudah ditambahkan Tanah, Kebun, Bangunan
+    final List<String> kategoriList = [
+      'Elektronik', 
+      'Mebel', 
+      'Musik', 
+      'Kendaraan', 
+      'Tanah', 
+      'Kebun', 
+      'Bangunan', 
+      'Lainnya (Buat Sendiri)'
+    ];
+
+    // Logika jika saat edit, kategorinya adalah kategori kustom (misal "Pena" atau "Bahan")
+    String kategoriTerpilih = kategoriList.contains(kategoriDB) ? kategoriDB : 'Lainnya (Buat Sendiri)';
+    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' && data != null && !kategoriList.contains(kategoriDB)) {
+      customKategoriController.text = kategoriDB;
+    }
 
     showDialog(
       context: context,
@@ -76,19 +94,33 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: kategoriList.contains(kategori) ? kategori : kategoriList.first,
+                            value: kategoriTerpilih,
                             decoration: const InputDecoration(labelText: "Kategori"),
                             items: kategoriList.map((String item) {
-                              return DropdownMenuItem(value: item, child: Text(item, style: const TextStyle(fontSize: 13)));
+                              return DropdownMenuItem(value: item, child: Text(item, style: const TextStyle(fontSize: 12)));
                             }).toList(),
                             onChanged: (val) {
-                              if (val != null) setDialogState(() => kategori = val);
+                              if (val != null) setDialogState(() => kategoriTerpilih = val);
                             },
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 10),
+                    
+                    // MUNCULKAN INPUT TEXT JIKA MEMILIH "Lainnya (Buat Sendiri)"
+                    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)') ...[
+                      TextField(
+                        controller: customKategoriController,
+                        decoration: const InputDecoration(
+                          labelText: "Tulis Kategori Baru",
+                          hintText: "Misal: Pena, Bahan, Alat Tulis...",
+                          prefixIcon: Icon(Icons.edit_note),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+
                     DropdownButtonFormField<String>(
                       value: statusList.contains(status) ? status : statusList.first,
                       decoration: const InputDecoration(labelText: "Kondisi / Status"),
@@ -137,10 +169,16 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       return;
                     }
 
+                    // Menentukan kategori akhir yang disimpan ke database
+                    String kategoriFinal = kategoriTerpilih;
+                    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' && customKategoriController.text.trim().isNotEmpty) {
+                      kategoriFinal = customKategoriController.text.trim();
+                    }
+
                     final payload = {
                       'namaAset': namaController.text.trim(),
                       'jumlah': int.tryParse(jumlahController.text.trim()) ?? 1,
-                      'kategori': kategori,
+                      'kategori': kategoriFinal,
                       'status': status,
                       'lokasi': lokasiController.text.trim(),
                       'keterangan': keteranganController.text.trim(),

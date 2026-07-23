@@ -974,14 +974,13 @@ class _MainActivityState extends State<MainActivity> {
                   }),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
-// ... di dalam _buildDrawer() -> GridView.count() children:
+                  }), // <--- INI YANG SEBELUMNYA HILANG BOS
 
                   _buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
                     Navigator.push(
                       context, 
                       MaterialPageRoute(builder: (context) => const AsetGerejaPage())
                     );
-                  }),
                   }),
                   _buildDrawerItem(Icons.volunteer_activism, "Pokok Doa", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DoaPage()));

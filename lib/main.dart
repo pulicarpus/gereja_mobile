@@ -31,6 +31,7 @@ import 'daftar_pengguna_page.dart';
 import 'tentang_aplikasi_page.dart';
 import 'profil_page.dart';
 import 'video_splash_page.dart';
+import 'aset_gereja_page.dart'; // Sesuaikan lokasi/path file kamu
 
 // 👇 IMPORT HALAMAN DAERAH 👇
 import 'list_daerah_page.dart'; 
@@ -973,6 +974,14 @@ class _MainActivityState extends State<MainActivity> {
                   }),
                   _buildDrawerItem(Icons.account_balance_wallet, "Keuangan", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
+// ... di dalam _buildDrawer() -> GridView.count() children:
+
+                  _buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
+                    Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (context) => const AsetGerejaPage())
+                    );
+                  }),
                   }),
                   _buildDrawerItem(Icons.volunteer_activism, "Pokok Doa", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DoaPage()));

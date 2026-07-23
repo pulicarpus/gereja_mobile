@@ -41,7 +41,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     showDialog(
       context: context,
       builder: (context) {
-        return StatefulWidget(
+        return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),

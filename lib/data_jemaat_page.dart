@@ -78,7 +78,18 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   void _goToDashboard() {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => DashboardPage(allJemaat: _allJemaat)));
+    Navigator.push(
+      context, 
+      MaterialPageRoute(
+        builder: (context) => DashboardPage(
+          allJemaat: _allJemaat,
+          churchId: _userManager.getChurchIdForCurrentView(), // <-- Pastikan dikirim ke sini
+        ),
+      ),
+    ).then((_) {
+      // Refresh data jemaat saat kembali dari dashboard jika ada yang dibatalkan/dihapus
+      _loadJemaat();
+    });
   }
 
   // --- DETAIL JEMAAT (BOTTOM SHEET) ---

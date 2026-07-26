@@ -413,28 +413,5 @@ class _AlkitabPageState extends State<AlkitabPage> {
 }
 
 class _NavSheet extends StatefulWidget { final List<BibleBook> allBooks; final Database db; final Function(int, int, int) onSelectionComplete; const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete}); @override State<_NavSheet> createState() => _NavSheetState(); }
-class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid())]))); 
-  
-  Widget _buildGrid() {
-    if (selB == null) {
-      return ListView.builder(
-        itemCount: widget.allBooks.length,
-        itemBuilder: (c, i) => ListTile(title: Text(widget.allBooks[i].name), onTap: () => _getChapters(widget.allBooks[i])),
-      );
-    } else if (selC == null) {
-      return GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1),
-        itemCount: chs.length,
-        itemBuilder: (c, i) => InkWell(onTap: () => _getVerses(chs[i]), child: Card(color: Colors.indigo.shade50, child: Center(child: Text("${chs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
-      );
-    } else {
-      return GridView.builder(
-        padding: const EdgeInsets.all(10),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1),
-        itemCount: vrs.length,
-        itemBuilder: (c, i) => InkWell(onTap: () => widget.onSelectionComplete(selB!.bookNumber, selC!, vrs[i]), child: Card(color: Colors.orange.shade50, child: Center(child: Text("${vrs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
-      );
-    }
-  }
-}
+
+class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid()) 

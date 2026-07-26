@@ -41,11 +41,14 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         query = query.where("kelompok", isEqualTo: widget.filterKategorial);
       }
       final snapshot = await query.get();
-      final tempData = snapshot.docs.map((doc) {
+      var tempData = snapshot.docs.map((doc) {
         var data = doc.data() as Map<String, dynamic>;
         data['id'] = doc.id;
         return data;
       }).toList();
+
+      // Saring agar jemaat yang berstatus 'Meninggal' tidak tampil di daftar aktif
+      tempData = tempData.where((j) => j['status'] != 'Meninggal').toList();
 
       if (mounted) {
         setState(() {
@@ -96,17 +99,16 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
               const SizedBox(height: 20),
               
-              // 👇 FOTO PROFIL BISA DIKLIK JADI FULL SCREEN 👇
+              // FOTO PROFIL KLIK FULL SCREEN
               GestureDetector(
                 onTap: () {
-                  // Hanya bisa diklik kalau orangnya punya foto beneran
                   if (j['fotoProfil'] != null && j['fotoProfil'] != "") {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => FullScreenImagePage(
                           imageUrl: j['fotoProfil'],
-                          heroTag: 'foto_${j['id']}', // Tag unik untuk animasi
+                          heroTag: 'foto_${j['id']}',
                         ),
                       ),
                     );
@@ -216,7 +218,6 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               });
             },
           ),
-          
           IconButton(
             tooltip: "Daftar Keluarga",
             icon: const Icon(Icons.family_restroom),
@@ -224,7 +225,6 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const DaftarKeluargaPage()));
             },
           ),
-
           IconButton(
             tooltip: "Dashboard Statistik",
             onPressed: _goToDashboard, 
@@ -248,7 +248,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                   child: ListTile(
                     contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
                     leading: Hero(
-                      tag: 'foto_list_${j['id']}', // Tag beda buat list view supaya ga bentrok
+                      tag: 'foto_list_${j['id']}',
                       child: CircleAvatar(
                         radius: 25,
                         backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
@@ -284,12 +284,32 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         mainAxisSize: MainAxisSize.min, 
         children: [
           const SizedBox(height: 10),
-          ListTile(leading: const Icon(Icons.edit_note_rounded), title: const Text("Edit Data Jemaat"), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (c) => AddEditJemaatPage(jemaatData: j))).then((v) => _loadJemaat()); }),
-          ListTile(leading: const Icon(Icons.delete_sweep_rounded, color: Colors.red), title: const Text("Hapus Permanen", style: TextStyle(color: Colors.red)), onTap: () { 
-            Navigator.pop(context); 
-            _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).delete(); 
-            _loadJemaat(); 
-          }),
+          ListTile(
+            leading: const Icon(Icons.edit_note_rounded), 
+            title: const Text("Edit Data Jemaat"), 
+            onTap: () { 
+              Navigator.pop(context); 
+              Navigator.push(context, MaterialPageRoute(builder: (c) => AddEditJemaatPage(jemaatData: j))).then((v) => _loadJemaat()); 
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.heart_broken_rounded, color: Colors.orange), 
+            title: const Text("Tandai Meninggal"), 
+            onTap: () async { 
+              Navigator.pop(context); 
+              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).update({'status': 'Meninggal'}); 
+              _loadJemaat(); 
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_sweep_rounded, color: Colors.red), 
+            title: const Text("Hapus Permanen", style: TextStyle(color: Colors.red)), 
+            onTap: () { 
+              Navigator.pop(context); 
+              _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).delete(); 
+              _loadJemaat(); 
+            },
+          ),
           const SizedBox(height: 20),
         ]
       )
@@ -297,7 +317,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 }
 
-// 👇 HALAMAN KHUSUS UNTUK MENAMPILKAN FOTO FULL SCREEN 👇
+// HALAMAN FOTO FULL SCREEN
 class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;
@@ -307,14 +327,13 @@ class FullScreenImagePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black, // Background gelap ala aplikasi premium
+      backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
       ),
       body: Center(
-        // InteractiveViewer membuat foto bisa di-zoom pakai 2 jari!
         child: InteractiveViewer(
           panEnabled: true,
           minScale: 0.5,

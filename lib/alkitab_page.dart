@@ -8,7 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Source;
-import 'package:firebase_auth/firebase_auth.dart';     
+import 'package:firebase_auth/firebase_auth.dart';       
 import 'package:audioplayers/audioplayers.dart'; 
 import 'package:path_provider/path_provider.dart';
 
@@ -183,7 +183,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _cleanText(String text) => text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
   String _formatVerses(List<int> vs) { if (vs.isEmpty) return ""; vs.sort(); List<String> groups = []; int start = vs.first, end = vs.first; for (int i = 1; i < vs.length; i++) { if (vs[i] == end + 1) { end = vs[i]; } else { groups.add(start == end ? "$start" : "$start-$end"); start = vs[i]; end = vs[i]; } } groups.add(start == end ? "$start" : "$start-$end"); return groups.join(", "); }
 
-  // 👇 INI DIA KUNCI PERBAIKAN FITUR KLIK MENU & KEMBALI DARI CATATAN 👇
   void _onMenuSelected(String v) { 
     if (v == 'search') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => SearchPage(db: _db!, allBooks: _allBooks, currentBookNum: _currentBookNum))).then(_handleNavResult); 
@@ -193,8 +192,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       Navigator.push(context, MaterialPageRoute(builder: (c) => const OfflineAudioPage()));
     } else if (v == 'notes') {
       Navigator.push(context, MaterialPageRoute(builder: (c) => NoteListPage(prefs: _prefs, db: _db!, allBooks: _allBooks))).then((res) {
-        _syncNotes(); // Tetap sinkronisasi
-        // 👇 TANGKAP KOORDINAT LONCAT AYAT DARI DALAM CATATAN 👇
+        _syncNotes(); 
         if (res != null && res is Map) {
           _handleNavResult(res); 
         } else {
@@ -205,8 +203,42 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _handleNavResult(dynamic res) { if (res != null && res is Map) { setState(() { _currentBookNum = res['book_number']; _currentChapter = res['chapter']; }); _loadContent(scrollToVerse: res['verse']); } }
-  void _goToNextChapter() { if (_currentChapter < (_chaptersPerBook[_currentBookNum >= 470 ? (((_currentBookNum - 470) ~/ 10) + 40) : (_currentBookNum ~/ 10)] ?? 1)) { _currentChapter++; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx < _allBooks.length - 1) { _currentBookNum = _allBooks[idx + 1].bookNumber; _currentChapter = 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }
-  void _goToPrevChapter() { if (_currentChapter > 1) { _currentChapter--; } else { int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); if (idx > 0) { _currentBookNum = _allBooks[idx - 1].bookNumber; _currentChapter = _chaptersPerBook[(_currentBookNum ~/ 10)] ?? 1; } } setState(() => _isLoading = true); _saveLastPosition(1); _loadContent(scrollToVerse: 1); }
+  
+  // 👇 INI PERBAIKAN BUG SWIPE NEXT CHAPTER 👇
+  void _goToNextChapter() { 
+    int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); 
+    int standardBookNum = idx + 1; 
+
+    if (_currentChapter < (_chaptersPerBook[standardBookNum] ?? 1)) { 
+      _currentChapter++; 
+    } else { 
+      if (idx < _allBooks.length - 1) { 
+        _currentBookNum = _allBooks[idx + 1].bookNumber; 
+        _currentChapter = 1; 
+      } 
+    } 
+    setState(() => _isLoading = true); 
+    _saveLastPosition(1); 
+    _loadContent(scrollToVerse: 1); 
+  }
+
+  // 👇 INI PERBAIKAN BUG SWIPE PREV CHAPTER 👇
+  void _goToPrevChapter() { 
+    if (_currentChapter > 1) { 
+      _currentChapter--; 
+    } else { 
+      int idx = _allBooks.indexWhere((b) => b.bookNumber == _currentBookNum); 
+      if (idx > 0) { 
+        _currentBookNum = _allBooks[idx - 1].bookNumber; 
+        int prevStandardBookNum = idx;
+        _currentChapter = _chaptersPerBook[prevStandardBookNum] ?? 1; 
+      } 
+    } 
+    setState(() => _isLoading = true); 
+    _saveLastPosition(1); 
+    _loadContent(scrollToVerse: 1); 
+  }
+
   void _showNavigation() { showGeneralDialog(context: context, barrierDismissible: true, barrierLabel: "Nav", pageBuilder: (c, a1, a2) => Align(alignment: Alignment.topCenter, child: Material(borderRadius: const BorderRadius.vertical(bottom: Radius.circular(25)), child: _NavSheet(allBooks: _allBooks, db: _db!, onSelectionComplete: (b, c, v) { Navigator.pop(context); setState(() { _currentBookNum = b; _currentChapter = c; }); _saveLastPosition(v); _loadContent(scrollToVerse: v); })))); }
   void _handleNoteClick(int vNum, List<String>? keys) { String bName = _allBooks.firstWhere((b) => b.bookNumber == _currentBookNum).name; String ref = "$bName $_currentChapter:$vNum"; if (keys == null || keys.isEmpty) { Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: ref, prefs: _prefs, db: _db!, allBooks: _allBooks))).then(_handleNavResult); } else if (keys.length == 1) { _openNote(keys.first); } else { showModalBottomSheet(context: context, builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [ Padding(padding: const EdgeInsets.all(16), child: Text("Pilih Catatan ($ref)", style: const TextStyle(fontWeight: FontWeight.bold))), ...keys.map((k) => ListTile(leading: const Icon(Icons.note, color: Colors.orange), title: Text(_prefs.getString(k)?.split("~|~")[1].characters.take(30).toString() ?? ""), onTap: () { Navigator.pop(c); _openNote(k); })) ])); } }
   void _openNote(String k) { String? raw = _prefs.getString(k); if (raw != null) Navigator.push(context, MaterialPageRoute(builder: (c) => NoteEditorPage(nas: raw.split("~|~")[0], prefs: _prefs, existingKey: k, db: _db!, allBooks: _allBooks))).then(_handleNavResult); }
@@ -266,7 +298,6 @@ class _AlkitabPageState extends State<AlkitabPage> {
             const PopupMenuItem(value: 'notes', child: Row(children: [Icon(Icons.edit_note, color: Colors.green), SizedBox(width: 10), Text("Kelola Catatan")])),
           ]),
         ],
-        // 👇 AUDIO SLIDER TIPIS ELEGAN TEPAT DI BAWAH APPBAR 👇
         bottom: (_isPlaying || _isAudioLoading || _position > Duration.zero) 
           ? PreferredSize(
               preferredSize: const Size.fromHeight(30),
@@ -382,4 +413,28 @@ class _AlkitabPageState extends State<AlkitabPage> {
 }
 
 class _NavSheet extends StatefulWidget { final List<BibleBook> allBooks; final Database db; final Function(int, int, int) onSelectionComplete; const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete}); @override State<_NavSheet> createState() => _NavSheetState(); }
-class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid()) ]))); Widget _buildGrid() { if (selC != null) return _grid(vrs, (v) => widget.onSelectionComplete(selB!.bookNumber, selC!, v)); if (selB != null) return _grid(chs, (c) => _getVerses(c)); List<BibleBook> pl = widget.allBooks.length >= 39 ? widget.allBooks.sublist(0, 39) : widget.allBooks; List<BibleBook> pb = widget.allBooks.length > 39 ? widget.allBooks.sublist(39) : []; return ListView(children: [ _header("PERJANJIAN LAMA", Colors.pink), _kGrid(pl), if (pb.isNotEmpty) _header("PERJANJIAN BARU", Colors.blue), if (pb.isNotEmpty) _kGrid(pb) ]); } Widget _header(String t, Color c) => Padding(padding: const EdgeInsets.all(15), child: Text(t, style: TextStyle(color: c, fontWeight: FontWeight.bold))); Widget _kGrid(List<BibleBook> bks) => GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.symmetric(horizontal: 10), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 70, childAspectRatio: 2, mainAxisSpacing: 5, crossAxisSpacing: 5), itemCount: bks.length, itemBuilder: (c, i) => InkWell(onTap: () => _getChapters(bks[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(5)), child: Text(bks[i].shortName.toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))))); Widget _grid(List<int> its, Function(int) onTap) => GridView.builder(padding: const EdgeInsets.all(15), gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 60, mainAxisSpacing: 10, crossAxisSpacing: 10), itemCount: its.length, itemBuilder: (c, i) => InkWell(onTap: () => onTap(its[i]), child: Container(alignment: Alignment.center, decoration: BoxDecoration(color: Colors.indigo[50], borderRadius: BorderRadius.circular(10)), child: Text("${its[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))); }
+class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid())]))); 
+  
+  Widget _buildGrid() {
+    if (selB == null) {
+      return ListView.builder(
+        itemCount: widget.allBooks.length,
+        itemBuilder: (c, i) => ListTile(title: Text(widget.allBooks[i].name), onTap: () => _getChapters(widget.allBooks[i])),
+      );
+    } else if (selC == null) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1),
+        itemCount: chs.length,
+        itemBuilder: (c, i) => InkWell(onTap: () => _getVerses(chs[i]), child: Card(color: Colors.indigo.shade50, child: Center(child: Text("${chs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
+      );
+    } else {
+      return GridView.builder(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1),
+        itemCount: vrs.length,
+        itemBuilder: (c, i) => InkWell(onTap: () => widget.onSelectionComplete(selB!.bookNumber, selC!, vrs[i]), child: Card(color: Colors.orange.shade50, child: Center(child: Text("${vrs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
+      );
+    }
+  }
+}

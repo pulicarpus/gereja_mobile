@@ -1,14 +1,152 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   final List<Map<String, dynamic>> allJemaat;
+  final String? churchId;
 
-  const DashboardPage({super.key, required this.allJemaat});
+  const DashboardPage({super.key, required this.allJemaat, this.churchId});
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  late List<Map<String, dynamic>> _localJemaat;
+
+  @override
+  void initState() {
+    super.initState();
+    _localJemaat = List.from(widget.allJemaat);
+  }
+
+  // Fungsi untuk menampilkan BottomSheet daftar jemaat yang meninggal
+  void _showDaftarMeninggal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => StatefulBuilder(
+        builder: (BuildContext context, StateSetter setModalState) {
+          final listMeninggal = _localJemaat.where((j) => j['status'] == 'Meninggal').toList();
+
+          return Container(
+            padding: const EdgeInsets.all(20),
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text("Daftar Jemaat Meninggal", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const Text("Ketuk menu pada nama untuk membatalkan status atau menghapus permanen.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const Divider(height: 20),
+                Expanded(
+                  child: listMeninggal.isEmpty
+                      ? const Center(child: Text("Tidak ada data jemaat meninggal.", style: TextStyle(color: Colors.grey)))
+                      : ListView.builder(
+                          itemCount: listMeninggal.length,
+                          itemBuilder: (context, index) {
+                            final j = listMeninggal[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(vertical: 6),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
+                                  child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?") : null,
+                                ),
+                                title: Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text("${j['kelompok'] ?? "-"} • ${j['statusKeluarga'] ?? ""}"),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (value) async {
+                                    if (widget.churchId == null) return;
+
+                                    if (value == 'batal') {
+                                      // 1. Batalkan status meninggal (kembalikan ke aktif / hapus status)
+                                      await FirebaseFirestore.instance
+                                          .collection("churches")
+                                          .doc(widget.churchId)
+                                          .collection("jemaat")
+                                          .doc(j['id'])
+                                          .update({'status': null});
+
+                                      setState(() {
+                                        int idx = _localJemaat.indexWhere((item) => item['id'] == j['id']);
+                                        if (idx != -1) {
+                                          _localJemaat[idx]['status'] = null;
+                                        }
+                                      });
+                                      setModalState(() {});
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Status meninggal dibatalkan. Jemaat kembali aktif.")),
+                                      );
+                                    } else if (value == 'hapus') {
+                                      // 2. Hapus permanen dari database
+                                      await FirebaseFirestore.instance
+                                          .collection("churches")
+                                          .doc(widget.churchId)
+                                          .collection("jemaat")
+                                          .doc(j['id'])
+                                          .delete();
+
+                                      setState(() {
+                                        _localJemaat.removeWhere((item) => item['id'] == j['id']);
+                                      });
+                                      setModalState(() {});
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Data berhasil dihapus permanen dari database.")),
+                                      );
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                      value: 'batal',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.restore, color: Colors.green),
+                                          SizedBox(width: 8),
+                                          Text("Batalkan (Jadikan Aktif)"),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'hapus',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete_forever, color: Colors.red),
+                                          SizedBox(width: 8),
+                                          Text("Hapus Permanen"),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    // --- LOGIKA HITUNG DATA ---
+    // --- LOGIKA HITUNG DATA BERDASARKAN _localJemaat ---
     Map<String, int> statsKelompok = {};
     int pria = 0, wanita = 0;
     int sudahBaptis = 0, belumBaptis = 0;
@@ -16,22 +154,19 @@ class DashboardPage extends StatelessWidget {
     int lahirTahunIni = 0;
     Set<String> totalKeluarga = {};
 
-    String currentYear = DateTime.now().year.toString(); // Contoh: "2026"
+    String currentYear = DateTime.now().year.toString();
 
-    for (var j in allJemaat) {
-      // 1. Hitung jemaat yang meninggal
+    for (var j in _localJemaat) {
       if (j['status'] == 'Meninggal') {
         meninggal++;
-        continue; // Jemaat meninggal dilewati dari perhitungan statistik aktif (gender, baptis, kelompok)
+        continue;
       }
 
-      // 2. Hitung jemaat yang lahir tahun ini
       String? tglLahir = j['tanggalLahir'];
       if (tglLahir != null && tglLahir.contains(currentYear)) {
         lahirTahunIni++;
       }
 
-      // Pastikan label kelompok tidak kosong
       String k = j['kelompok'] ?? "Lainnya";
       if (k.isEmpty) k = "Lainnya";
       statsKelompok[k] = (statsKelompok[k] ?? 0) + 1;
@@ -44,8 +179,7 @@ class DashboardPage extends StatelessWidget {
       }
     }
 
-    // Total jemaat aktif (seluruh jemaat dikurangi yang meninggal)
-    int totalJemaatAktif = allJemaat.length - meninggal;
+    int totalJemaatAktif = _localJemaat.length - meninggal;
 
     final List<Color> colors = [
       Colors.indigo, Colors.redAccent, Colors.green, 
@@ -78,12 +212,19 @@ class DashboardPage extends StatelessWidget {
               children: [
                 _buildSummaryCard("Lahir Tahun Ini", "$lahirTahunIni", Icons.cake, Colors.teal),
                 const SizedBox(width: 15),
-                _buildSummaryCard("Meninggal", "$meninggal", Icons.heart_broken_rounded, Colors.grey[700]!),
+                // KARTU MENINGGAL BISA DIKLIK
+                _buildSummaryCard(
+                  "Meninggal", 
+                  "$meninggal", 
+                  Icons.heart_broken_rounded, 
+                  Colors.grey[700]!, 
+                  onTap: () => _showDaftarMeninggal(context),
+                ),
               ],
             ),
             const SizedBox(height: 30),
 
-            // --- GRAFIK KELOMPOK (BAR LEBIH BESAR & LABEL JELAS) ---
+            // --- GRAFIK KELOMPOK ---
             const Text("Kelompok Kategorial", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             Card(
@@ -111,7 +252,7 @@ class DashboardPage extends StatelessWidget {
                             borderRadius: BorderRadius.circular(10),
                             child: LinearProgressIndicator(
                               value: progress,
-                              minHeight: 25, // BAR DIPERBESAR / DIPERTEBAL
+                              minHeight: 25,
                               backgroundColor: Colors.grey[200],
                               color: colors[e.key.hashCode % colors.length],
                             ),
@@ -125,7 +266,7 @@ class DashboardPage extends StatelessWidget {
             ),
             const SizedBox(height: 30),
 
-            // --- GRAFIK PIE (GENDER & BAPTIS DENGAN LABEL JELAS) ---
+            // --- GRAFIK PIE ---
             const Text("Distribusi Data", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 15),
             Row(
@@ -150,23 +291,30 @@ class DashboardPage extends StatelessWidget {
 
   final _pieStyle = const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13);
 
-  Widget _buildSummaryCard(String title, String val, IconData icon, Color color) {
+  Widget _buildSummaryCard(String title, String val, IconData icon, Color color, {VoidCallback? onTap}) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+      child: Material(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(15),
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(15),
-          border: Border.all(color: color.withOpacity(0.3), width: 2),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 30),
-            const SizedBox(height: 8),
-            Text(val, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
-            const SizedBox(height: 4),
-            Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
-          ],
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(color: color.withOpacity(0.3), width: 2),
+            ),
+            child: Column(
+              children: [
+                Icon(icon, color: color, size: 30),
+                const SizedBox(height: 8),
+                Text(val, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+                const SizedBox(height: 4),
+                Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
+              ],
+            ),
+          ),
         ),
       ),
     );

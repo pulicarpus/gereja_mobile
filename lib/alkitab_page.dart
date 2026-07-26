@@ -412,6 +412,134 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 }
 
-class _NavSheet extends StatefulWidget { final List<BibleBook> allBooks; final Database db; final Function(int, int, int) onSelectionComplete; const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete}); @override State<_NavSheet> createState() => _NavSheetState(); }
+class _NavSheet extends StatefulWidget { 
+  final List<BibleBook> allBooks; 
+  final Database db; 
+  final Function(int, int, int) onSelectionComplete; 
+  const _NavSheet({required this.allBooks, required this.db, required this.onSelectionComplete}); 
+  @override 
+  State<_NavSheet> createState() => _NavSheetState(); 
+}
 
-class _NavSheetState extends State<_NavSheet> { BibleBook? selB; int? selC; List<int> chs = []; List<int> vrs = []; void _getChapters(BibleBook b) async { final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); setState(() { selB = b; chs = res.map((e) => e['chapter'] as int).toList(); selC = null; }); } void _getVerses(int c) async { final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); setState(() { selC = c; vrs = res.map((e) => e['verse'] as int).toList(); }); } @override Widget build(BuildContext context) => SafeArea(child: Container(constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8), child: Column(mainAxisSize: MainAxisSize.min, children: [ AppBar(backgroundColor: Colors.transparent, elevation: 0, foregroundColor: Colors.black, title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null), const Divider(height: 1), Expanded(child: _buildGrid()) 
+class _NavSheetState extends State<_NavSheet> { 
+  BibleBook? selB; 
+  int? selC; 
+  List<int> chs = []; 
+  List<int> vrs = []; 
+
+  void _getChapters(BibleBook b) async { 
+    final res = await widget.db.rawQuery("SELECT DISTINCT chapter FROM verses WHERE book_number = ? ORDER BY chapter ASC", [b.bookNumber]); 
+    setState(() { 
+      selB = b; 
+      chs = res.map((e) => e['chapter'] as int).toList(); 
+      selC = null; 
+    }); 
+  } 
+
+  void _getVerses(int c) async { 
+    final res = await widget.db.rawQuery("SELECT verse FROM verses WHERE book_number = ? AND chapter = ? ORDER BY verse ASC", [selB!.bookNumber, c]); 
+    setState(() { 
+      selC = c; 
+      vrs = res.map((e) => e['verse'] as int).toList(); 
+    }); 
+  } 
+
+  @override 
+  Widget build(BuildContext context) => SafeArea(
+    child: Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85), 
+      child: Column(
+        mainAxisSize: MainAxisSize.min, 
+        children: [ 
+          AppBar(
+            backgroundColor: Colors.transparent, 
+            elevation: 0, 
+            foregroundColor: Colors.black, 
+            title: Text(selB == null ? "Pilih Kitab" : (selC == null ? selB!.name : "${selB!.name} $selC")), 
+            leading: selB != null ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => setState(() => selC != null ? selC = null : selB = null)) : null
+          ), 
+          const Divider(height: 1), 
+          Expanded(child: _buildGrid())
+        ],
+      ),
+    ),
+  ); 
+  
+  Widget _buildGrid() {
+    if (selB == null) {
+      // Membagi Perjanjian Lama dan Perjanjian Baru berdasarkan indeks/nomor kitab
+      int splitIndex = widget.allBooks.indexWhere((b) => b.bookNumber >= 400 || b.bookNumber == 40);
+      if (splitIndex == -1) splitIndex = 39;
+      
+      List<BibleBook> perjanjianLama = widget.allBooks.sublist(0, splitIndex);
+      List<BibleBook> perjanjianBaru = widget.allBooks.sublist(splitIndex);
+
+      return ListView(
+        padding: const EdgeInsets.all(10),
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+            child: Text("PERJANJIAN LAMA", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13)),
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.3, crossAxisSpacing: 6, mainAxisSpacing: 6),
+            itemCount: perjanjianLama.length,
+            itemBuilder: (c, i) {
+              var book = perjanjianLama[i];
+              return InkWell(
+                onTap: () => _getChapters(book),
+                child: Card(
+                  color: Colors.indigo.shade50,
+                  elevation: 1,
+                  child: Center(
+                    child: Text(book.shortName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center),
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 15),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
+            child: Text("PERJANJIAN BARU", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 13)),
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1.3, crossAxisSpacing: 6, mainAxisSpacing: 6),
+            itemCount: perjanjianBaru.length,
+            itemBuilder: (c, i) {
+              var book = perjanjianBaru[i];
+              return InkWell(
+                onTap: () => _getChapters(book),
+                child: Card(
+                  color: Colors.orange.shade50,
+                  elevation: 1,
+                  child: Center(
+                    child: Text(book.shortName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), textAlign: TextAlign.center),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      );
+    } else if (selC == null) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1, crossAxisSpacing: 6, mainAxisSpacing: 6),
+        itemCount: chs.length,
+        itemBuilder: (c, i) => InkWell(onTap: () => _getVerses(chs[i]), child: Card(color: Colors.indigo.shade50, child: Center(child: Text("${chs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
+      );
+    } else {
+      return GridView.builder(
+        padding: const EdgeInsets.all(10),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, childAspectRatio: 1, crossAxisSpacing: 6, mainAxisSpacing: 6),
+        itemCount: vrs.length,
+        itemBuilder: (c, i) => InkWell(onTap: () => widget.onSelectionComplete(selB!.bookNumber, selC!, vrs[i]), child: Card(color: Colors.orange.shade50, child: Center(child: Text("${vrs[i]}", style: const TextStyle(fontWeight: FontWeight.bold))))),
+      );
+    }
+  }
+}

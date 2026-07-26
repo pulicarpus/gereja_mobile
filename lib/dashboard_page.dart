@@ -12,9 +12,25 @@ class DashboardPage extends StatelessWidget {
     Map<String, int> statsKelompok = {};
     int pria = 0, wanita = 0;
     int sudahBaptis = 0, belumBaptis = 0;
+    int meninggal = 0;
+    int lahirTahunIni = 0;
     Set<String> totalKeluarga = {};
 
+    String currentYear = DateTime.now().year.toString(); // Contoh: "2026"
+
     for (var j in allJemaat) {
+      // 1. Hitung jemaat yang meninggal
+      if (j['status'] == 'Meninggal') {
+        meninggal++;
+        continue; // Jemaat meninggal dilewati dari perhitungan statistik aktif (gender, baptis, kelompok)
+      }
+
+      // 2. Hitung jemaat yang lahir tahun ini
+      String? tglLahir = j['tanggalLahir'];
+      if (tglLahir != null && tglLahir.contains(currentYear)) {
+        lahirTahunIni++;
+      }
+
       // Pastikan label kelompok tidak kosong
       String k = j['kelompok'] ?? "Lainnya";
       if (k.isEmpty) k = "Lainnya";
@@ -27,6 +43,9 @@ class DashboardPage extends StatelessWidget {
         totalKeluarga.add(j['idKepalaKeluarga']);
       }
     }
+
+    // Total jemaat aktif (seluruh jemaat dikurangi yang meninggal)
+    int totalJemaatAktif = allJemaat.length - meninggal;
 
     final List<Color> colors = [
       Colors.indigo, Colors.redAccent, Colors.green, 
@@ -44,12 +63,22 @@ class DashboardPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- RINGKASAN ATAS ---
+            // --- RINGKASAN ATAS (BARIS 1) ---
             Row(
               children: [
-                _buildSummaryCard("Total Jemaat", "${allJemaat.length}", Icons.people, Colors.indigo),
+                _buildSummaryCard("Jemaat Aktif", "$totalJemaatAktif", Icons.people, Colors.indigo),
                 const SizedBox(width: 15),
                 _buildSummaryCard("Total Keluarga", "${totalKeluarga.length}", Icons.family_restroom, Colors.green),
+              ],
+            ),
+            const SizedBox(height: 15),
+
+            // --- RINGKASAN TAMBAHAN (BARIS 2: LAHIR & MENINGGAL) ---
+            Row(
+              children: [
+                _buildSummaryCard("Lahir Tahun Ini", "$lahirTahunIni", Icons.cake, Colors.teal),
+                const SizedBox(width: 15),
+                _buildSummaryCard("Meninggal", "$meninggal", Icons.heart_broken_rounded, Colors.grey[700]!),
               ],
             ),
             const SizedBox(height: 30),
@@ -64,7 +93,7 @@ class DashboardPage extends StatelessWidget {
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   children: statsKelompok.entries.toList().asMap().entries.map((e) {
-                    double progress = e.value.value / (allJemaat.isEmpty ? 1 : allJemaat.length);
+                    double progress = e.value.value / (totalJemaatAktif == 0 ? 1 : totalJemaatAktif);
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       child: Column(
@@ -84,7 +113,7 @@ class DashboardPage extends StatelessWidget {
                               value: progress,
                               minHeight: 25, // BAR DIPERBESAR / DIPERTEBAL
                               backgroundColor: Colors.grey[200],
-                              color: colors[e.key % colors.length],
+                              color: colors[e.key.hashCode % colors.length],
                             ),
                           ),
                         ],
@@ -132,10 +161,11 @@ class DashboardPage extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 35),
-            const SizedBox(height: 10),
-            Text(val, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: color)),
-            Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+            Icon(icon, color: color, size: 30),
+            const SizedBox(height: 8),
+            Text(val, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)),
+            const SizedBox(height: 4),
+            Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -158,7 +188,7 @@ class DashboardPage extends StatelessWidget {
                 child: PieChart(
                   PieChartData(
                     sectionsSpace: 4, 
-                    centerSpaceRadius: 0, // Dibuat penuh tanpa lubang biar teks muat
+                    centerSpaceRadius: 0, 
                     sections: sections
                   )
                 )

@@ -47,16 +47,16 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         return data;
       }).toList();
 
-      // Saring agar jemaat yang berstatus 'Meninggal' tidak tampil di daftar aktif
-      tempData = tempData.where((j) => j['status'] != 'Meninggal').toList();
+      // Urutkan berdasarkan nama secara default
+      tempData.sort((a, b) => (a['namaLengkap'] ?? "").toString().toLowerCase().compareTo((b['namaLengkap'] ?? "").toString().toLowerCase()));
+
+      // Saring data aktif (kecuali yang berstatus 'Meninggal') untuk tampilan list
+      var activeData = tempData.where((j) => j['status'] != 'Meninggal').toList();
 
       if (mounted) {
         setState(() {
-          // Urutkan berdasarkan nama secara default
-          tempData.sort((a, b) => (a['namaLengkap'] ?? "").toString().toLowerCase().compareTo((b['namaLengkap'] ?? "").toString().toLowerCase()));
-          
-          _allJemaat = tempData;
-          _filteredJemaat = tempData;
+          _allJemaat = tempData;        // SEMUA data (termasuk meninggal) untuk Dashboard
+          _filteredJemaat = activeData; // Hanya data aktif untuk ListView
           _isLoading = false;
         });
       }
@@ -69,7 +69,10 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   void _filterSearch(String query) {
     setState(() {
       _filteredJemaat = _allJemaat
-          .where((j) => j['namaLengkap']!.toLowerCase().contains(query.toLowerCase()))
+          .where((j) => 
+            j['status'] != 'Meninggal' && 
+            (j['namaLengkap'] ?? '').toLowerCase().contains(query.toLowerCase())
+          )
           .toList();
     });
   }
@@ -213,7 +216,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                 _isSearching = !_isSearching;
                 if (!_isSearching) {
                   _searchController.clear();
-                  _filteredJemaat = _allJemaat;
+                  _filteredJemaat = _allJemaat.where((j) => j['status'] != 'Meninggal').toList();
                 }
               });
             },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'user_manager.dart'; // Pastikan file ini di-import
 
 class DashboardPage extends StatefulWidget {
   final List<Map<String, dynamic>> allJemaat;
@@ -14,6 +15,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   late List<Map<String, dynamic>> _localJemaat;
+  final UserManager _userManager = UserManager(); // Inisialisasi UserManager
 
   @override
   void initState() {
@@ -72,7 +74,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                     if (widget.churchId == null) return;
 
                                     if (value == 'batal') {
-                                      // 1. Batalkan status meninggal (kembalikan ke aktif / hapus status)
+                                      // 1. Batalkan status meninggal (kembalikan ke aktif)
                                       await FirebaseFirestore.instance
                                           .collection("churches")
                                           .doc(widget.churchId)
@@ -212,13 +214,13 @@ class _DashboardPageState extends State<DashboardPage> {
               children: [
                 _buildSummaryCard("Lahir Tahun Ini", "$lahirTahunIni", Icons.cake, Colors.teal),
                 const SizedBox(width: 15),
-                // KARTU MENINGGAL BISA DIKLIK
+                // KARTU MENINGGAL HANYA BISA DIKLIK OLEH ADMIN/SUPERADMIN
                 _buildSummaryCard(
                   "Meninggal", 
                   "$meninggal", 
                   Icons.heart_broken_rounded, 
                   Colors.grey[700]!, 
-                  onTap: () => _showDaftarMeninggal(context),
+                  onTap: _userManager.isAdmin() ? () => _showDaftarMeninggal(context) : null,
                 ),
               ],
             ),
@@ -297,7 +299,7 @@ class _DashboardPageState extends State<DashboardPage> {
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
-          onTap: onTap,
+          onTap: onTap, // onTap bisa null jika bukan admin
           borderRadius: BorderRadius.circular(15),
           child: Container(
             padding: const EdgeInsets.all(15),

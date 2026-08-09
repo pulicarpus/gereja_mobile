@@ -1,25 +1,37 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 
 class AsetGerejaPage extends StatefulWidget {
-  final String? churchId; // Opsional: diambil dari UserManager().getChurchIdForCurrentView()
+  final String gerejaId;
+  final String namaGereja;
 
-  const AsetGerejaPage({super.key, this.churchId});
+  const AsetGerejaPage({
+    Key? key,
+    required this.gerejaId,
+    required this.namaGereja,
+  }) : super(key: key);
 
   @override
   State<AsetGerejaPage> createState() => _AsetGerejaPageState();
 }
 
 class _AsetGerejaPageState extends State<AsetGerejaPage> {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
-  final ImagePicker _picker = ImagePicker();
-
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = "";
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -27,502 +39,157 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     super.dispose();
   }
 
-  // Fungsi untuk Memilih Gambar (Kamera / Galeri)
-  Future<XFile?> _pickImage(ImageSource source) async {
-    try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 80, // Kompres ukuran gambar agar hemat storage
-      );
-      return pickedFile;
-    } catch (e) {
-      debugPrint("Error pilih gambar: $e");
-      return null;
-    }
-  }
-
-  // Fungsi Upload Gambar ke Firebase Storage
-  Future<String?> _uploadImage(XFile imageFile) async {
-    try {
-      String fileName = "aset_${DateTime.now().millisecondsSinceEpoch}.jpg";
-      Reference ref = _storage.ref().child("aset_gereja_photos").child(fileName);
-
-      UploadTask uploadTask = ref.putFile(File(imageFile.path));
-      TaskSnapshot snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
-    } catch (e) {
-      debugPrint("Error upload foto: $e");
-      return null;
-    }
-  }
-
-  // Fungsi Modal / BottomSheet untuk Pilih Sumber Foto
-  void _showImageSourceDialog(Function(XFile?) onImageSelected) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-      ),
-      builder: (context) {
-        return SafeArea(
-          child: Wrap(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.photo_library, color: Color(0xFF1A237E)),
-                title: const Text("Pilih dari Galeri"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  XFile? img = await _pickImage(ImageSource.gallery);
-                  onImageSelected(img);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Color(0xFF1A237E)),
-                title: const Text("Ambil Foto Kamera"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  XFile? img = await _pickImage(ImageSource.camera);
-                  onImageSelected(img);
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // --- FUNGSI MENAMPILKAN DETAIL ASET (BOTTOM SHEET) ---
-  void _showDetailAsetDialog(Map<String, dynamic> data) {
-    String namaAset = data['namaAset'] ?? 'Aset Tanpa Nama';
-    int jumlah = data['jumlah'] ?? 1;
-    String status = data['status'] ?? 'Baik';
-    String lokasi = data['lokasi'] ?? '-';
-    String kategori = data['kategori'] ?? 'Umum';
-    String keterangan = data['keterangan'] ?? '';
-    String? fotoUrl = data['fotoUrl'];
-
-    Color statusColor = _getStatusColor(status);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.7,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (_, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Garis Pegangan (Handle Drag)
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 5,
-                        margin: const EdgeInsets.only(bottom: 15),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-
-                    // Foto Ukuran Besar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        width: double.infinity,
-                        height: 220,
-                        color: Colors.grey.shade200,
-                        child: (fotoUrl != null && fotoUrl.isNotEmpty)
-                            ? Image.network(
-                                fotoUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 60, color: Colors.grey),
-                              )
-                            : const Center(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.inventory_2, size: 60, color: Color(0xFF1A237E)),
-                                    SizedBox(height: 8),
-                                    Text("Tidak ada foto aset", style: TextStyle(color: Colors.grey)),
-                                  ],
-                                ),
-                              ),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-
-                    // Header Nama & Status
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            namaAset,
-                            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            status,
-                            style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 15),
-                    const Divider(height: 1),
-                    const SizedBox(height: 15),
-
-                    // Daftar Rincian Detail
-                    _buildDetailRow(Icons.category, "Kategori", kategori),
-                    _buildDetailRow(Icons.numbers, "Jumlah / Unit", "$jumlah Unit"),
-                    _buildDetailRow(Icons.location_on, "Lokasi Simpan / Ruangan", lokasi),
-                    _buildDetailRow(
-                      Icons.notes,
-                      "Keterangan Tambahan",
-                      keterangan.isNotEmpty ? keterangan : "Tidak ada keterangan.",
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    // Tombol Tutup
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1A237E),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                        ),
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text("Tutup", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  // Widget Pembantu untuk Baris Detail
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1A237E).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Icon(icon, size: 20, color: const Color(0xFF1A237E)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 2),
-                Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Fungsi Tambah / Edit Aset
   void _showAsetDialog({DocumentSnapshot? doc}) {
-    final bool isEdit = doc != null;
-    final Map<String, dynamic>? data = isEdit ? doc.data() as Map<String, dynamic>? : null;
-
-    final namaController = TextEditingController(text: data?['namaAset'] ?? '');
-    final jumlahController = TextEditingController(text: data?['jumlah']?.toString() ?? '1');
-    final lokasiController = TextEditingController(text: data?['lokasi'] ?? '');
-    final keteranganController = TextEditingController(text: data?['keterangan'] ?? '');
-    final customKategoriController = TextEditingController();
-
-    String status = data?['status'] ?? 'Baik';
-    String kategoriDB = data?['kategori'] ?? 'Elektronik';
-    String? existingFotoUrl = data?['fotoUrl'];
-
-    XFile? selectedNewImage;
-    bool isLoading = false;
-
-    final List<String> statusList = ['Baik', 'Rusak Ringan', 'Rusak Berat'];
-    final List<String> kategoriList = [
-      'Elektronik',
-      'Mebel',
-      'Musik',
-      'Kendaraan',
-      'Tanah',
-      'Kebun',
-      'Bangunan',
-      'Lainnya (Buat Sendiri)'
-    ];
-
-    String kategoriTerpilih = kategoriList.contains(kategoriDB) ? kategoriDB : 'Lainnya (Buat Sendiri)';
-    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' && data != null && !kategoriList.contains(kategoriDB)) {
-      customKategoriController.text = kategoriDB;
-    }
+    final _formKey = GlobalKey<FormState>();
+    final TextEditingController _namaController = TextEditingController(
+      text: doc != null ? doc['nama_aset'] ?? '' : '',
+    );
+    final TextEditingController _kategoriController = TextEditingController(
+      text: doc != null ? doc['kategori'] ?? '' : '',
+    );
+    final TextEditingController _jumlahController = TextEditingController(
+      text: doc != null ? doc['jumlah']?.toString() ?? '' : '',
+    );
+    final TextEditingController _lokasiController = TextEditingController(
+      text: doc != null ? doc['lokasi'] ?? '' : '',
+    );
+    final TextEditingController _keteranganController = TextEditingController(
+      text: doc != null ? doc['keterangan'] ?? '' : '',
+    );
+    
+    String? _status = doc != null ? doc['status'] ?? 'Baik' : 'Baik';
+    String? _fotoUrl = doc != null ? doc['foto_url'] : null;
+    File? _imageFile;
 
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (context, setStateDialog) {
             return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              title: Text(
-                isEdit ? "Edit Aset" : "Tambah Aset Baru",
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
-              ),
+              title: Text(doc == null ? "Tambah Aset" : "Edit Aset"),
               content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // --- AREA PILIH FOTO ASET ---
-                    GestureDetector(
-                      onTap: () {
-                        _showImageSourceDialog((XFile? img) {
-                          if (img != null) {
-                            setDialogState(() {
-                              selectedNewImage = img;
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () async {
+                          final picker = ImagePicker();
+                          final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+                          if (pickedFile != null) {
+                            setStateDialog(() {
+                              _imageFile = File(pickedFile.path);
                             });
                           }
-                        });
-                      },
-                      child: Container(
-                        height: 140,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.grey.shade400, style: BorderStyle.solid),
-                        ),
-                        child: selectedNewImage != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(10),
-                                child: Image.file(
-                                  File(selectedNewImage!.path),
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                            : (existingFotoUrl != null && existingFotoUrl.isNotEmpty)
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Image.network(
-                                      existingFotoUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 50),
-                                    ),
-                                  )
-                                : const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.add_a_photo, size: 40, color: Color(0xFF1A237E)),
-                                      SizedBox(height: 5),
-                                      Text(
-                                        "Ketuk untuk tambah foto aset",
-                                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        },
+                        child: Container(
+                          height: 120,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[400]!),
+                          ),
+                          child: _imageFile != null
+                              ? Image.file(_imageFile!, fit: BoxFit.cover)
+                              : _fotoUrl != null && _fotoUrl!.isNotEmpty
+                                  ? Image.network(_fotoUrl!, fit: BoxFit.cover)
+                                  : const Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.add_a_photo, color: Colors.grey),
+                                          SizedBox(height: 4),
+                                          Text("Pilih Foto Aset", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                      ),
-                    ),
-                    const SizedBox(height: 15),
-
-                    TextField(
-                      controller: namaController,
-                      decoration: const InputDecoration(
-                        labelText: "Nama Aset / Barang",
-                        prefixIcon: Icon(Icons.inventory),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: jumlahController,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              labelText: "Jumlah",
-                              prefixIcon: Icon(Icons.numbers),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: kategoriTerpilih,
-                            decoration: const InputDecoration(labelText: "Kategori"),
-                            items: kategoriList.map((String item) {
-                              return DropdownMenuItem(value: item, child: Text(item, style: const TextStyle(fontSize: 12)));
-                            }).toList(),
-                            onChanged: (val) {
-                              if (val != null) setDialogState(() => kategoriTerpilih = val);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-
-                    if (kategoriTerpilih == 'Lainnya (Buat Sendiri)') ...[
-                      TextField(
-                        controller: customKategoriController,
-                        decoration: const InputDecoration(
-                          labelText: "Tulis Kategori Baru",
-                          hintText: "Misal: Pena, Bahan, Alat Tulis...",
-                          prefixIcon: Icon(Icons.edit_note),
+                                    ),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _namaController,
+                        decoration: const InputDecoration(labelText: 'Nama Aset'),
+                        validator: (val) => val!.isEmpty ? 'Nama aset wajib diisi' : null,
+                      ),
+                      TextFormField(
+                        controller: _kategoriController,
+                        decoration: const InputDecoration(labelText: 'Kategori'),
+                        validator: (val) => val!.isEmpty ? 'Kategori wajib diisi' : null,
+                      ),
+                      TextFormField(
+                        controller: _jumlahController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Jumlah Unit'),
+                        validator: (val) => val!.isEmpty ? 'Jumlah wajib diisi' : null,
+                      ),
+                      TextFormField(
+                        controller: _lokasiController,
+                        decoration: const InputDecoration(labelText: 'Lokasi'),
+                        validator: (val) => val!.isEmpty ? 'Lokasi wajib diisi' : null,
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: _status,
+                        decoration: const InputDecoration(labelText: 'Status'),
+                        items: ['Baik', 'Rusak Ringan', 'Rusak Berat']
+                            .map((label) => DropdownMenuItem(value: label, child: Text(label)))
+                            .toList(),
+                        onChanged: (val) {
+                          setStateDialog(() {
+                            _status = val;
+                          });
+                        },
+                      ),
+                      TextFormField(
+                        controller: _keteranganController,
+                        decoration: const InputDecoration(labelText: 'Keterangan (Opsional)'),
+                      ),
                     ],
-
-                    DropdownButtonFormField<String>(
-                      value: statusList.contains(status) ? status : statusList.first,
-                      decoration: const InputDecoration(labelText: "Kondisi / Status"),
-                      items: statusList.map((String item) {
-                        return DropdownMenuItem(value: item, child: Text(item));
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setDialogState(() => status = val);
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: lokasiController,
-                      decoration: const InputDecoration(
-                        labelText: "Lokasi / Ruangan",
-                        prefixIcon: Icon(Icons.location_on),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: keteranganController,
-                      maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: "Keterangan (Opsional)",
-                        prefixIcon: Icon(Icons.notes),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               actions: [
-                if (!isLoading)
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text("Batal", style: TextStyle(color: Colors.grey)),
-                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A237E),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onPressed: isLoading
-                      ? null
-                      : () async {
-                          if (namaController.text.trim().isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Nama aset tidak boleh kosong!")),
-                            );
-                            return;
-                          }
+                  onPressed: () async {
+                    if (_formKey.currentState!.validate()) {
+                      Navigator.pop(context);
+                      
+                      String? downloadUrl = _fotoUrl;
+                      if (_imageFile != null) {
+                        final ref = FirebaseStorage.instance
+                            .ref()
+                            .child('aset_gereja')
+                            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+                        await ref.putFile(_imageFile!);
+                        downloadUrl = await ref.getDownloadURL();
+                      }
 
-                          setDialogState(() => isLoading = true);
+                      final data = {
+                        'gerejaId': widget.gerejaId, 
+                        'nama_aset': _namaController.text.trim(),
+                        'kategori': _kategoriController.text.trim(),
+                        'jumlah': int.tryParse(_jumlahController.text) ?? 1,
+                        'lokasi': _lokasiController.text.trim(),
+                        'status': _status,
+                        'keterangan': _keteranganController.text.trim(),
+                        'foto_url': downloadUrl ?? '',
+                        'createdAt': doc == null ? FieldValue.serverTimestamp() : doc['createdAt'],
+                      };
 
-                          String? finalFotoUrl = existingFotoUrl;
-
-                          // Jika pengguna memilih foto baru, upload ke Firebase Storage
-                          if (selectedNewImage != null) {
-                            String? uploadedUrl = await _uploadImage(selectedNewImage!);
-                            if (uploadedUrl != null) {
-                              finalFotoUrl = uploadedUrl;
-                            }
-                          }
-
-                          String kategoriFinal = kategoriTerpilih;
-                          if (kategoriTerpilih == 'Lainnya (Buat Sendiri)' &&
-                              customKategoriController.text.trim().isNotEmpty) {
-                            kategoriFinal = customKategoriController.text.trim();
-                          }
-
-                          final payload = {
-                            'namaAset': namaController.text.trim(),
-                            'jumlah': int.tryParse(jumlahController.text.trim()) ?? 1,
-                            'kategori': kategoriFinal,
-                            'status': status,
-                            'lokasi': lokasiController.text.trim(),
-                            'keterangan': keteranganController.text.trim(),
-                            'fotoUrl': finalFotoUrl ?? '',
-                            'updatedAt': FieldValue.serverTimestamp(),
-                          };
-
-                          CollectionReference ref;
-                          if (widget.churchId != null && widget.churchId!.isNotEmpty) {
-                            ref = _db.collection('churches').doc(widget.churchId).collection('aset');
-                          } else {
-                            ref = _db.collection('aset_gereja');
-                          }
-
-                          if (isEdit) {
-                            await ref.doc(doc.id).update(payload);
-                          } else {
-                            payload['createdAt'] = FieldValue.serverTimestamp();
-                            await ref.add(payload);
-                          }
-
-                          if (mounted) {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(isEdit ? "Aset diperbarui!" : "Aset berhasil ditambahkan!"),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          }
-                        },
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : Text(isEdit ? "Simpan" : "Tambah", style: const TextStyle(color: Colors.white)),
+                      if (doc == null) {
+                        await _firestore.collection('aset_gereja').add(data);
+                      } else {
+                        await _firestore.collection('aset_gereja').doc(doc.id).update(data);
+                      }
+                    }
+                  },
+                  child: const Text('Simpan'),
                 ),
               ],
             );
@@ -532,273 +199,200 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     );
   }
 
-  // Fungsi Konfirmasi Hapus Data
   void _confirmDelete(String docId, String? fotoUrl) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("Hapus Aset"),
-        content: const Text("Apakah Anda yakin ingin menghapus aset ini dari inventaris?"),
+        content: const Text("Apakah Anda yakin ingin menghapus aset ini?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("Batal"),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              CollectionReference ref;
-              if (widget.churchId != null && widget.churchId!.isNotEmpty) {
-                ref = _db.collection('churches').doc(widget.churchId).collection('aset');
-              } else {
-                ref = _db.collection('aset_gereja');
-              }
-
-              // Hapus data dari Firestore
-              await ref.doc(docId).delete();
-
-              // Opsional: Hapus file foto dari Firebase Storage jika ada
+              Navigator.pop(context);
+              await _firestore.collection('aset_gereja').doc(docId).delete();
               if (fotoUrl != null && fotoUrl.isNotEmpty) {
                 try {
-                  await _storage.refFromURL(fotoUrl).delete();
-                } catch (e) {
-                  debugPrint("Error hapus file foto: $e");
-                }
-              }
-
-              if (mounted) {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Aset berhasil dihapus")),
-                );
+                  await FirebaseStorage.instance.refFromURL(fotoUrl).delete();
+                } catch (_) {}
               }
             },
-            child: const Text("Hapus", style: TextStyle(color: Colors.red)),
+            child: const Text("Hapus", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
   }
 
-  Color _getStatusColor(String status) {
-    switch (status) {
-      case 'Baik':
-        return Colors.green;
-      case 'Rusak Ringan':
-        return Colors.orange;
-      case 'Rusak Berat':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    Query query;
-    if (widget.churchId != null && widget.churchId!.isNotEmpty) {
-      query = _db.collection('churches').doc(widget.churchId).collection('aset');
-    } else {
-      query = _db.collection('aset_gereja');
-    }
-
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
-        title: const Text("Aset & Inventaris Gereja"),
+        title: Text("Aset - ${widget.namaGereja}"),
         backgroundColor: const Color(0xFF1A237E),
         foregroundColor: Colors.white,
-        elevation: 0,
       ),
       body: Column(
         children: [
-          // Bar Pencarian
-          Container(
-            padding: const EdgeInsets.all(15),
-            color: const Color(0xFF1A237E),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
             child: TextField(
               controller: _searchController,
-              onChanged: (val) {
-                setState(() {
-                  _searchQuery = val.toLowerCase().trim();
-                });
-              },
-              style: const TextStyle(color: Colors.black87),
               decoration: InputDecoration(
-                hintText: "Cari nama barang atau lokasi...",
-                hintStyle: const TextStyle(color: Colors.grey),
-                fillColor: Colors.white,
-                filled: true,
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF1A237E)),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() {
-                            _searchQuery = "";
-                          });
-                        },
-                      )
-                    : null,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                hintText: 'Cari nama aset, kategori, atau lokasi...',
+                prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(30),
-                  borderSide: BorderSide.none,
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
               ),
             ),
           ),
-
-          // List Data Aset
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: query.snapshots(),
+              stream: _firestore
+                  .collection('aset_gereja')
+                  .where('gerejaId', isEqualTo: widget.gerejaId)
+                  .orderBy('createdAt', descending: true)
+                  .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
-
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.inventory_2_outlined, size: 60, color: Colors.grey),
-                        SizedBox(height: 10),
-                        Text("Belum ada data aset gereja.", style: TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  );
+                  return const Center(child: Text("Belum ada data aset untuk gereja ini."));
                 }
 
-                var docs = snapshot.data!.docs;
-
-                // Filtering lokasi/nama secara manual
-                if (_searchQuery.isNotEmpty) {
-                  docs = docs.where((doc) {
-                    var data = doc.data() as Map<String, dynamic>;
-                    String nama = (data['namaAset'] ?? '').toString().toLowerCase();
-                    String lokasi = (data['lokasi'] ?? '').toString().toLowerCase();
-                    String kategori = (data['kategori'] ?? '').toString().toLowerCase();
-                    return nama.contains(_searchQuery) ||
-                        lokasi.contains(_searchQuery) ||
-                        kategori.contains(_searchQuery);
-                  }).toList();
-                }
+                final docs = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final nama = (data['nama_aset'] ?? '').toLowerCase();
+                  final kategori = (data['kategori'] ?? '').toLowerCase();
+                  final lokasi = (data['lokasi'] ?? '').toLowerCase();
+                  return nama.contains(_searchQuery) ||
+                      kategori.contains(_searchQuery) ||
+                      lokasi.contains(_searchQuery);
+                }).toList();
 
                 if (docs.isEmpty) {
-                  return const Center(
-                    child: Text("Aset yang dicari tidak ditemukan.", style: TextStyle(color: Colors.grey)),
-                  );
+                  return const Center(child: Text("Aset tidak ditemukan."));
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.all(12),
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
-                    var doc = docs[index];
-                    var data = doc.data() as Map<String, dynamic>;
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final namaAset = data['nama_aset'] ?? '';
+                    final kategori = data['kategori'] ?? '';
+                    final jumlah = data['jumlah'] ?? 0;
+                    final lokasi = data['lokasi'] ?? '';
+                    final status = data['status'] ?? 'Baik';
+                    final keterangan = data['keterangan'] ?? '';
+                    final fotoUrl = data['foto_url'] ?? '';
 
-                    String namaAset = data['namaAset'] ?? 'Aset Tanpa Nama';
-                    int jumlah = data['jumlah'] ?? 1;
-                    String status = data['status'] ?? 'Baik';
-                    String lokasi = data['lokasi'] ?? '-';
-                    String kategori = data['kategori'] ?? 'Umum';
-                    String keterangan = data['keterangan'] ?? '';
-                    String? fotoUrl = data['fotoUrl'];
-
-                    Color statusColor = _getStatusColor(status);
+                    Color statusColor = Colors.green;
+                    if (status == 'Rusak Ringan') statusColor = Colors.orange;
+                    if (status == 'Rusak Berat') statusColor = Colors.red;
 
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       elevation: 2,
-                      child: InkWell( // 👉 Penambahan fitur klik untuk melihat rincian BottomSheet
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _showDetailAsetDialog(data),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Gambar Thumbnail Aset
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Container(
-                                  width: 70,
-                                  height: 70,
-                                  color: Colors.grey.shade200,
-                                  child: (fotoUrl != null && fotoUrl.isNotEmpty)
-                                      ? Image.network(
-                                          fotoUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, color: Colors.grey),
-                                        )
-                                      : const Icon(Icons.inventory_2, color: Color(0xFF1A237E), size: 35),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-
-                              // Detail Aset
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            namaAset,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(6),
+                              child: fotoUrl.isNotEmpty
+                                  ? Image.network(
+                                      fotoUrl,
+                                      width: 70,
+                                      height: 70,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Container(
+                                      width: 70,
+                                      height: 70,
+                                      color: Colors.grey[300],
+                                      child: const Icon(Icons.image, color: Colors.grey),
+                                    ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          namaAset,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: statusColor.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          status,
+                                          style: TextStyle(
+                                            color: statusColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                          decoration: BoxDecoration(
-                                            color: statusColor.withOpacity(0.15),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            status,
-                                            style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 10),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.category, size: 13, color: Colors.grey),
-                                        const SizedBox(width: 4),
-                                        Text("$kategori ($jumlah Unit)", style: const TextStyle(fontSize: 12, color: Colors.black87)),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.location_on, size: 13, color: Colors.grey),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            lokasi,
-                                            style: const TextStyle(fontSize: 12, color: Colors.black87),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (keterangan.isNotEmpty) ...[
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        "Ket: $keterangan",
-                                        style: const TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
                                       ),
                                     ],
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.category, size: 13, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Text("$kategori ($jumlah Unit)",
+                                          style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.location_on, size: 13, color: Colors.grey),
+                                      const SizedBox(width: 4),
+                                      Expanded(
+                                        child: Text(
+                                          lokasi,
+                                          style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (keterangan.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Ket: $keterangan",
+                                      style: const TextStyle(
+                                          fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      if (UserManager().isAdmin()) ...[
                                         InkWell(
                                           onTap: () => _showAsetDialog(doc: doc),
                                           child: const Padding(
@@ -827,12 +421,12 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                           ),
                                         ),
                                       ],
-                                    ),
-                                  ],
-                                ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -843,15 +437,15 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
           ),
         ],
       ),
-
-      // Floating Action Button
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: const Color(0xFF1A237E),
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text("Tambah Aset"),
-        onPressed: () => _showAsetDialog(),
-      ),
+      floatingActionButton: UserManager().isAdmin()
+          ? FloatingActionButton.extended(
+              backgroundColor: const Color(0xFF1A237E),
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add),
+              label: const Text("Tambah Aset"),
+              onPressed: () => _showAsetDialog(),
+            )
+          : null,
     );
   }
 }

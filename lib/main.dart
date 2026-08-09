@@ -976,12 +976,17 @@ class _MainActivityState extends State<MainActivity> {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const KeuanganPage()));
                   }), // <--- INI YANG SEBELUMNYA HILANG BOS
 
-                  _buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
-                    Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (context) => const AsetGerejaPage())
-                    );
-                  }),
+_buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => AsetGerejaPage(
+        gerejaId: UserManager().getChurchIdForCurrentView() ?? '',
+        namaGereja: UserManager().activeChurchName ?? UserManager().originalChurchName ?? 'Gereja',
+      ),
+    ),
+  );
+}),
                   _buildDrawerItem(Icons.volunteer_activism, "Pokok Doa", () {
                     Navigator.push(context, MaterialPageRoute(builder: (context) => const DoaPage()));
                   }),

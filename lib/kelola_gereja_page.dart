@@ -53,10 +53,10 @@ class KelolaGerejaPage extends StatelessWidget {
               var data = gerejaList[index].data() as Map<String, dynamic>;
               var docId = gerejaList[index].id;
               
-              String namaGereja = data['nama'] ?? data['churchName'] ?? "Gereja Tanpa Nama";
+              // ✅ DIPERBAIKI: Membaca 'namaGereja' sesuai dengan yang disimpan di AddEditGerejaPage
+              String namaGereja = data['namaGereja'] ?? data['nama'] ?? data['churchName'] ?? "Gereja Tanpa Nama";
               String alamatGereja = data['alamat'] ?? "Alamat belum diisi";
               String kodeUndangan = data['kodeUndangan'] ?? "-";
-              // 👇 DETEKTOR DAERAH DITAMBAHKAN DI SINI 👇
               String namaDaerah = data['daerah'] ?? "Belum Diatur";
 
               bool isActive = UserManager().activeChurchId == docId;
@@ -78,9 +78,12 @@ class KelolaGerejaPage extends StatelessWidget {
                       ),
                       title: Text(
                         namaGereja, 
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: isActive ? Colors.indigo[900] : Colors.black87)
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 17, 
+                          color: isActive ? Colors.indigo[900] : Colors.black87
+                        )
                       ),
-                      // 👇 MENAMPILKAN LABEL DAERAH DI BAWAH NAMA GEREJA 👇
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [

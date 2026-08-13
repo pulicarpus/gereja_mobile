@@ -27,14 +27,13 @@ dependencies:
 
   image_picker: ^1.1.2
   file_picker: ^8.0.1
-  screenshot: any # 👈 INI YANG KETINGGALAN BOS! UNTUK FOTO AYAT BERGAMBAR
+  screenshot: any 
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
-  webview_flutter: ^4.10.0  # 👈 TAMBAHKAN ALAT INI BOS!
+  webview_flutter: ^4.10.0 
   open_filex: ^4.4.0
   audioplayers: ^5.2.1
   
-  # 👇 VERSI ANDROID MODERN 👇
   record: ^5.1.2
 
   firebase_core: ^3.10.1
@@ -48,15 +47,12 @@ dependencies:
   path: ^1.9.0
   path_provider: ^2.1.2
 
-  # 👇 TAMBAHAN UNTUK EXPORT KEUANGAN (PDF & CSV) BOS 👇
   pdf: ^3.10.4
   csv: ^5.0.2
   
-  # 👇 TAMBAHAN UNTUK GALLERY SULTAN 👇
-  photo_view: ^0.15.0  # Untuk fitur Zoom in/out pakai 2 jari
-  gal: ^2.3.0          # Untuk fitur Save foto ke Galeri HP
+  photo_view: ^0.15.0 
+  gal: ^2.3.0         
 
-  # 👇 INI DIA MESIN SCANNER CANGGIH DARI GOOGLE BOS! 👇
   google_mlkit_document_scanner: ^0.4.1
 
 dev_dependencies:
@@ -75,13 +71,11 @@ flutter:
     - assets/icon.png
     - assets/videos/splash_video.mp4
 
-# 👇 KUNCI KESELAMATAN SEJATI (TURUN KE 1.2.0) 👇
 dependency_overrides:
   record_platform_interface: 1.2.0
-  
-# 👇 MANTRA IKON APLIKASI 👇
+
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "assets/images/icon.png"
-  min_sdk_android: 21 # Sesuaikan jika min_sdk Bos berbeda
+  image_path: "assets/icon.png"
+  min_sdk_android: 21

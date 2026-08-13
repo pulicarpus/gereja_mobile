@@ -62,7 +62,7 @@ jobs:
           echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
         
       - name: Build APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: flutter build apk --release
         working-directory: .
 
       # =========================================================

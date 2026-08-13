@@ -26,11 +26,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      # 2. Setup Flutter (Dikunci ke versi stabil modern agar SDK 33 tidak ter-download otomatis)
+      # 2. Setup Flutter (Menggunakan channel stable terbaru agar versi Dart-nya sesuai)
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.22.2'
           channel: 'stable'
           cache: true 
 

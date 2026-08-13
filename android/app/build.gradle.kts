@@ -10,7 +10,7 @@ plugins {
 android {
     // Namespace untuk Package Name baru
     namespace = "com.puli.gkiimobile" 
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     signingConfigs {
@@ -37,7 +37,7 @@ android {
         // ID Aplikasi yang akan didaftarkan ke Firebase
         applicationId = "com.puli.gkiimobile"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         

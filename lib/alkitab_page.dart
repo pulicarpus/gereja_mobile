@@ -265,7 +265,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     try {
       if (_isPlaying) { await _audioPlayer.pause(); } else {
         setState(() => _isAudioLoading = true);
-        await _audioPlayer.setAudioContext(AudioContext(android: AudioContextAndroid(isSpeakerphoneOn: true, stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.gain), iOS: AudioContextIOS(category: AVAudioSessionCategory.playback, options: [AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers])));
+        await _audioPlayer.setAudioContext(AudioContext(android: AudioContextAndroid(isSpeakerphoneOn: true, stayAwake: true, contentType: AndroidContentType.music, usageType: AndroidUsageType.media, audioFocus: AndroidAudioFocus.gain), iOS: AudioContextIOS(category: AVAudioSessionCategory.playback, options: {AVAudioSessionOptions.defaultToSpeaker, AVAudioSessionOptions.mixWithOthers})));
         final dir = await getApplicationDocumentsDirectory();
         File localFile = File('${dir.path}/audio/$folder/$fileName');
         Source audioSource;

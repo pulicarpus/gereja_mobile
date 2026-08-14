@@ -47,7 +47,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         if (targetChurchId != null && targetChurchId.isNotEmpty) {
           var churchDoc = await _db.collection("churches").doc(targetChurchId).get();
           if (churchDoc.exists) {
-            _churchName = churchDoc.data()?['nama'] ?? "(Nama tidak ditemukan)";
+            _churchName = churchDoc.data()?['namaGereja'] ?? "(Nama tidak ditemukan)";
           } else {
             _churchName = "(ID Gereja tidak valid)";
           }
@@ -139,7 +139,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                       var gerejaData = doc.data() as Map<String, dynamic>;
                       return ListTile(
                         leading: const Icon(Icons.church, color: Colors.indigo),
-                        title: Text(gerejaData['nama'] ?? "Gereja Tanpa Nama", style: const TextStyle(fontWeight: FontWeight.bold)),
+                        title: Text(gerejaData['namaGereja'] ?? "Gereja Tanpa Nama", style: const TextStyle(fontWeight: FontWeight.bold)),
                         onTap: () {
                           Navigator.pop(context); 
                           _assignUserToChurch(doc.id);

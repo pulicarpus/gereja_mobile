@@ -127,7 +127,7 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
                     var data = users[index].data() as Map<String, dynamic>;
                     String docId = users[index].id;
                     
-                    String nama = data['nama'] ?? "Tanpa Nama";
+                    String nama = data['namaLengkap'] ?? "Tanpa Nama";
                     String email = data['email'] ?? "Tidak ada email";
                     String role = data['role'] ?? "user";
                     String kelompok = data['kelompok'] ?? "Umum / Belum diatur";

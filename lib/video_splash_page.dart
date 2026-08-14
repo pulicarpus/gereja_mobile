@@ -27,16 +27,14 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
     _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4")
       ..initialize().then((_) {
         _controller.setVolume(0.0); 
-        setState(() {});
+        if (mounted) setState(() {});
         _controller.play(); 
       });
 
-    _controller.addListener(() {
-      if (_controller.value.isInitialized && 
-          _controller.value.position >= _controller.value.duration && 
-          !_isNavigating) {
-            
-        _isNavigating = true; 
+    // 👇 Splash tampil tepat 2 detik, tidak tergantung durasi video asli
+    Future.delayed(const Duration(seconds: 2), () {
+      if (!_isNavigating) {
+        _isNavigating = true;
         _checkAuthAndNavigate();
       }
     });

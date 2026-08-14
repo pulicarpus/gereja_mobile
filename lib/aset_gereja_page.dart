@@ -57,7 +57,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     final TextEditingController _keteranganController = TextEditingController(
       text: doc != null ? doc['keterangan'] ?? '' : '',
     );
-    
+
     String? _status = doc != null ? doc['status'] ?? 'Baik' : 'Baik';
     String? _fotoUrl = doc != null ? doc['foto_url'] : null;
     File? _imageFile;
@@ -78,7 +78,8 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       GestureDetector(
                         onTap: () async {
                           final picker = ImagePicker();
-                          final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+                          final pickedFile = await picker.pickImage(
+                              source: ImageSource.gallery);
                           if (pickedFile != null) {
                             setStateDialog(() {
                               _imageFile = File(pickedFile.path);
@@ -99,11 +100,16 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                   ? Image.network(_fotoUrl!, fit: BoxFit.cover)
                                   : const Center(
                                       child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
                                         children: [
-                                          Icon(Icons.add_a_photo, color: Colors.grey),
+                                          Icon(Icons.add_a_photo,
+                                              color: Colors.grey),
                                           SizedBox(height: 4),
-                                          Text("Pilih Foto Aset", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                          Text("Pilih Foto Aset",
+                                              style: TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 12)),
                                         ],
                                       ),
                                     ),
@@ -112,30 +118,40 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _namaController,
-                        decoration: const InputDecoration(labelText: 'Nama Aset'),
-                        validator: (val) => val!.isEmpty ? 'Nama aset wajib diisi' : null,
+                        decoration:
+                            const InputDecoration(labelText: 'Nama Aset'),
+                        validator: (val) =>
+                            val!.isEmpty ? 'Nama aset wajib diisi' : null,
                       ),
                       TextFormField(
                         controller: _kategoriController,
-                        decoration: const InputDecoration(labelText: 'Kategori'),
-                        validator: (val) => val!.isEmpty ? 'Kategori wajib diisi' : null,
+                        decoration:
+                            const InputDecoration(labelText: 'Kategori'),
+                        validator: (val) =>
+                            val!.isEmpty ? 'Kategori wajib diisi' : null,
                       ),
                       TextFormField(
                         controller: _jumlahController,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(labelText: 'Jumlah Unit'),
-                        validator: (val) => val!.isEmpty ? 'Jumlah wajib diisi' : null,
+                        decoration:
+                            const InputDecoration(labelText: 'Jumlah Unit'),
+                        validator: (val) =>
+                            val!.isEmpty ? 'Jumlah wajib diisi' : null,
                       ),
                       TextFormField(
                         controller: _lokasiController,
-                        decoration: const InputDecoration(labelText: 'Lokasi'),
-                        validator: (val) => val!.isEmpty ? 'Lokasi wajib diisi' : null,
+                        decoration:
+                            const InputDecoration(labelText: 'Lokasi'),
+                        validator: (val) =>
+                            val!.isEmpty ? 'Lokasi wajib diisi' : null,
                       ),
                       DropdownButtonFormField<String>(
                         value: _status,
-                        decoration: const InputDecoration(labelText: 'Status'),
+                        decoration:
+                            const InputDecoration(labelText: 'Status'),
                         items: ['Baik', 'Rusak Ringan', 'Rusak Berat']
-                            .map((label) => DropdownMenuItem(value: label, child: Text(label)))
+                            .map((label) => DropdownMenuItem(
+                                value: label, child: Text(label)))
                             .toList(),
                         onChanged: (val) {
                           setStateDialog(() {
@@ -145,7 +161,8 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       ),
                       TextFormField(
                         controller: _keteranganController,
-                        decoration: const InputDecoration(labelText: 'Keterangan (Opsional)'),
+                        decoration: const InputDecoration(
+                            labelText: 'Keterangan (Opsional)'),
                       ),
                     ],
                   ),
@@ -160,19 +177,20 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                   onPressed: () async {
                     if (_formKey.currentState!.validate()) {
                       Navigator.pop(context);
-                      
+
                       String? downloadUrl = _fotoUrl;
                       if (_imageFile != null) {
                         final ref = FirebaseStorage.instance
                             .ref()
                             .child('aset_gereja')
-                            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+                            .child(
+                                '${DateTime.now().millisecondsSinceEpoch}.jpg');
                         await ref.putFile(_imageFile!);
                         downloadUrl = await ref.getDownloadURL();
                       }
 
                       final data = {
-                        'gerejaId': widget.gerejaId, 
+                        'gerejaId': widget.gerejaId,
                         'nama_aset': _namaController.text.trim(),
                         'kategori': _kategoriController.text.trim(),
                         'jumlah': int.tryParse(_jumlahController.text) ?? 1,
@@ -180,13 +198,18 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                         'status': _status,
                         'keterangan': _keteranganController.text.trim(),
                         'foto_url': downloadUrl ?? '',
-                        'createdAt': doc == null ? FieldValue.serverTimestamp() : doc['createdAt'],
+                        'createdAt': doc == null
+                            ? FieldValue.serverTimestamp()
+                            : doc['createdAt'],
                       };
 
                       if (doc == null) {
                         await _firestore.collection('aset_gereja').add(data);
                       } else {
-                        await _firestore.collection('aset_gereja').doc(doc.id).update(data);
+                        await _firestore
+                            .collection('aset_gereja')
+                            .doc(doc.id)
+                            .update(data);
                       }
                     }
                   },
@@ -237,6 +260,13 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
         backgroundColor: const Color(0xFF1A237E),
         foregroundColor: Colors.white,
       ),
+      floatingActionButton: UserManager().isAdmin()
+          ? FloatingActionButton(
+              backgroundColor: const Color(0xFF1A237E),
+              onPressed: () => _showAsetDialog(),
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
@@ -264,15 +294,37 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
+                // Penting: tampilkan error asli dari Firestore.
+                // Tanpa ini, error index/permission akan membuat data
+                // terlihat "berkedip lalu hilang" karena jatuh ke
+                // kondisi hasData == false di bawah.
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        "Gagal memuat data aset:\n${snapshot.error}",
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
+                  );
+                }
+
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("Belum ada data aset untuk gereja ini."));
+                  return const Center(
+                      child: Text("Belum ada data aset untuk gereja ini."));
                 }
 
                 final docs = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final nama = (data['nama_aset'] ?? '').toLowerCase();
-                  final kategori = (data['kategori'] ?? '').toLowerCase();
-                  final lokasi = (data['lokasi'] ?? '').toLowerCase();
+                  final nama =
+                      (data['nama_aset'] ?? '').toString().toLowerCase();
+                  final kategori =
+                      (data['kategori'] ?? '').toString().toLowerCase();
+                  final lokasi =
+                      (data['lokasi'] ?? '').toString().toLowerCase();
                   return nama.contains(_searchQuery) ||
                       kategori.contains(_searchQuery) ||
                       lokasi.contains(_searchQuery);
@@ -300,7 +352,8 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                     if (status == 'Rusak Berat') statusColor = Colors.red;
 
                     return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      margin: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       elevation: 2,
                       child: Padding(
                         padding: const EdgeInsets.all(10),
@@ -320,7 +373,8 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                       width: 70,
                                       height: 70,
                                       color: Colors.grey[300],
-                                      child: const Icon(Icons.image, color: Colors.grey),
+                                      child: const Icon(Icons.image,
+                                          color: Colors.grey),
                                     ),
                             ),
                             const SizedBox(width: 10),
@@ -329,7 +383,8 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
                                     children: [
                                       Expanded(
                                         child: Text(
@@ -342,10 +397,12 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                         ),
                                       ),
                                       Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
                                           color: statusColor.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(4),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
                                         ),
                                         child: Text(
                                           status,
@@ -361,21 +418,27 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                   const SizedBox(height: 6),
                                   Row(
                                     children: [
-                                      const Icon(Icons.category, size: 13, color: Colors.grey),
+                                      const Icon(Icons.category,
+                                          size: 13, color: Colors.grey),
                                       const SizedBox(width: 4),
                                       Text("$kategori ($jumlah Unit)",
-                                          style: const TextStyle(fontSize: 12, color: Colors.black87)),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black87)),
                                     ],
                                   ),
                                   const SizedBox(height: 2),
                                   Row(
                                     children: [
-                                      const Icon(Icons.location_on, size: 13, color: Colors.grey),
+                                      const Icon(Icons.location_on,
+                                          size: 13, color: Colors.grey),
                                       const SizedBox(width: 4),
                                       Expanded(
                                         child: Text(
                                           lokasi,
-                                          style: const TextStyle(fontSize: 12, color: Colors.black87),
+                                          style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.black87),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
@@ -386,7 +449,9 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                     Text(
                                       "Ket: $keterangan",
                                       style: const TextStyle(
-                                          fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic),
+                                          fontSize: 11,
+                                          color: Colors.grey,
+                                          fontStyle: FontStyle.italic),
                                     ),
                                   ],
                                   const SizedBox(height: 8),
@@ -395,28 +460,42 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                     children: [
                                       if (UserManager().isAdmin()) ...[
                                         InkWell(
-                                          onTap: () => _showAsetDialog(doc: doc),
+                                          onTap: () =>
+                                              _showAsetDialog(doc: doc),
                                           child: const Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
                                             child: Row(
                                               children: [
-                                                Icon(Icons.edit, size: 14, color: Colors.blue),
+                                                Icon(Icons.edit,
+                                                    size: 14,
+                                                    color: Colors.blue),
                                                 SizedBox(width: 3),
-                                                Text("Edit", style: TextStyle(color: Colors.blue, fontSize: 11)),
+                                                Text("Edit",
+                                                    style: TextStyle(
+                                                        color: Colors.blue,
+                                                        fontSize: 11)),
                                               ],
                                             ),
                                           ),
                                         ),
                                         const SizedBox(width: 12),
                                         InkWell(
-                                          onTap: () => _confirmDelete(doc.id, fotoUrl),
+                                          onTap: () =>
+                                              _confirmDelete(doc.id, fotoUrl),
                                           child: const Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
                                             child: Row(
                                               children: [
-                                                Icon(Icons.delete, size: 14, color: Colors.red),
+                                                Icon(Icons.delete,
+                                                    size: 14,
+                                                    color: Colors.red),
                                                 SizedBox(width: 3),
-                                                Text("Hapus", style: TextStyle(color: Colors.red, fontSize: 11)),
+                                                Text("Hapus",
+                                                    style: TextStyle(
+                                                        color: Colors.red,
+                                                        fontSize: 11)),
                                               ],
                                             ),
                                           ),
@@ -438,15 +517,6 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
           ),
         ],
       ),
-      floatingActionButton: UserManager().isAdmin()
-          ? FloatingActionButton.extended(
-              backgroundColor: const Color(0xFF1A237E),
-              foregroundColor: Colors.white,
-              icon: const Icon(Icons.add),
-              label: const Text("Tambah Aset"),
-              onPressed: () => _showAsetDialog(),
-            )
-          : null,
     );
   }
 }

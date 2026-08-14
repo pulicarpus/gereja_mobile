@@ -306,7 +306,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
 
     String email = _targetUserData?['email'] ?? "Tidak ada email";
     String role = _targetUserData?['role'] ?? "user";
-    String nama = _targetUserData?['nama'] ?? "Jemaat";
+    String nama = _targetUserData?['namaLengkap'] ?? "Jemaat";
     
     bool isSuperAdmin = _userManager.isSuperAdmin();
     bool isAdmin = _userManager.isAdmin();

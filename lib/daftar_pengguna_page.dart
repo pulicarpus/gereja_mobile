@@ -101,7 +101,7 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
                 if (_searchQuery.isNotEmpty) {
                   users = users.where((doc) {
                     var data = doc.data() as Map<String, dynamic>;
-                    String nama = (data['nama'] ?? "").toString().toLowerCase();
+                    String nama = (data['namaLengkap'] ?? "").toString().toLowerCase();
                     String email = (data['email'] ?? "").toString().toLowerCase();
                     return nama.contains(_searchQuery) || email.contains(_searchQuery);
                   }).toList();

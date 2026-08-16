@@ -375,8 +375,12 @@ class _PengurusPageState extends State<PengurusPage> {
                     return Column(
                       children: [
                         _buildGroupCard("PIMPINAN", [buildHarianRow("ketua", "KETUA BPJ"), buildHarianRow("wakil", "WAKIL KETUA")]),
+                        // 👇 GRUP BARU: PENASEHAT 👇
+                        _buildGroupCard("PENASEHAT", [buildHarianRow("penasehat", "PENASEHAT")]),
                         _buildGroupCard("SEKRETARIAT", [buildHarianRow("sek1", "SEKRETARIS 1"), buildHarianRow("sek2", "SEKRETARIS 2")]),
                         _buildGroupCard("KEBENDAHARAAN", [buildHarianRow("bend1", "BENDAHARA 1"), buildHarianRow("bend2", "BENDAHARA 2")]),
+                        // 👇 GRUP BARU: BADAN PEMERIKSA KEUANGAN (BPK) 👇
+                        _buildGroupCard("BADAN PEMERIKSA KEUANGAN (BPK)", [buildHarianRow("bpk1", "ANGGOTA BPK 1"), buildHarianRow("bpk2", "ANGGOTA BPK 2")]),
                       ],
                     );
                   },
@@ -435,11 +439,10 @@ class _PengurusPageState extends State<PengurusPage> {
                     );
                   },
                 ),
-                const SizedBox(height: 80), 
+                const SizedBox(height: 80),
               ],
             ),
           ),
-          
       floatingActionButton: _hasEditAccess()
           ? FloatingActionButton.extended(
               onPressed: () => _showSeksiNameDialog(),

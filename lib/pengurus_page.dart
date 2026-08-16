@@ -263,7 +263,151 @@ class _PengurusPageState extends State<PengurusPage> {
     );
   }
 
-  Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle, VoidCallback? onTapCard}) {
+  // 👇 DIALOG TAMBAH/EDIT/HAPUS ANGGOTA DINAMIS (PENASEHAT & BPK) 👇
+  void _showEditAnggotaDialog(
+    String collectionName, {
+    String? docId,
+    String initialNama = "",
+    String initialWa = "",
+    String? initialFotoUrl,
+  }) {
+    if (!_hasEditAccess()) return;
+
+    File? imageFile;
+    final etNama = TextEditingController(text: initialNama);
+    final etWa = TextEditingController(text: initialWa);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(docId == null ? "Tambah Anggota" : "Edit Anggota", style: const TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+                    if (pickedFile != null) setStateDialog(() => imageFile = File(pickedFile.path));
+                  },
+                  child: CircleAvatar(
+                    radius: 40, backgroundColor: Colors.grey.shade200,
+                    backgroundImage: imageFile != null 
+                        ? FileImage(imageFile!) 
+                        : (initialFotoUrl != null && initialFotoUrl.isNotEmpty ? CachedNetworkImageProvider(initialFotoUrl) : null) as ImageProvider?,
+                    child: (imageFile == null && (initialFotoUrl == null || initialFotoUrl.isEmpty))
+                        ? const Icon(Icons.camera_alt, color: Colors.grey) : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text("Ketuk foto untuk mengubah", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 20),
+
+                TextField(controller: etNama, decoration: const InputDecoration(labelText: "Nama", hintText: "Nama Lengkap")),
+                const SizedBox(height: 10),
+                TextField(controller: etWa, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Nomor WhatsApp", hintText: "Cth: 08123456789")),
+              ],
+            ),
+          ),
+          actions: [
+            if (docId != null)
+              TextButton(
+                onPressed: () {
+                  _db.collection("churches").doc(_activeChurchId).collection(collectionName).doc(docId).delete();
+                  Navigator.pop(context);
+                },
+                child: const Text("Hapus", style: TextStyle(color: Colors.red)),
+              ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
+              onPressed: () async {
+                if (etNama.text.trim().isEmpty) return;
+                setState(() => _isLoading = true);
+                Navigator.pop(context);
+
+                String? uploadedUrl = initialFotoUrl;
+
+                try {
+                  if (imageFile != null) {
+                    String fileName = "${collectionName}_${DateTime.now().millisecondsSinceEpoch}";
+                    Reference ref = _storage.ref().child("gereja/$_activeChurchId/pengurus/$fileName.jpg");
+                    await ref.putFile(imageFile!);
+                    uploadedUrl = await ref.getDownloadURL();
+                  }
+
+                  final dataToSave = {
+                    "nama": etNama.text.trim(),
+                    "wa": etWa.text.trim(),
+                    if (uploadedUrl != null) "fotoUrl": uploadedUrl,
+                  };
+
+                  if (docId == null) {
+                    await _db.collection("churches").doc(_activeChurchId).collection(collectionName).add({
+                      ...dataToSave,
+                      "createdAt": FieldValue.serverTimestamp(),
+                    });
+                  } else {
+                    await _db.collection("churches").doc(_activeChurchId).collection(collectionName).doc(docId).update(dataToSave);
+                  }
+
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data berhasil disimpan!")));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                } finally {
+                  if (mounted) setState(() => _isLoading = false);
+                }
+              },
+              child: const Text("Simpan"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 👇 KARTU GRUP DINAMIS (JUMLAH ANGGOTA BEBAS) — DIPAKAI UNTUK PENASEHAT & BPK 👇
+  Widget _buildDynamicAnggotaCard(String title, String collectionName, String jabatanLabel, String emptyMessage) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _db.collection("churches").doc(_activeChurchId).collection(collectionName).orderBy("createdAt").snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+        List<Widget> memberRows = snapshot.data!.docs.map((doc) {
+          var data = doc.data() as Map<String, dynamic>;
+          String nama = data['nama'] ?? "";
+          String wa = data['wa'] ?? "";
+          String? img = data['fotoUrl'];
+
+          return _buildPersonRow(
+            jabatanLabel, nama, img,
+            () => _showDetailBottomSheet(nama, jabatanLabel, img, wa, "${collectionName}_${doc.id}"),
+            () => _showEditAnggotaDialog(collectionName, docId: doc.id, initialNama: nama, initialWa: wa, initialFotoUrl: img),
+          );
+        }).toList();
+
+        if (memberRows.isEmpty) {
+          memberRows.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              child: Text(emptyMessage, style: TextStyle(color: Colors.grey.shade500, fontStyle: FontStyle.italic, fontSize: 13)),
+            ),
+          );
+        }
+
+        return _buildGroupCard(
+          title,
+          memberRows,
+          onAddMember: () => _showEditAnggotaDialog(collectionName),
+        );
+      },
+    );
+  }
+
+  Widget _buildGroupCard(String title, List<Widget> members, {VoidCallback? onEditTitle, VoidCallback? onTapCard, VoidCallback? onAddMember}) {
     List<Widget> cardContent = [
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -288,6 +432,28 @@ class _PengurusPageState extends State<PengurusPage> {
     for (int i = 0; i < members.length; i++) {
       cardContent.add(members[i]);
       if (i < members.length - 1) cardContent.add(Divider(height: 1, indent: 70, color: Colors.grey.shade200));
+    }
+
+    // 👇 BARIS TAMBAH ANGGOTA (UNTUK GRUP DINAMIS SEPERTI PENASEHAT & BPK) 👇
+    if (onAddMember != null && _hasEditAccess()) {
+      if (members.isNotEmpty) {
+        cardContent.add(Divider(height: 1, indent: 16, color: Colors.grey.shade200));
+      }
+      cardContent.add(
+        InkWell(
+          onTap: onAddMember,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(Icons.add_circle, color: Colors.indigo.shade400, size: 22),
+                const SizedBox(width: 12),
+                Text("Tambah Anggota", style: TextStyle(color: Colors.indigo.shade700, fontWeight: FontWeight.bold, fontSize: 14)),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     return GestureDetector(
@@ -375,16 +541,18 @@ class _PengurusPageState extends State<PengurusPage> {
                     return Column(
                       children: [
                         _buildGroupCard("PIMPINAN", [buildHarianRow("ketua", "KETUA BPJ"), buildHarianRow("wakil", "WAKIL KETUA")]),
-                        // 👇 GRUP BARU: PENASEHAT 👇
-                        _buildGroupCard("PENASEHAT", [buildHarianRow("penasehat", "PENASEHAT")]),
                         _buildGroupCard("SEKRETARIAT", [buildHarianRow("sek1", "SEKRETARIS 1"), buildHarianRow("sek2", "SEKRETARIS 2")]),
                         _buildGroupCard("KEBENDAHARAAN", [buildHarianRow("bend1", "BENDAHARA 1"), buildHarianRow("bend2", "BENDAHARA 2")]),
-                        // 👇 GRUP BARU: BADAN PEMERIKSA KEUANGAN (BPK) 👇
-                        _buildGroupCard("BADAN PEMERIKSA KEUANGAN (BPK)", [buildHarianRow("bpk1", "ANGGOTA BPK 1"), buildHarianRow("bpk2", "ANGGOTA BPK 2")]),
                       ],
                     );
                   },
                 ),
+
+                // 👇 GRUP DINAMIS: PENASEHAT (JUMLAH ANGGOTA BEBAS) 👇
+                _buildDynamicAnggotaCard("PENASEHAT", "bpj_penasehat", "PENASEHAT", "Belum ada penasehat."),
+
+                // 👇 GRUP DINAMIS: BADAN PEMERIKSA KEUANGAN (JUMLAH ANGGOTA BEBAS) 👇
+                _buildDynamicAnggotaCard("BADAN PEMERIKSA KEUANGAN (BPK)", "bpj_bpk", "ANGGOTA BPK", "Belum ada anggota BPK."),
 
                 const SizedBox(height: 20),
 

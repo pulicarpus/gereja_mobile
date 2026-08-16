@@ -19,8 +19,6 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
   bool _isLoading = false;
 
   final GoogleSignIn _googleSignIn = GoogleSignIn();
@@ -50,30 +48,6 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       _showToast("Google Sign-In Gagal: $e");
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _loginManual() async {
-    final email = _emailController.text.trim();
-    final pass = _passwordController.text.trim();
-    if (email.isEmpty || pass.isEmpty) {
-      _showToast("Email dan Password harus diisi");
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email, 
-        password: pass
-      );
-      if (userCredential.user != null) {
-        OneSignal.login(userCredential.user!.uid);
-        _checkUserRegistration(userCredential.user!);
-      }
-    } catch (e) {
-      _showToast("Login Manual Gagal: $e");
       setState(() => _isLoading = false);
     }
   }
@@ -208,23 +182,6 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 80),
                 const Icon(Icons.church, size: 80, color: Colors.indigo),
                 const SizedBox(height: 40),
-                TextField(
-                  controller: _emailController,
-                  decoration: const InputDecoration(labelText: "Email", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(onPressed: _loginManual, child: const Text("LOGIN")),
-                ),
-                const Padding(padding: EdgeInsets.symmetric(vertical: 20), child: Text("Atau")),
                 SizedBox(
                   width: double.infinity,
                   height: 50,

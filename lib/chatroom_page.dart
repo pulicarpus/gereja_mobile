@@ -292,9 +292,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
   Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
-    if (tipe == "text") {
-      if (await _checkIfMuted()) return; 
-    }
+    // Mute berlaku untuk teks, gambar, dokumen, dan audio.
+    if (await _checkIfMuted()) return;
     
     String? churchId = UserManager().activeChurchId;
     if (churchId == null) return;

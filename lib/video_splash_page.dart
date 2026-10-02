@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
-import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
 import 'main.dart'; 
 import 'login_page.dart'; 
@@ -50,9 +51,40 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
       return;
     }
 
-    // 2. Load memori dari HP (Apakah dia sudah sinkron sebelumnya?)
+    // 2. Load cache lokal lebih dulu agar startup tetap ramah kondisi offline.
     final userManager = UserManager();
-    await userManager.loadFromPrefs(); 
+    await userManager.loadFromPrefs();
+
+    // Jika jaringan tersedia, segarkan profil dari Firestore sebelum menentukan rute.
+    try {
+      final doc = await FirebaseFirestore.instance.collection("users").doc(user.uid).get();
+      if (doc.exists) {
+        final data = doc.data() ?? <String, dynamic>{};
+
+        if (data['isBlocked'] == true) {
+          await FirebaseAuth.instance.signOut();
+          await userManager.reset();
+          _doNavigate(const LoginPage());
+          return;
+        }
+
+        await userManager.setUser(
+          role: data['role']?.toString() ?? "user",
+          churchId: data['churchId']?.toString() ?? "",
+          churchName: data['churchName']?.toString() ?? "",
+          uId: user.uid,
+          uNama: data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat",
+          uFoto: data['photoUrl']?.toString() ?? user.photoURL,
+          uKomisi: data['kelompok']?.toString() ?? "Umum",
+          uIsPengurus: data['isPengurus'] == true,
+          uJemaatId: data['jemaatId']?.toString(),
+          uAdminDaerahArea: data['adminDaerahArea']?.toString(),
+          uDaerah: data['daerah']?.toString(),
+        );
+      }
+    } catch (e) {
+      debugPrint("Gagal refresh session saat splash: $e");
+    }
 
     String? churchId = userManager.getChurchIdForCurrentView();
     String? jemaatId = userManager.jemaatId;

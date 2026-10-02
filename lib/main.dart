@@ -174,6 +174,7 @@ class _MainActivityState extends State<MainActivity> {
             uIsPengurus: data['isPengurus'] == true,
             uJemaatId: data['jemaatId']?.toString(),
             uAdminDaerahArea: data['adminDaerahArea']?.toString(),
+            uDaerah: data['daerah']?.toString(),
           );
 
           // Pertahankan konteks pantau Superadmin yang sedang aktif.
@@ -500,7 +501,9 @@ class _MainActivityState extends State<MainActivity> {
       halamanPusatKendali = const ListDaerahPage(); 
     } else {
       // Admin Daerah, Gembala, dan BPJ langsung masuk ke menu daerahnya masing-masing
-      halamanPusatKendali = MenuDaerahPage(namaDaerah: user.adminDaerahArea ?? "Belum Diatur");
+      halamanPusatKendali = MenuDaerahPage(
+        namaDaerah: user.adminDaerahArea ?? user.userDaerah ?? "Belum Diatur",
+      );
     }
 
     // TAMPILKAN MODE SULTAN (Bisa Swipe + Ada Menu Bawah)

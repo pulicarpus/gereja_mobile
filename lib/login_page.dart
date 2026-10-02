@@ -79,6 +79,7 @@ class _LoginPageState extends State<LoginPage> {
           uKomisi: data['kelompok'] ?? "Umum",
           uIsPengurus: statusPengurus, 
           uJemaatId: jemaatId,
+          uAdminDaerahArea: data['adminDaerahArea']?.toString(),
         );
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇

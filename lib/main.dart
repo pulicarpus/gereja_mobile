@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 import 'package:firebase_core/firebase_core.dart';
@@ -108,6 +109,7 @@ class _MainActivityState extends State<MainActivity> {
   final _picker = ImagePicker();
   
   final PageController _pageController = PageController();
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _churchSubscription;
   int _currentIndex = 0;
 
   String? _fotoGembalaUrl;
@@ -121,9 +123,9 @@ class _MainActivityState extends State<MainActivity> {
   String _tiktokGembala = "";
   String _ytGembala = "";
 
-  String _namaBank = "Bank BRI";
-  String _noRekening = "1234-5678-9012-345";
-  String _atasNamaRekening = "GKII SILOAM";
+  String _namaBank = "";
+  String _noRekening = "";
+  String _atasNamaRekening = "";
   
   late Map<String, String> _ayatEmas;
   bool _isLoadingUpload = false;
@@ -137,16 +139,62 @@ class _MainActivityState extends State<MainActivity> {
 
   @override
   void dispose() {
+    _churchSubscription?.cancel();
     _pageController.dispose();
     super.dispose();
   }
 
-  void _initSession() async {
+  Future<void> _initSession() async {
     final userManager = UserManager();
     await userManager.loadFromPrefs();
+
+    final firebaseUser = _auth.currentUser;
+    if (firebaseUser != null) {
+      try {
+        final userDoc = await _db.collection("users").doc(firebaseUser.uid).get();
+        if (userDoc.exists) {
+          final data = userDoc.data() ?? <String, dynamic>{};
+          final firestoreChurchId = data['churchId']?.toString() ?? "";
+          final firestoreChurchName = data['churchName']?.toString() ?? "";
+          final isMonitoringAnotherChurch = userManager.isSuperAdmin() &&
+              userManager.activeChurchId != null &&
+              userManager.activeChurchId!.isNotEmpty &&
+              userManager.activeChurchId != userManager.originalChurchId;
+
+          await userManager.setUser(
+            role: data['role']?.toString() ?? "user",
+            churchId: firestoreChurchId,
+            churchName: firestoreChurchName,
+            uId: firebaseUser.uid,
+            uNama: data['namaLengkap']?.toString() ?? firebaseUser.displayName ?? "Jemaat",
+            uFoto: data['photoUrl']?.toString() ?? firebaseUser.photoURL,
+            uKomisi: data['kelompok']?.toString() ?? "Umum",
+            uIsPengurus: data['isPengurus'] == true,
+            uJemaatId: data['jemaatId']?.toString(),
+            uAdminDaerahArea: data['adminDaerahArea']?.toString(),
+          );
+
+          // Pertahankan konteks pantau Superadmin yang sedang aktif.
+          if (isMonitoringAnotherChurch) {
+            final monitoredChurchId = userManager.activeChurchId;
+            final monitoredChurchName = userManager.activeChurchName;
+            if (monitoredChurchId != null && monitoredChurchId.isNotEmpty) {
+              await userManager.enterChurchContext(
+                monitoredChurchId,
+                monitoredChurchName ?? "Gereja",
+              );
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Gagal refresh profil pengguna: $e");
+        // Cache lokal tetap dipakai agar aplikasi lama/offline tetap dapat dibuka.
+      }
+    }
+
     _setupOneSignal();
     _loadDataGereja();
-    if (mounted) setState(() {}); 
+    if (mounted) setState(() {});
   }
 
   void _setupOneSignal() {
@@ -160,30 +208,76 @@ class _MainActivityState extends State<MainActivity> {
     }
   }
 
-  void _loadDataGereja() {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return;
+  void _resetChurchState() {
+    _fotoGembalaUrl = null;
+    _namaGembala = "Gembala Sidang";
+    _alamatGereja = "Memuat alamat...";
+    _fotoGerejaUrl = null;
+    _waGembala = "";
+    _fbGembala = "";
+    _igGembala = "";
+    _tiktokGembala = "";
+    _ytGembala = "";
+    _namaBank = "";
+    _noRekening = "";
+    _atasNamaRekening = "";
+  }
 
-    _db.collection("churches").doc(churchId).snapshots().listen((snapshot) {
-      if (snapshot.exists && mounted) {
-        setState(() {
-          var data = snapshot.data();
-          _namaGembala = data?['namaGembala'] ?? "Gembala Sidang";
-          _fotoGembalaUrl = data?['fotoGembalaUrl'];
-          _alamatGereja = data?['alamat'] ?? "Alamat tidak tersedia";
-          _fotoGerejaUrl = data?['fotoGerejaUrl'];
-          _waGembala = data?['waGembala'] ?? "";
-          _fbGembala = data?['fbGembala'] ?? "";
-          _igGembala = data?['igGembala'] ?? "";
-          _tiktokGembala = data?['tiktokGembala'] ?? "";
-          _ytGembala = data?['ytGembala'] ?? "";
-          
-          _namaBank = data?['namaBank'] ?? _namaBank;
-          _noRekening = data?['noRekening'] ?? _noRekening;
-          _atasNamaRekening = data?['atasNamaRekening'] ?? _atasNamaRekening;
-        });
+  void _loadDataGereja() {
+    final churchId = UserManager().activeChurchId;
+
+    _churchSubscription?.cancel();
+    _churchSubscription = null;
+
+    if (mounted) {
+      setState(_resetChurchState);
+    } else {
+      _resetChurchState();
+    }
+
+    if (churchId == null || churchId.trim().isEmpty) {
+      if (mounted) {
+        setState(() => _alamatGereja = "Data gereja belum tersedia");
       }
-    });
+      return;
+    }
+
+    _churchSubscription = _db
+        .collection("churches")
+        .doc(churchId)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+
+        if (!snapshot.exists) {
+          setState(() => _alamatGereja = "Data gereja tidak ditemukan");
+          return;
+        }
+
+        final data = snapshot.data();
+        setState(() {
+          _namaGembala = data?['namaGembala']?.toString() ?? "Gembala Sidang";
+          _fotoGembalaUrl = data?['fotoGembalaUrl']?.toString();
+          _alamatGereja = data?['alamat']?.toString() ?? "Alamat tidak tersedia";
+          _fotoGerejaUrl = data?['fotoGerejaUrl']?.toString();
+          _waGembala = data?['waGembala']?.toString() ?? "";
+          _fbGembala = data?['fbGembala']?.toString() ?? "";
+          _igGembala = data?['igGembala']?.toString() ?? "";
+          _tiktokGembala = data?['tiktokGembala']?.toString() ?? "";
+          _ytGembala = data?['ytGembala']?.toString() ?? "";
+          _namaBank = data?['namaBank']?.toString() ?? "";
+          _noRekening = data?['noRekening']?.toString() ?? "";
+          _atasNamaRekening = data?['atasNamaRekening']?.toString() ?? "";
+        });
+      },
+      onError: (Object error) {
+        debugPrint("Gagal memuat data gereja: $error");
+        if (mounted) {
+          setState(() => _alamatGereja = "Gagal memuat data gereja");
+        }
+      },
+    );
   }
 
   Future<void> _ubahFotoGereja() async {
@@ -702,54 +796,79 @@ class _MainActivityState extends State<MainActivity> {
                         ),
                         const SizedBox(height: 10),
                         
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF1A237E), Colors.indigo], 
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                        if (_noRekening.trim().isEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(15),
+                              border: Border.all(color: Colors.grey.shade300),
                             ),
-                            borderRadius: BorderRadius.circular(15),
-                            boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                                child: const Icon(Icons.account_balance, color: Colors.white, size: 28),
-                              ),
-                              const SizedBox(width: 15),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(_namaBank, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 4),
-                                    Text(_noRekening, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-                                    const SizedBox(height: 2),
-                                    Text("a.n $_atasNamaRekening", style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                  ],
+                            child: const Row(
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.grey),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    "Informasi rekening persembahan belum tersedia.",
+                                    style: TextStyle(color: Colors.grey),
+                                  ),
                                 ),
+                              ],
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1A237E), Colors.indigo],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.copy, color: Colors.white),
-                                tooltip: "Salin Rekening",
-                                onPressed: () {
-                                  Clipboard.setData(ClipboardData(text: _noRekening));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Nomor Rekening disalin!"), 
-                                      backgroundColor: Colors.green,
-                                      behavior: SnackBarBehavior.floating,
-                                    )
-                                  );
-                                },
-                              )
-                            ],
+                              borderRadius: BorderRadius.circular(15),
+                              boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                                  child: const Icon(Icons.account_balance, color: Colors.white, size: 28),
+                                ),
+                                const SizedBox(width: 15),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_namaBank.isEmpty ? "Rekening Persembahan" : _namaBank, style: const TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 4),
+                                      Text(_noRekening, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                                      if (_atasNamaRekening.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text("a.n $_atasNamaRekening", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.copy, color: Colors.white),
+                                  tooltip: "Salin Rekening",
+                                  onPressed: () {
+                                    Clipboard.setData(ClipboardData(text: _noRekening));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text("Nomor Rekening disalin!"),
+                                        backgroundColor: Colors.green,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
                         SizedBox(height: screenHeight * 0.04),
                         
                         const Text("Ulang Tahun Bulan Ini", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

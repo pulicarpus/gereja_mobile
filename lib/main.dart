@@ -164,6 +164,7 @@ class _MainActivityState extends State<MainActivity> {
           if (data['isBlocked'] == true) {
             await _auth.signOut();
             await userManager.reset();
+            _isRefreshingSession = false;
             if (!mounted) return;
             Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
             return;

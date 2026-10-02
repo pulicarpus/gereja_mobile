@@ -80,6 +80,7 @@ class _LoginPageState extends State<LoginPage> {
           uIsPengurus: statusPengurus, 
           uJemaatId: jemaatId,
           uAdminDaerahArea: data['adminDaerahArea']?.toString(),
+          uDaerah: data['daerah']?.toString(),
         );
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇

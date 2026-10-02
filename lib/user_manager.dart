@@ -193,6 +193,23 @@ class UserManager {
     adminDaerahArea = null;
     userDaerah = null;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    // Hapus hanya data sesi; cache fitur lain (mis. renungan) tetap dipertahankan.
+    for (final key in <String>[
+      _keyRole,
+      _keyOriginalChurchId,
+      _keyOriginalChurchName,
+      _keyActiveChurchId,
+      _keyActiveChurchName,
+      _keyUserId,
+      _keyUserNama,
+      _keyUserFoto,
+      _keyUserKomisi,
+      _keyIsPengurus,
+      _keyJemaatId,
+      _keyAdminDaerahArea,
+      _keyUserDaerah,
+    ]) {
+      await prefs.remove(key);
+    }
   }
 }

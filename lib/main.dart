@@ -156,10 +156,12 @@ class _MainActivityState extends State<MainActivity> {
           final data = userDoc.data() ?? <String, dynamic>{};
           final firestoreChurchId = data['churchId']?.toString() ?? "";
           final firestoreChurchName = data['churchName']?.toString() ?? "";
+          final monitoredChurchId = userManager.activeChurchId;
+          final monitoredChurchName = userManager.activeChurchName;
           final isMonitoringAnotherChurch = userManager.isSuperAdmin() &&
-              userManager.activeChurchId != null &&
-              userManager.activeChurchId!.isNotEmpty &&
-              userManager.activeChurchId != userManager.originalChurchId;
+              monitoredChurchId != null &&
+              monitoredChurchId.isNotEmpty &&
+              monitoredChurchId != userManager.originalChurchId;
 
           await userManager.setUser(
             role: data['role']?.toString() ?? "user",
@@ -176,8 +178,6 @@ class _MainActivityState extends State<MainActivity> {
 
           // Pertahankan konteks pantau Superadmin yang sedang aktif.
           if (isMonitoringAnotherChurch) {
-            final monitoredChurchId = userManager.activeChurchId;
-            final monitoredChurchName = userManager.activeChurchName;
             if (monitoredChurchId != null && monitoredChurchId.isNotEmpty) {
               await userManager.enterChurchContext(
                 monitoredChurchId,

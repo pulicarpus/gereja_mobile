@@ -18,6 +18,7 @@ class UserManager {
   
   // KUNCI UNTUK ADMIN DAERAH
   static const String _keyAdminDaerahArea = "admin_daerah_area";
+  static const String _keyUserDaerah = "user_daerah";
 
   // Variabel Data
   String? userRole; // 👈 BERISI: "user", "admin", "superadmin", "gembala", "bpj" dll
@@ -34,6 +35,7 @@ class UserManager {
   
   // VARIABEL JABATAN TAMBAHAN (BISA DIRANGKAP)
   String? adminDaerahArea;
+  String? userDaerah;
 
   // Singleton pattern
   static final UserManager _instance = UserManager._internal();
@@ -56,7 +58,8 @@ class UserManager {
     String uKomisi = "Umum",
     bool uIsPengurus = false,
     String? uJemaatId, 
-    String? uAdminDaerahArea, 
+    String? uAdminDaerahArea,
+    String? uDaerah,
   }) async {
     userRole = role;
     userId = uId;
@@ -69,7 +72,8 @@ class UserManager {
     activeChurchName = churchName;
     isPengurus = uIsPengurus; 
     jemaatId = uJemaatId; 
-    adminDaerahArea = uAdminDaerahArea; 
+    adminDaerahArea = uAdminDaerahArea;
+    userDaerah = uDaerah;
     await saveToPrefs();
   }
 
@@ -87,7 +91,8 @@ class UserManager {
     await prefs.setString(_keyActiveChurchName, activeChurchName ?? "");
     await prefs.setBool(_keyIsPengurus, isPengurus); 
     await prefs.setString(_keyJemaatId, jemaatId ?? ""); 
-    await prefs.setString(_keyAdminDaerahArea, adminDaerahArea ?? ""); 
+    await prefs.setString(_keyAdminDaerahArea, adminDaerahArea ?? "");
+    await prefs.setString(_keyUserDaerah, userDaerah ?? "");
   }
 
   // Load data saat aplikasi baru dibuka
@@ -112,6 +117,9 @@ class UserManager {
 
     String? loadedArea = prefs.getString(_keyAdminDaerahArea);
     adminDaerahArea = (loadedArea != null && loadedArea.isNotEmpty) ? loadedArea : null;
+
+    String? loadedUserDaerah = prefs.getString(_keyUserDaerah);
+    userDaerah = (loadedUserDaerah != null && loadedUserDaerah.isNotEmpty) ? loadedUserDaerah : null;
     
     return true;
   }
@@ -182,7 +190,8 @@ class UserManager {
     activeChurchName = null;
     isPengurus = false; 
     jemaatId = null; 
-    adminDaerahArea = null; 
+    adminDaerahArea = null;
+    userDaerah = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }

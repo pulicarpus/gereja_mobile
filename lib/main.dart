@@ -128,6 +128,7 @@ class _MainActivityState extends State<MainActivity> {
   String _atasNamaRekening = "";
   
   late Map<String, String> _ayatEmas;
+  DateTime? _ayatTanggal;
   bool _isLoadingUpload = false;
   bool _isRefreshingSession = false;
   String? _sessionError;
@@ -135,8 +136,99 @@ class _MainActivityState extends State<MainActivity> {
   @override
   void initState() {
     super.initState();
-    _ayatEmas = AyatData.getAyatAcak();
+    _setAyatHariIni();
     _initSession();
+  }
+
+  void _setAyatHariIni() {
+    final now = DateTime.now();
+    if (_ayatTanggal != null &&
+        _ayatTanggal!.year == now.year &&
+        _ayatTanggal!.month == now.month &&
+        _ayatTanggal!.day == now.day) {
+      return;
+    }
+
+    // Ayat tetap selama satu sesi/hari dan tidak berubah karena salah ketuk.
+    _ayatEmas = AyatData.getAyatAcak();
+    _ayatTanggal = DateTime(now.year, now.month, now.day);
+  }
+
+  DateTime? _parseTanggalLahir(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is Timestamp) return raw.toDate();
+
+    final value = raw.toString().trim();
+    if (value.isEmpty) return null;
+
+    for (final format in <DateFormat>[
+      DateFormat('dd/MM/yyyy'),
+      DateFormat('dd-MM-yyyy'),
+      DateFormat('yyyy-MM-dd'),
+      DateFormat('dd/MM/yy'),
+    ]) {
+      try {
+        return format.parseStrict(value);
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Widget _buildQuickAccess(UserManager user) {
+    final items = <({IconData icon, String label, VoidCallback action})>[
+      (icon: Icons.event, label: "Jadwal", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JadwalPage()))),
+      (icon: Icons.volunteer_activism, label: "Doa", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DoaPage()))),
+      (icon: Icons.chat_bubble_outline, label: "Chat", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatroomPage()))),
+      (icon: Icons.photo_library_outlined, label: "Galeri", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GalleryPage()))),
+      (icon: Icons.menu_book, label: "Alkitab", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlkitabPage()))),
+      (icon: Icons.auto_stories, label: "Renungan", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RenunganPage()))),
+      (icon: Icons.music_note, label: "Lagu", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LaguPage()))),
+      if (user.isAdmin() || user.isSuperAdmin())
+        (icon: Icons.people_outline, label: "Jemaat", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DataJemaatPage()))),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Akses Cepat", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.95,
+          ),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: item.action,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.indigo.shade50),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6, offset: const Offset(0, 3))],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(item.icon, color: Colors.indigo, size: 25),
+                    const SizedBox(height: 6),
+                    Text(item.label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   @override
@@ -717,11 +809,7 @@ class _MainActivityState extends State<MainActivity> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () {
-                            setState(() { _ayatEmas = AyatData.getAyatAcak(); });
-                          },
-                          child: Container(
+                        Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(20),
                             decoration: BoxDecoration(
@@ -745,7 +833,9 @@ class _MainActivityState extends State<MainActivity> {
                               ],
                             ),
                           ),
-                        ),
+
+                        const SizedBox(height: 24),
+                        _buildQuickAccess(user),
                         
                         SizedBox(height: screenHeight * 0.04), 
                         

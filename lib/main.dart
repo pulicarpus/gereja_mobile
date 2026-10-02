@@ -129,6 +129,8 @@ class _MainActivityState extends State<MainActivity> {
   
   late Map<String, String> _ayatEmas;
   bool _isLoadingUpload = false;
+  bool _isRefreshingSession = false;
+  String? _sessionError;
 
   @override
   void initState() {
@@ -145,6 +147,10 @@ class _MainActivityState extends State<MainActivity> {
   }
 
   Future<void> _initSession() async {
+    if (_isRefreshingSession) return;
+    _isRefreshingSession = true;
+    _sessionError = null;
+
     final userManager = UserManager();
     await userManager.loadFromPrefs();
 
@@ -154,6 +160,15 @@ class _MainActivityState extends State<MainActivity> {
         final userDoc = await _db.collection("users").doc(firebaseUser.uid).get();
         if (userDoc.exists) {
           final data = userDoc.data() ?? <String, dynamic>{};
+
+          if (data['isBlocked'] == true) {
+            await _auth.signOut();
+            await userManager.reset();
+            if (!mounted) return;
+            Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+            return;
+          }
+
           final firestoreChurchId = data['churchId']?.toString() ?? "";
           final firestoreChurchName = data['churchName']?.toString() ?? "";
           final monitoredChurchId = userManager.activeChurchId;
@@ -189,12 +204,14 @@ class _MainActivityState extends State<MainActivity> {
         }
       } catch (e) {
         debugPrint("Gagal refresh profil pengguna: $e");
+        _sessionError = "Profil terbaru belum dapat dimuat. Menampilkan data tersimpan.";
         // Cache lokal tetap dipakai agar aplikasi lama/offline tetap dapat dibuka.
       }
     }
 
     _setupOneSignal();
     _loadDataGereja();
+    _isRefreshingSession = false;
     if (mounted) setState(() {});
   }
 
@@ -579,6 +596,29 @@ class _MainActivityState extends State<MainActivity> {
           : SingleChildScrollView(
               child: Column(
                 children: [
+                  if (_sessionError != null)
+                    Container(
+                      width: double.infinity,
+                      color: Colors.amber.shade50,
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.cloud_off, color: Colors.orange),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _sessionError!,
+                              style: const TextStyle(fontSize: 12, color: Colors.black87),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: _isRefreshingSession ? null : _initSession,
+                            child: const Text("COBA LAGI"),
+                          ),
+                        ],
+                      ),
+                    ),
+
                   if (isMemantau)
                     Container(
                       color: Colors.orange.shade100,

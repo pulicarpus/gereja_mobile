@@ -44,7 +44,7 @@ class _LoginPageState extends State<LoginPage> {
 
       if (user != null) {
         OneSignal.login(user.uid);
-        _checkUserRegistration(user);
+        await _checkUserRegistration(user);
       }
     } catch (e) {
       _showToast("Google Sign-In Gagal: $e");
@@ -52,12 +52,21 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _checkUserRegistration(User user) async {
+  Future<void> _checkUserRegistration(User user) async {
     try {
       DocumentSnapshot doc = await _db.collection("users").doc(user.uid).get();
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
+        if (data['isBlocked'] == true) {
+          await _auth.signOut();
+          await UserManager().reset();
+          if (!mounted) return;
+          _showToast("Akun Anda sedang dinonaktifkan. Hubungi administrator gereja.");
+          setState(() => _isLoading = false);
+          return;
+        }
+
         String role = data['role'] ?? "user";
         String? churchId = data['churchId']; 
         String? jemaatId = data['jemaatId']; 

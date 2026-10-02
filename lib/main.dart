@@ -1045,22 +1045,17 @@ class _MainActivityState extends State<MainActivity> {
         }
 
         List<Map<String, dynamic>> ultahList = [];
-        String bulanSekarang = DateFormat('MM').format(DateTime.now());
-        String tanggalSekarang = DateFormat('dd').format(DateTime.now());
+        final now = DateTime.now();
 
         for (var doc in snapshot.data!.docs) {
-          var data = doc.data() as Map<String, dynamic>;
-          String tglLahir = data['tanggalLahir'] ?? ""; 
+          final source = doc.data() as Map<String, dynamic>;
+          final lahir = _parseTanggalLahir(source['tanggalLahir']);
+          if (lahir == null || lahir.month != now.month) continue;
 
-          if (tglLahir.length >= 10) {
-            String hariLahir = tglLahir.substring(0, 2);
-            String bulanLahir = tglLahir.substring(3, 5);
-
-            if (bulanLahir == bulanSekarang) {
-              data['isHariIni'] = (hariLahir == tanggalSekarang);
-              ultahList.add(data);
-            }
-          }
+          final data = Map<String, dynamic>.from(source);
+          data['_lahirDate'] = lahir;
+          data['isHariIni'] = lahir.day == now.day;
+          ultahList.add(data);
         }
 
         if (ultahList.isEmpty) {
@@ -1078,9 +1073,13 @@ class _MainActivityState extends State<MainActivity> {
         }
 
         ultahList.sort((a, b) {
-          if (a['isHariIni'] && !b['isHariIni']) return -1;
-          if (!a['isHariIni'] && b['isHariIni']) return 1;
-          return 0;
+          final aDate = a['_lahirDate'] as DateTime;
+          final bDate = b['_lahirDate'] as DateTime;
+          final aUpcoming = aDate.day >= now.day;
+          final bUpcoming = bDate.day >= now.day;
+
+          if (aUpcoming != bUpcoming) return aUpcoming ? -1 : 1;
+          return aDate.day.compareTo(bDate.day);
         });
 
         return SizedBox(
@@ -1095,8 +1094,8 @@ class _MainActivityState extends State<MainActivity> {
               String namaLengkap = jemaat['namaLengkap'] ?? "Nama";
               String namaPendek = namaLengkap.split(' ')[0];
 
-              String tglLahirPenuh = jemaat['tanggalLahir'] ?? "";
-              String tglSingkat = tglLahirPenuh.length >= 5 ? tglLahirPenuh.substring(0, 5) : tglLahirPenuh;
+              final lahir = jemaat['_lahirDate'] as DateTime?;
+              final tglSingkat = lahir == null ? "-" : DateFormat('dd-MM').format(lahir);
 
               return Container(
                 width: 100,

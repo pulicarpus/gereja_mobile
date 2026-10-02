@@ -76,10 +76,19 @@ jobs:
           cd build/app/outputs/flutter-apk
           zip -j app-release.zip app-release.apk
 
+      # Upload Artifact di GitHub lebih dulu agar APK tetap tersedia
+      # meskipun layanan Telegram sedang bermasalah.
+      - name: Upload ZIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-zip
+          path: build/app/outputs/flutter-apk/app-release.zip
+
       # =========================================================
       # 🚀 4. KIRIM FILE ZIP LANGSUNG KE TELEGRAM
       # =========================================================
       - name: Kirim ZIP ke Telegram
+        continue-on-error: true
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -91,9 +100,3 @@ jobs:
             📦 File APK sudah dikompresi ke format `.zip` agar lebih hemat kuota & penyimpanan. 
             Silakan unduh dan ekstrak untuk menginstal.
 
-      # Upload Artifact di GitHub (Format ZIP)
-      - name: Upload ZIP Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-zip
-          path: build/app/outputs/flutter-apk/app-release.zip

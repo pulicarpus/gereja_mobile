@@ -45,6 +45,15 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
     return _songsFuture ??= _db.collection("songs").get();
   }
 
+  List<String> _asStringList(dynamic raw) {
+    if (raw is Iterable) {
+      final result = raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      return result.isEmpty ? ["Belum diatur."] : result;
+    }
+    final text = raw?.toString().trim() ?? "";
+    return text.isEmpty ? ["Belum diatur."] : [text];
+  }
+
   // =========================================================================
   // 1. DIALOG EDIT (DENGAN TOMBOL CARI BUKU LAGU)
   // =========================================================================
@@ -287,8 +296,8 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
               return const Center(child: Text("Jadwal ini sudah tidak tersedia."));
             }
             final data = snapshot.data!.data() as Map<String, dynamic>?;
-            _currentUrutan = List<String>.from(data?['urutanAcara'] ?? ["Belum diatur."]);
-            _currentLagu = List<String>.from(data?['daftarLagu'] ?? ["Belum diatur."]);
+            _currentUrutan = _asStringList(data?['urutanAcara']);
+            _currentLagu = _asStringList(data?['daftarLagu']);
 
             return TabBarView(
               children: [
@@ -442,6 +451,9 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator(color: Colors.indigo));
+            }
+            if (snapshot.hasError) {
+              return const Center(child: Text("Gagal memuat lirik."));
             }
             
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {

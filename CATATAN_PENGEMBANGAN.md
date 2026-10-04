@@ -40,8 +40,14 @@ Branch kerja: `perbaikan-fitur-daerah`
 - Admin Daerah memakai `adminDaerahArea`; Gembala/BPJ dapat fallback ke `userDaerah`.
 - Tidak ada perubahan field Firebase atau migrasi daerah.
 
-## Fase 5 — Hardening/pengembangan aman
-- Mute chat sekarang berlaku untuk semua tipe pesan (teks, gambar, dokumen, audio), bukan teks saja.
+## Fase 5 — Informasi Home + kompatibilitas (selesai implementasi)
+- Quick Access dibatalkan/dihapus berdasarkan hasil uji pengguna.
+- Home membaca pengumuman lama dari `churches/{churchId}/pengumuman/utama`; tidak membuat collection/field baru.
+- Pengumuman Home memiliki indikator BARU/unread yang disimpan lokal di SharedPreferences, bukan Firebase.
+- Teks pengumuman terakhir dicache lokal sebagai fallback ketika snapshot online tidak tersedia.
+- Home membaca agenda terdekat dari collection `jadwal` dan field `tanggal` yang sudah ada.
+- Kartu ulang tahun hari ini dapat membuka ucapan WhatsApp menggunakan field lama `nomorTelepon`; tidak menulis ke data jemaat.
+- Mute chat berlaku untuk semua tipe pesan (teks, gambar, dokumen, audio), bukan teks saja.
 - Perubahan yang membutuhkan backend/schema baru sengaja ditunda agar kompatibilitas aplikasi lama terjaga.
 
 ## Temuan penting yang masih harus ditangani setelah APK diuji
@@ -50,7 +56,7 @@ Branch kerja: `perbaikan-fitur-daerah`
 3. Claim/sinkronisasi jemaat dengan nomor telepon + tahun lahir perlu diperkuat server-side.
 4. Role/privilege write dari client harus dijamin oleh Security Rules.
 5. Kode undangan gereja perlu uniqueness yang lebih kuat tanpa memutus kode lama.
-6. Pengumuman/badge unread/offline dashboard yang benar membutuhkan desain data/backend; jangan ditambahkan sebelum strategi kompatibilitas disepakati.
+6. Unread pengumuman saat ini bersifat per-perangkat (SharedPreferences). Sinkronisasi lintas perangkat baru boleh dipertimbangkan setelah strategi backend kompatibel disepakati.
 7. Perlu audit UI di perangkat kecil/besar dan akun semua role setelah APK final.
 
 ## Checklist uji APK

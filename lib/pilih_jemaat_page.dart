@@ -85,6 +85,9 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.indigo));
           }
+          if (snapshot.hasError) {
+            return const Center(child: Text("Gagal memuat daftar jemaat."));
+          }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("Belum ada data jemaat."));
           }
@@ -116,10 +119,8 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
             itemCount: listJemaat.length,
             itemBuilder: (context, index) {
               var doc = listJemaat[index];
-              var data = doc.data() as Map<String, dynamic>;
-              
-              // Tambahkan ID dokumen ke dalam map data supaya gampang dipakai nanti
-              data['id'] = doc.id; 
+              final source = doc.data() as Map<String, dynamic>;
+              final data = <String, dynamic>{...source, 'id': doc.id};
 
               String nama = data['namaLengkap'] ?? "Tanpa Nama";
               String? fotoUrl = data['fotoProfil'];

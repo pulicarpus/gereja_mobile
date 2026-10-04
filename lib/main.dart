@@ -174,62 +174,6 @@ class _MainActivityState extends State<MainActivity> {
     return null;
   }
 
-  Widget _buildQuickAccess(UserManager user) {
-    final items = <({IconData icon, String label, VoidCallback action})>[
-      (icon: Icons.event, label: "Jadwal", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JadwalPage()))),
-      (icon: Icons.volunteer_activism, label: "Doa", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DoaPage()))),
-      (icon: Icons.chat_bubble_outline, label: "Chat", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatroomPage()))),
-      (icon: Icons.photo_library_outlined, label: "Galeri", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GalleryPage()))),
-      (icon: Icons.menu_book, label: "Alkitab", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlkitabPage()))),
-      (icon: Icons.auto_stories, label: "Renungan", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RenunganPage()))),
-      (icon: Icons.music_note, label: "Lagu", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LaguPage()))),
-      if (user.isAdmin() || user.isSuperAdmin())
-        (icon: Icons.people_outline, label: "Jemaat", action: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DataJemaatPage()))),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text("Akses Cepat", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: items.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 0.95,
-          ),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: item.action,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.indigo.shade50),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6, offset: const Offset(0, 3))],
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(item.icon, color: Colors.indigo, size: 25),
-                    const SizedBox(height: 6),
-                    Text(item.label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
 
   @override
   void dispose() {
@@ -833,9 +777,6 @@ class _MainActivityState extends State<MainActivity> {
                               ],
                             ),
                           ),
-
-                        const SizedBox(height: 24),
-                        _buildQuickAccess(user),
                         
                         SizedBox(height: screenHeight * 0.04), 
                         

@@ -35,7 +35,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   String _statusNikah = "Belum Menikah";
   String _statusBaptis = "Belum";
   String _kelompok = "Lainnya";
-  String _statusKeluarga = "Kepala Keluarga";
+  String _statusKeluarga = "Belum Diatur";
 
   File? _imageFile;
   String? _existingPhotoUrl;
@@ -60,7 +60,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       _statusNikah = d['statusPernikahan'] ?? "Belum Menikah";
       _statusBaptis = d['statusBaptis'] ?? "Belum";
       _kelompok = d['kelompok'] ?? "Lainnya";
-      _statusKeluarga = d['statusKeluarga'] ?? "Kepala Keluarga";
+      _statusKeluarga = d['statusKeluarga'] ?? "Belum Diatur";
     }
     
     // Logika Status Keluarga jika menambah anggota dari list keluarga
@@ -116,7 +116,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         "alamat": _alamatController.text,
         "nomorTelepon": _noTelpController.text,
         "statusPernikahan": _statusNikah,
-        "statusKeluarga": _statusKeluarga,
+        if (widget.jemaatData != null || widget.idKepalaKeluargaBaru != null) "statusKeluarga": _statusKeluarga,
         "statusBaptis": _statusBaptis,
         "kelompok": _kelompok,
         "karuniaPelayanan": _karuniaController.text,
@@ -131,7 +131,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         await colRef.doc(widget.jemaatData!['id']).update(jemaatMap);
       } else {
         // TAMBAH BARU
-        if (_statusKeluarga != "Kepala Keluarga") {
+        if (widget.idKepalaKeluargaBaru != null) {
           jemaatMap["idKepalaKeluarga"] = widget.idKepalaKeluargaBaru;
         }
 
@@ -141,9 +141,8 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         // Update ID dokumen ke dalam field 'id' (Sinkron dengan Kotlin lama)
         await docRef.update({"id": newId});
         
-        if (_statusKeluarga == "Kepala Keluarga") {
-          await docRef.update({"idKepalaKeluarga": newId});
-        }
+        // Relasi keluarga untuk data baru biasa sengaja belum ditetapkan.
+        // Penetapan Kepala Keluarga/Istri/Anak/Ayah/Ibu dilakukan dari Menu Keluarga.
       }
 
       if (mounted) Navigator.pop(context, true);

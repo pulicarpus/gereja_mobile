@@ -1218,7 +1218,21 @@ class _MainActivityState extends State<MainActivity> {
               final lahir = jemaat['_lahirDate'] as DateTime?;
               final tglSingkat = lahir == null ? "-" : DateFormat('dd-MM').format(lahir);
 
-              return Container(
+              final nomorTelepon = jemaat['nomorTelepon']?.toString().trim() ?? '';
+
+              return InkWell(
+                borderRadius: BorderRadius.circular(15),
+                onTap: isHariIni && nomorTelepon.isNotEmpty
+                    ? () async {
+                        final clean = nomorTelepon.replaceAll(RegExp(r'[^0-9+]'), '');
+                        final waNumber = clean.startsWith('0') ? '62${clean.substring(1)}' : clean.replaceFirst('+', '');
+                        final uri = Uri.parse('https://wa.me/$waNumber?text=${Uri.encodeComponent('Selamat ulang tahun, $namaPendek! Tuhan Yesus memberkati.')}');
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      }
+                    : null,
+                child: Container(
                 width: 100,
                 margin: const EdgeInsets.only(right: 12),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
@@ -1260,6 +1274,7 @@ class _MainActivityState extends State<MainActivity> {
                     )
                   ],
                 ),
+              ),
               );
             },
           ),

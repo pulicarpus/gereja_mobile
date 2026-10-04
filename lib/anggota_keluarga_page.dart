@@ -231,6 +231,9 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.indigo));
           }
+          if (snapshot.hasError) {
+            return const Center(child: Text("Gagal memuat anggota keluarga."));
+          }
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text("Tidak ada anggota keluarga."));
           }
@@ -253,8 +256,8 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             itemCount: listAnggota.length,
             itemBuilder: (context, index) {
               var doc = listAnggota[index];
-              var data = doc.data() as Map<String, dynamic>;
-              data['id'] = doc.id; // Jangan lupa simpan ID-nya untuk dikirim ke detail
+              final source = doc.data() as Map<String, dynamic>;
+              final data = <String, dynamic>{...source, 'id': doc.id};
               
               String status = data['statusKeluarga'] ?? "-";
               String nama = data['namaLengkap'] ?? "Tanpa Nama";

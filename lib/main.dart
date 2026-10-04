@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'user_manager.dart';
 import 'login_page.dart';
@@ -132,6 +133,9 @@ class _MainActivityState extends State<MainActivity> {
   bool _isLoadingUpload = false;
   bool _isRefreshingSession = false;
   String? _sessionError;
+  String? _cachedPengumuman;
+  String? _lastSeenPengumuman;
+  bool _homeCacheLoaded = false;
 
   @override
   void initState() {
@@ -174,6 +178,177 @@ class _MainActivityState extends State<MainActivity> {
     return null;
   }
 
+
+  String _homeCacheKey(String suffix) {
+    final churchId = UserManager().activeChurchId ?? 'unknown';
+    return 'home_${churchId}_$suffix';
+  }
+
+  Future<void> _loadHomeLocalState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString(_homeCacheKey('pengumuman_cache'));
+    final seen = prefs.getString(_homeCacheKey('pengumuman_seen'));
+    if (!mounted) return;
+    setState(() {
+      _cachedPengumuman = cached;
+      _lastSeenPengumuman = seen;
+      _homeCacheLoaded = true;
+    });
+  }
+
+  Future<void> _cachePengumuman(String text) async {
+    final normalized = text.trim();
+    if (normalized.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_homeCacheKey('pengumuman_cache'), normalized);
+    if (mounted && _cachedPengumuman != normalized) {
+      setState(() => _cachedPengumuman = normalized);
+    }
+  }
+
+  Future<void> _markPengumumanSeen(String text) async {
+    final normalized = text.trim();
+    if (normalized.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_homeCacheKey('pengumuman_seen'), normalized);
+    if (mounted) setState(() => _lastSeenPengumuman = normalized);
+  }
+
+  Widget _buildFase5Ringkasan(String? churchId) {
+    if (churchId == null || churchId.trim().isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Informasi Terbaru", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          stream: _db.collection('churches').doc(churchId).collection('pengumuman').doc('utama').snapshots(),
+          builder: (context, snapshot) {
+            String? text;
+            bool fromCache = false;
+            if (snapshot.hasData && snapshot.data!.exists) {
+              text = snapshot.data!.data()?['teks']?.toString().trim();
+              if (text != null && text.isNotEmpty && text != _cachedPengumuman) {
+                WidgetsBinding.instance.addPostFrameCallback((_) => _cachePengumuman(text!));
+              }
+            }
+            if ((text == null || text.isEmpty) && _cachedPengumuman != null && _cachedPengumuman!.isNotEmpty) {
+              text = _cachedPengumuman;
+              fromCache = true;
+            }
+            if (text == null || text.isEmpty) return const SizedBox.shrink();
+
+            final unread = _homeCacheLoaded && text != _lastSeenPengumuman;
+            return InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () {
+                _markPengumumanSeen(text!);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const JadwalPage()));
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: unread ? Colors.orange : Colors.amber.shade200, width: unread ? 1.5 : 1),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.campaign, color: Colors.orange),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            const Text("Pengumuman", style: TextStyle(fontWeight: FontWeight.bold)),
+                            if (unread) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                                child: const Text("BARU", style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                            if (fromCache) ...[
+                              const SizedBox(width: 8),
+                              const Icon(Icons.offline_bolt, size: 14, color: Colors.grey),
+                            ],
+                          ]),
+                          const SizedBox(height: 5),
+                          Text(text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: _db.collection('churches').doc(churchId).collection('jadwal')
+              .where('tanggal', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now()))
+              .orderBy('tanggal')
+              .limit(1)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) return const SizedBox.shrink();
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
+            final data = snapshot.data!.docs.first.data();
+            final tanggal = data['tanggal'];
+            if (tanggal is! Timestamp) return const SizedBox.shrink();
+            final date = tanggal.toDate();
+            final kategori = data['kategoriKegiatan']?.toString();
+            if (kategori != null && kategori.isNotEmpty && kategori != 'Umum') return const SizedBox.shrink();
+            final nama = data['namaKegiatan']?.toString().trim();
+            final tempat = data['tempat']?.toString().trim();
+
+            return InkWell(
+              borderRadius: BorderRadius.circular(15),
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JadwalPage())),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(15),
+                  border: Border.all(color: Colors.indigo.shade100),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.event_available, color: Colors.indigo),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text("Agenda Terdekat", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                          const SizedBox(height: 4),
+                          Text(nama == null || nama.isEmpty ? "Jadwal Gereja" : nama, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                            "${DateFormat('EEEE, d MMMM • HH:mm', 'id_ID').format(date)}${tempat == null || tempat.isEmpty ? '' : ' • $tempat'}",
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.grey),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
 
   @override
   void dispose() {
@@ -248,6 +423,7 @@ class _MainActivityState extends State<MainActivity> {
 
     _setupOneSignal();
     _loadDataGereja();
+    await _loadHomeLocalState();
     _isRefreshingSession = false;
     if (mounted) setState(() {});
   }
@@ -778,6 +954,10 @@ class _MainActivityState extends State<MainActivity> {
                             ),
                           ),
                         
+                        SizedBox(height: screenHeight * 0.04),
+
+                        _buildFase5Ringkasan(user.activeChurchId),
+
                         SizedBox(height: screenHeight * 0.04), 
                         
                         Row(

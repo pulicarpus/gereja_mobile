@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart'; 
-import 'package:http/http.dart' as http; 
+import 'package:http/http.dart' as http;
+import 'package:share_plus/share_plus.dart';
 import 'dart:convert'; 
 
 import 'user_manager.dart'; 
@@ -23,12 +24,13 @@ class _JadwalPageState extends State<JadwalPage> {
   
   // 👇 INI DIA SATPAM SAKTINYA BOS 👇
   bool canEdit = false;
+  bool _showRiwayat = false;
 
   @override
   void initState() {
     super.initState();
     final userManager = UserManager();
-    churchId = userManager.activeChurchId;
+    churchId = userManager.getChurchIdForCurrentView();
     
     // Cek apakah dia Admin/Superadmin Global
     bool isGlobalAdmin = userManager.isAdmin();
@@ -43,20 +45,46 @@ class _JadwalPageState extends State<JadwalPage> {
     canEdit = isGlobalAdmin || isPengurusKomisiIni;
   }
 
-  String _formatTanggalSultan(String rawDate) {
+  DateTime? _dateFromData(Map<String, dynamic> data) {
+    final raw = data['tanggal'];
+    if (raw is Timestamp) return raw.toDate();
+    final waktu = data['waktu']?.toString().trim();
+    if (waktu == null || waktu.isEmpty) return null;
     try {
-      DateTime dt = DateFormat("yyyy-MM-dd HH:mm").parse(rawDate);
-      return DateFormat("EEEE, d MMMM yyyy • HH:mm", "id_ID").format(dt);
-    } catch (e) {
-      return rawDate; 
+      return DateFormat("yyyy-MM-dd HH:mm").parse(waktu);
+    } catch (_) {
+      return null;
     }
   }
 
-  Future<void> _sendPengumumanNotification(String isiPengumuman) async {
+  String _formatTanggal(Map<String, dynamic> data) {
+    final dt = _dateFromData(data);
+    if (dt != null) {
+      return DateFormat("EEEE, d MMMM yyyy • HH:mm", "id_ID").format(dt);
+    }
+    final fallback = data['waktu']?.toString().trim();
+    return (fallback == null || fallback.isEmpty) ? "-" : fallback;
+  }
+
+  String? _labelHari(Map<String, dynamic> data) {
+    final dt = _dateFromData(data);
+    if (dt == null) return null;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(dt.year, dt.month, dt.day);
+    final diff = day.difference(today).inDays;
+    if (diff == 0) return "HARI INI";
+    if (diff == 1) return "BESOK";
+    return null;
+  }
+
+  Future<bool> _sendPengumumanNotification(String isiPengumuman) async {
     try {
       Map<String, dynamic> payload = {
         "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
-        "included_segments": ["All"], 
+        "filters": [
+          {"field": "tag", "key": "active_church", "relation": "=", "value": churchId}
+        ], 
         "headings": {"en": "📢 Pengumuman Gereja!"},
         "contents": {"en": isiPengumuman},
         "data": {
@@ -65,17 +93,20 @@ class _JadwalPageState extends State<JadwalPage> {
         }
       };
 
-      await http.post(
+      final response = await http.post(
         Uri.parse("https://onesignal.com/api/v1/notifications"),
         headers: {
           "Content-Type": "application/json; charset=utf-8",
-          "Authorization": "Basic $osRestKeySecret" 
+          "Authorization": "Basic $osRestKeySecret"
         },
         body: jsonEncode(payload),
       );
-      debugPrint("Notif Pengumuman sukses ditembak!");
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      debugPrint(ok ? "Notif pengumuman berhasil dikirim." : "Notif pengumuman ditolak: ${response.statusCode}");
+      return ok;
     } catch (e) {
       debugPrint("Error kirim notif pengumuman: $e");
+      return false;
     }
   }
 
@@ -104,7 +135,7 @@ class _JadwalPageState extends State<JadwalPage> {
           }
           
           final docs = snapshot.data?.docs ?? [];
-          final filteredDocs = docs.where((doc) {
+          final categoryDocs = docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final kat = data['kategoriKegiatan'];
             if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
@@ -113,11 +144,40 @@ class _JadwalPageState extends State<JadwalPage> {
             return kat == widget.filterKategorial;
           }).toList();
 
+          final now = DateTime.now();
+          final upcoming = categoryDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final date = _dateFromData(data);
+            return date == null || !date.isBefore(now);
+          }).toList();
+          final history = categoryDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final date = _dateFromData(data);
+            return date != null && date.isBefore(now);
+          }).toList().reversed.toList();
+          final filteredDocs = _showRiwayat ? history : upcoming;
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
               _buildPengumumanCard(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  ChoiceChip(
+                    label: Text("Akan Datang (${upcoming.length})"),
+                    selected: !_showRiwayat,
+                    onSelected: (_) => setState(() => _showRiwayat = false),
+                  ),
+                  const SizedBox(width: 8),
+                  ChoiceChip(
+                    label: Text("Riwayat (${history.length})"),
+                    selected: _showRiwayat,
+                    onSelected: (_) => setState(() => _showRiwayat = true),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               
               if (filteredDocs.isEmpty)
                 const Padding(
@@ -128,7 +188,7 @@ class _JadwalPageState extends State<JadwalPage> {
                         Icon(Icons.event_busy, size: 60, color: Colors.grey),
                         SizedBox(height: 10),
                         Text(
-                          "Belum ada jadwal ibadah", 
+                          "Tidak ada jadwal pada bagian ini", 
                           style: TextStyle(color: Colors.grey, fontSize: 16)
                         ),
                       ],
@@ -205,6 +265,7 @@ class _JadwalPageState extends State<JadwalPage> {
     final data = doc.data() as Map<String, dynamic>;
     final pelayan = data['pelayan'] as Map<String, dynamic>? ?? {};
     final String namaKeg = data['namaKegiatan'] ?? "-";
+    final labelHari = _labelHari(data);
     
     final List<Map<String, dynamic>> rows = [
       {'label': 'W.L', 'val': pelayan['Worship Leader'], 'icon': Icons.mic_external_on},
@@ -234,7 +295,17 @@ class _JadwalPageState extends State<JadwalPage> {
             ]
           ),
           child: ExpansionTile(
-            title: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.indigo)),
+            title: Row(
+              children: [
+                Expanded(child: Text(namaKeg, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.indigo))),
+                if (labelHari != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
+                    child: Text(labelHari, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+                  ),
+              ],
+            ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Column(
@@ -244,7 +315,7 @@ class _JadwalPageState extends State<JadwalPage> {
                     children: [
                       const Icon(Icons.access_time_filled, size: 14, color: Colors.grey),
                       const SizedBox(width: 6),
-                      Text(_formatTanggalSultan(data['waktu'] ?? '-'), style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500)),
+                      Text(_formatTanggal(data), style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500)),
                     ],
                   ),
                   const SizedBox(height: 4),
@@ -319,6 +390,16 @@ class _JadwalPageState extends State<JadwalPage> {
               }),
               
               Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Petugas terisi: ${visibleRows.length}/${rows.length}",
+                    style: TextStyle(fontSize: 12, color: visibleRows.length == rows.length ? Colors.green.shade700 : Colors.orange.shade800, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
@@ -334,6 +415,12 @@ class _JadwalPageState extends State<JadwalPage> {
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      tooltip: "Bagikan jadwal",
+                      onPressed: () => _shareJadwal(data, visibleRows),
+                      icon: const Icon(Icons.share, color: Colors.indigo),
                     ),
                     // 👇 TOMBOL EDIT MUNCUL JIKA canEdit == true 👇
                     if (canEdit) ...[
@@ -383,14 +470,24 @@ class _JadwalPageState extends State<JadwalPage> {
               
               Navigator.pop(context);
               
-              await _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': teksBaru});
-              
-              if (teksBaru.isNotEmpty) {
-                await _sendPengumumanNotification(teksBaru);
-              }
-              
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pengumuman disimpan & Notif dikirim!"), backgroundColor: Colors.green));
+              try {
+                await _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).set({'teks': teksBaru});
+                bool notifOk = true;
+                if (teksBaru.isNotEmpty) {
+                  notifOk = await _sendPengumumanNotification(teksBaru);
+                }
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(teksBaru.isEmpty
+                        ? "Pengumuman disimpan."
+                        : notifOk ? "Pengumuman disimpan & notifikasi dikirim." : "Pengumuman disimpan, tetapi notifikasi gagal dikirim."),
+                    backgroundColor: notifOk ? Colors.green : Colors.orange,
+                  ));
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan pengumuman."), backgroundColor: Colors.red));
+                }
               }
             }, 
             child: const Text("Simpan & Kirim Notif")
@@ -434,9 +531,15 @@ class _JadwalPageState extends State<JadwalPage> {
                      TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
                      ElevatedButton(
                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                       onPressed: () {
-                         _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
-                         Navigator.pop(c);
+                       onPressed: () async {
+                         try {
+                           await _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
+                           if (c.mounted) Navigator.pop(c);
+                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal dihapus.")));
+                         } catch (_) {
+                           if (c.mounted) Navigator.pop(c);
+                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus jadwal."), backgroundColor: Colors.red));
+                         }
                        }, 
                        child: const Text("Hapus", style: TextStyle(color: Colors.white))
                      )
@@ -451,8 +554,20 @@ class _JadwalPageState extends State<JadwalPage> {
     );
   }
 
+  void _shareJadwal(Map<String, dynamic> data, List<Map<String, dynamic>> visibleRows) {
+    final nama = (data['namaKegiatan'] ?? 'Jadwal Gereja').toString();
+    final tempat = (data['tempat'] ?? '-').toString();
+    final petugas = visibleRows.map((r) => "${r['label']}: ${r['val']}").join("\n");
+    final text = "$nama\n${_formatTanggal(data)}\nTempat: $tempat${petugas.isEmpty ? '' : '\n\nPetugas Pelayanan:\n$petugas'}";
+    Share.share(text);
+  }
+
   void _navigasiSusunan(String jadwalId, String namaKegiatan) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => SusunanAcaraPage(jadwalId: jadwalId, namaKegiatan: namaKegiatan)));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => SusunanAcaraPage(
+      jadwalId: jadwalId,
+      namaKegiatan: namaKegiatan,
+      filterKategorial: widget.filterKategorial,
+    )));
   }
 
   void _navigasiTambahEdit(String? jadwalId) {

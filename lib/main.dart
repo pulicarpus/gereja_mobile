@@ -295,7 +295,6 @@ class _MainActivityState extends State<MainActivity> {
           stream: _db.collection('churches').doc(churchId).collection('jadwal')
               .where('tanggal', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now()))
               .orderBy('tanggal')
-              .limit(20)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) return const SizedBox.shrink();

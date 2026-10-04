@@ -150,8 +150,8 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     // --- LOGIKA HITUNG DATA BERDASARKAN _localJemaat ---
     Map<String, int> statsKelompok = {};
-    int pria = 0, wanita = 0;
-    int sudahBaptis = 0, belumBaptis = 0;
+    int pria = 0, wanita = 0, genderBelumDiisi = 0;
+    int sudahBaptis = 0, belumBaptis = 0, baptisBelumDiisi = 0;
     int meninggal = 0;
     int lahirTahunIni = 0;
     Set<String> totalKeluarga = {};
@@ -173,8 +173,20 @@ class _DashboardPageState extends State<DashboardPage> {
       if (k.isEmpty) k = "Lainnya";
       statsKelompok[k] = (statsKelompok[k] ?? 0) + 1;
       
-      if (j['jenisKelamin'] == "Pria") pria++; else wanita++;
-      if (j['statusBaptis'] == "Sudah") sudahBaptis++; else belumBaptis++;
+      if (j['jenisKelamin'] == "Pria") {
+        pria++;
+      } else if (j['jenisKelamin'] == "Wanita") {
+        wanita++;
+      } else {
+        genderBelumDiisi++;
+      }
+      if (j['statusBaptis'] == "Sudah") {
+        sudahBaptis++;
+      } else if (j['statusBaptis'] == "Belum") {
+        belumBaptis++;
+      } else {
+        baptisBelumDiisi++;
+      }
       
       if (j['idKepalaKeluarga'] != null && j['idKepalaKeluarga'] != "") {
         totalKeluarga.add(j['idKepalaKeluarga']);
@@ -276,11 +288,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 _buildPieCard("Gender", [
                   PieChartSectionData(value: pria.toDouble(), title: 'Pria\n$pria', color: Colors.blue[600]!, radius: 60, titleStyle: _pieStyle),
                   PieChartSectionData(value: wanita.toDouble(), title: 'Wnt\n$wanita', color: Colors.pink[400]!, radius: 60, titleStyle: _pieStyle),
+                  if (genderBelumDiisi > 0) PieChartSectionData(value: genderBelumDiisi.toDouble(), title: '?\n$genderBelumDiisi', color: Colors.grey, radius: 60, titleStyle: _pieStyle),
                 ]),
                 const SizedBox(width: 15),
                 _buildPieCard("Baptisan", [
                   PieChartSectionData(value: sudahBaptis.toDouble(), title: 'Sdh\n$sudahBaptis', color: Colors.green[600]!, radius: 60, titleStyle: _pieStyle),
                   PieChartSectionData(value: belumBaptis.toDouble(), title: 'Blm\n$belumBaptis', color: Colors.orange[700]!, radius: 60, titleStyle: _pieStyle),
+                  if (baptisBelumDiisi > 0) PieChartSectionData(value: baptisBelumDiisi.toDouble(), title: '?\n$baptisBelumDiisi', color: Colors.grey, radius: 60, titleStyle: _pieStyle),
                 ]),
               ],
             ),

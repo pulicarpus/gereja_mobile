@@ -96,6 +96,13 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     setState(() => _isSaving = true);
     String? churchId = UserManager().getChurchIdForCurrentView();
     String? photoUrl = _existingPhotoUrl;
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted) {
+        setState(() => _isSaving = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data gereja tidak valid.")));
+      }
+      return;
+    }
 
     try {
       // 1. Upload Foto jika ada yang baru
@@ -113,8 +120,8 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         "photoBase64": null,
         "jenisKelamin": _jenisKelamin,
         "tanggalLahir": _tglLahirController.text,
-        "alamat": _alamatController.text,
-        "nomorTelepon": _noTelpController.text,
+        "alamat": _alamatController.text.trim(),
+        "nomorTelepon": _noTelpController.text.trim(),
         "statusPernikahan": _statusNikah,
         if (widget.jemaatData != null || widget.idKepalaKeluargaBaru != null) "statusKeluarga": _statusKeluarga,
         "statusBaptis": _statusBaptis,
@@ -195,7 +202,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
                 TextFormField(
                   controller: _namaController, 
                   decoration: const InputDecoration(labelText: "Nama Lengkap *", border: OutlineInputBorder()),
-                  validator: (v) => v!.isEmpty ? "Wajib diisi" : null
+                  validator: (v) => (v ?? '').trim().isEmpty ? "Wajib diisi" : null
                 ),
                 const SizedBox(height: 15),
 

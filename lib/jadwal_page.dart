@@ -80,6 +80,7 @@ class _JadwalPageState extends State<JadwalPage> {
 
   Future<bool> _sendPengumumanNotification(String isiPengumuman) async {
     try {
+      if (churchId == null || churchId!.isEmpty) return false;
       Map<String, dynamic> payload = {
         "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
         "filters": [
@@ -213,7 +214,8 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   Widget _buildPengumumanCard() {
-    final docId = (widget.filterKategorial == null) ? "utama" : "pengumuman_${widget.filterKategorial}";
+    final kategori = widget.filterKategorial?.trim();
+    final docId = (kategori == null || kategori.isEmpty) ? "utama" : "pengumuman_$kategori";
     return StreamBuilder<DocumentSnapshot>(
       stream: _db.collection('churches').doc(churchId).collection('pengumuman').doc(docId).snapshots(),
       builder: (context, snapshot) {
@@ -223,7 +225,7 @@ class _JadwalPageState extends State<JadwalPage> {
           Map<String, dynamic>? dataMap = snapshot.data!.data() as Map<String, dynamic>?;
           
           if (dataMap != null && dataMap.containsKey('teks')) {
-            teks = dataMap['teks'];
+            teks = dataMap['teks']?.toString() ?? "";
           }
         }
 
@@ -323,7 +325,7 @@ class _JadwalPageState extends State<JadwalPage> {
                     children: [
                       const Icon(Icons.location_on, size: 14, color: Colors.redAccent),
                       const SizedBox(width: 6),
-                      Text(data['tempat'] ?? '-', style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500)),
+                      Expanded(child: Text((data['tempat'] ?? '-').toString(), overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey[800], fontSize: 13, fontWeight: FontWeight.w500))),
                     ],
                   ),
                 ],

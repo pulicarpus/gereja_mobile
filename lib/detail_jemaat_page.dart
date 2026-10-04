@@ -10,10 +10,10 @@ class DetailJemaatPage extends StatelessWidget {
   Widget build(BuildContext context) {
     String nama = jemaatData['namaLengkap'] ?? "Tanpa Nama";
     String? fotoUrl = jemaatData['fotoProfil'];
-    String noHp = jemaatData['noHp'] ?? "-";
+    String noHp = (jemaatData['nomorTelepon'] ?? jemaatData['noHp'] ?? "-").toString();
     String alamat = jemaatData['alamat'] ?? "-";
     String status = jemaatData['statusKeluarga'] ?? "-";
-    String kategorial = jemaatData['kategorial'] ?? "Umum";
+    String kategorial = (jemaatData['kelompok'] ?? jemaatData['kategorial'] ?? "Umum").toString();
 
     return Scaffold(
       backgroundColor: Colors.white,

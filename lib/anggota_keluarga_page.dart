@@ -92,7 +92,22 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
 
     // Kalau Bos beneran milih orang (tidak pencet tombol back)
     if (selectedJemaat != null) {
-      _showSetFamilyStatusDialog(selectedJemaat['id'], selectedJemaat['namaLengkap']);
+      final currentFamily = (selectedJemaat['idKepalaKeluarga'] ?? '').toString();
+      if (currentFamily.isNotEmpty && currentFamily != widget.idKepalaKeluarga) {
+        final lanjut = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text("Pindahkan Keluarga?"),
+            content: Text("${selectedJemaat['namaLengkap'] ?? 'Jemaat ini'} sudah terikat dengan keluarga lain. Jika dilanjutkan, hubungan keluarganya akan dipindahkan ke keluarga ini."),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Batal")),
+              ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Pindahkan")),
+            ],
+          ),
+        ) ?? false;
+        if (!lanjut) return;
+      }
+      if (mounted) _showSetFamilyStatusDialog(selectedJemaat['id'], selectedJemaat['namaLengkap']);
     }
   }
 

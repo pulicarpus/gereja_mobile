@@ -92,7 +92,8 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
           // 👇 PROSES PENYARINGAN DATA BERDASARKAN KATA KUNCI 👇
           var listJemaat = snapshot.data!.docs.where((doc) {
             var data = doc.data() as Map<String, dynamic>;
-            String nama = (data['namaLengkap'] ?? "").toLowerCase();
+            String nama = (data['namaLengkap'] ?? "").toString().toLowerCase();
+            if (data['status'] == 'Meninggal') return false;
             return nama.contains(_searchQuery);
           }).toList();
 
@@ -123,6 +124,8 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
               String nama = data['namaLengkap'] ?? "Tanpa Nama";
               String? fotoUrl = data['fotoProfil'];
               String statusKeluarga = data['statusKeluarga'] ?? "Belum terikat keluarga";
+              final familyId = (data['idKepalaKeluarga'] ?? '').toString();
+              final alreadyInFamily = familyId.isNotEmpty && familyId != doc.id;
 
               return Card(
                 elevation: 1,
@@ -135,7 +138,10 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
                     child: fotoUrl == null || fotoUrl.isEmpty ? const Icon(Icons.person, color: Colors.indigo) : null,
                   ),
                   title: Text(nama, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text(statusKeluarga, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  subtitle: Text(
+                    alreadyInFamily ? "$statusKeluarga • Sudah terikat keluarga" : statusKeluarga,
+                    style: TextStyle(color: alreadyInFamily ? Colors.orange.shade700 : Colors.grey.shade600, fontSize: 12),
+                  ),
                   trailing: const Icon(Icons.person_add, color: Colors.green),
                   onTap: () {
                     // Saat diklik, tutup halaman dan bawa datanya kembali

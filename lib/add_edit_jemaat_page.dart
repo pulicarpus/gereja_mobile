@@ -64,8 +64,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     }
     
     // Logika Status Keluarga jika menambah anggota dari list keluarga
+    // Hubungan keluarga selain Kepala Keluarga ditetapkan dari Menu Keluarga.
+    // Form biodata umum tidak boleh memindahkan/mengubah relasi keluarga secara tidak sengaja.
     if (widget.idKepalaKeluargaBaru != null) {
-      _statusKeluarga = "Anak"; 
+      _statusKeluarga = "Anak";
     }
   }
 
@@ -155,6 +157,17 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   }
 
   @override
+  void dispose() {
+    _namaController.dispose();
+    _tglLahirController.dispose();
+    _alamatController.dispose();
+    _noTelpController.dispose();
+    _karuniaController.dispose();
+    _catatanController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.jemaatData == null ? "Tambah Jemaat" : "Edit Jemaat")),
@@ -189,7 +202,20 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
 
                 _buildDropdown("Jenis Kelamin", ["Pria", "Wanita"], _jenisKelamin, (v) => setState(() => _jenisKelamin = v!)),
                 _buildDropdown("Kelompok", ["Sekolah Minggu", "AMKI", "Perkawan", "Perkaria", "Lainnya"], _kelompok, (v) => setState(() => _kelompok = v!)),
-                _buildDropdown("Status Keluarga", ["Kepala Keluarga", "Istri", "Anak"], _statusKeluarga, (v) => setState(() => _statusKeluarga = v!)),
+                if (widget.idKepalaKeluargaBaru != null)
+                  _buildDropdown("Hubungan Keluarga", ["Istri", "Anak", "Ayah", "Ibu"], _statusKeluarga, (v) => setState(() => _statusKeluarga = v!))
+                else if (widget.jemaatData != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: "Hubungan Keluarga",
+                        border: OutlineInputBorder(),
+                        helperText: "Ubah hubungan melalui menu Keluarga.",
+                      ),
+                      child: Text(_statusKeluarga, style: const TextStyle(fontWeight: FontWeight.w600)),
+                    ),
+                  ),
                 
                 const SizedBox(height: 15),
                 TextFormField(

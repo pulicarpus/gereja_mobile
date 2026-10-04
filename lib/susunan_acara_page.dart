@@ -23,6 +23,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   
   // 👇 VARIABEL SATPAM SAKTI 👇
   bool _canEdit = false;
+  Future<QuerySnapshot>? _songsFuture;
 
   @override
   void initState() {
@@ -31,31 +32,23 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   }
 
   void _checkPermissions() {
-    bool isGlobalAdmin = _userManager.isAdmin();
-    bool isPengurusKomisiIni = false;
-    
-    // Cek apakah data kegiatan ini punya kategorial (misal dari halaman sebelumnya)
-    // Karena di SusunanAcaraPage tidak dilempar filterKategorial dari JadwalPage,
-    // kita akan cek langsung ke userManager, apakah dia pengurus, dan apakah
-    // dia sedang mengedit acara di komisi dia sendiri.
-    
-    // Karena kita tidak mengoper filterKategorial dari JadwalPage, kita andalkan
-    // logika bahwa jika dia pengurus, maka dia pasti sedang mengedit di komisinya.
-    // TAPI untuk lebih aman, kita biarkan logic canEdit ini fleksibel.
-    
-    if (_userManager.isPengurus) {
-       isPengurusKomisiIni = true; 
-    }
-    
-    setState(() {
-      _canEdit = isGlobalAdmin || isPengurusKomisiIni;
-    });
+    final isGlobalAdmin = _userManager.isAdmin();
+    final kategori = widget.filterKategorial?.trim();
+    final isPengurusKomisiIni = kategori != null &&
+        kategori.isNotEmpty &&
+        _userManager.isPengurus &&
+        _userManager.userKomisi == kategori;
+    _canEdit = isGlobalAdmin || isPengurusKomisiIni;
+  }
+
+  Future<QuerySnapshot> _getSongs() {
+    return _songsFuture ??= _db.collection("songs").get();
   }
 
   // =========================================================================
   // 1. DIALOG EDIT (DENGAN TOMBOL CARI BUKU LAGU)
   // =========================================================================
-  void _showEditDialog(String field, List<String> currentData) {
+  Future<void> _showEditDialog(String field, List<String> currentData) async {
     if (!_canEdit) return; // 👈 CEGAT KALAU BUKAN ADMIN/PENGURUS
 
     String initialText = currentData.length == 1 && currentData[0] == "Belum diatur." 
@@ -64,7 +57,7 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
         
     final controller = TextEditingController(text: initialText);
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -126,22 +119,29 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
             onPressed: () async {
-              String? churchId = _userManager.getChurchIdForCurrentView();
-              List<String> newData = controller.text.split("\n").where((s) => s.trim().isNotEmpty).toList();
-
+              final churchId = _userManager.getChurchIdForCurrentView();
+              if (churchId == null || churchId.isEmpty) {
+                if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Data gereja tidak valid.")));
+                return;
+              }
+              List<String> newData = controller.text.split("\n").map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
               if (newData.isEmpty) newData = ["Belum diatur."];
 
-              await _db.collection("churches").doc(churchId).collection("jadwal").doc(widget.jadwalId).update({
-                field: newData,
-              });
-
-              if (mounted) Navigator.pop(context);
+              try {
+                await _db.collection("churches").doc(churchId).collection("jadwal").doc(widget.jadwalId).update({
+                  field: newData,
+                });
+                if (context.mounted) Navigator.pop(context);
+              } catch (_) {
+                if (mounted) ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text("Gagal menyimpan susunan acara."), backgroundColor: Colors.red));
+              }
             },
             child: const Text("Simpan", style: TextStyle(fontWeight: FontWeight.bold)),
           )
         ],
       ),
     );
+    controller.dispose();
   }
 
   // =========================================================================
@@ -183,9 +183,11 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
                   ),
                   Expanded(
                     child: FutureBuilder<QuerySnapshot>(
-                      future: _db.collection("songs").get(), 
+                      future: _getSongs(),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                        if (snapshot.hasError) return const Center(child: Text("Gagal memuat buku lagu."));
+                        if (!snapshot.hasData) return const Center(child: Text("Buku lagu belum tersedia."));
                         
                         var docs = snapshot.data!.docs.where((doc) {
                           var data = doc.data() as Map<String, dynamic>;
@@ -279,8 +281,12 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
         body: StreamBuilder<DocumentSnapshot>(
           stream: _db.collection("churches").doc(churchId).collection("jadwal").doc(widget.jadwalId).snapshots(),
           builder: (context, snapshot) {
-            if (!snapshot.hasData) return const Center(child: CircularProgressIndicator(color: Colors.indigo));
-            var data = snapshot.data!.data() as Map<String, dynamic>?;
+            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.indigo));
+            if (snapshot.hasError) return const Center(child: Text("Gagal memuat susunan acara."));
+            if (!snapshot.hasData || !snapshot.data!.exists) {
+              return const Center(child: Text("Jadwal ini sudah tidak tersedia."));
+            }
+            final data = snapshot.data!.data() as Map<String, dynamic>?;
             _currentUrutan = List<String>.from(data?['urutanAcara'] ?? ["Belum diatur."]);
             _currentLagu = List<String>.from(data?['daftarLagu'] ?? ["Belum diatur."]);
 

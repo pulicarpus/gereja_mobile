@@ -39,7 +39,9 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
       case "Kepala Keluarga": return 0;
       case "Istri": return 1;
       case "Anak": return 2;
-      default: return 3;
+      case "Ayah": return 3;
+      case "Ibu": return 4;
+      default: return 5;
     }
   }
 
@@ -95,7 +97,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   }
 
   void _showSetFamilyStatusDialog(String jemaatId, String namaJemaat) {
-    final List<String> statusOptions = ["Istri", "Anak"];
+    final List<String> statusOptions = ["Istri", "Anak", "Ayah", "Ibu"];
     
     showDialog(
       context: context,
@@ -218,7 +220,13 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             return const Center(child: Text("Tidak ada anggota keluarga."));
           }
 
-          var listAnggota = snapshot.data!.docs.toList();
+          var listAnggota = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['status'] != 'Meninggal';
+          }).toList();
+          if (listAnggota.isEmpty) {
+            return const Center(child: Text("Tidak ada anggota keluarga aktif."));
+          }
           listAnggota.sort((a, b) {
             var dataA = a.data() as Map<String, dynamic>;
             var dataB = b.data() as Map<String, dynamic>;

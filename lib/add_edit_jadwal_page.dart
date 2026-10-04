@@ -40,6 +40,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   DateTime _selectedDateTime = DateTime.now();
   bool _isEdit = false;
   bool _isLoading = false;
+  String? _originalKategori;
 
   @override
   void initState() {
@@ -68,35 +69,66 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   }
 
   Future<void> _loadDataForEdit() async {
-    setState(() => _isLoading = true);
-    String? churchId = _userManager.getChurchIdForCurrentView();
-    var doc = await _db.collection("churches").doc(churchId)
-        .collection("jadwal").doc(widget.jadwalId).get();
-
-    if (doc.exists) {
-      var data = doc.data()!;
-      _etNama.text = data['namaKegiatan'] ?? "";
-      _etTempat.text = data['tempat'] ?? "";
-      _etDeskripsi.text = data['deskripsi'] ?? "";
-      
-      if (data['tanggal'] != null) {
-        _selectedDateTime = (data['tanggal'] as Timestamp).toDate();
-        _etWaktu.text = DateFormat('yyyy-MM-dd HH:mm').format(_selectedDateTime);
+    if (mounted) setState(() => _isLoading = true);
+    final churchId = _userManager.getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data gereja tidak valid.")));
       }
-
-      var p = data['pelayan'] as Map<String, dynamic>?;
-      if (p != null) {
-        _etWl.text = p['Worship Leader'] ?? "";
-        _etSinger.text = p['Singer'] ?? "";
-        _etMusik.text = p['Pemain Musik'] ?? "";
-        _etTamborin.text = p['Pemain Tamborin'] ?? p['Tamborin'] ?? "";
-        _etLcd.text = p['Operator LCD'] ?? "";
-        _etKolektan.text = p['Kolektan'] ?? "";
-        _etDoaSyafaat.text = p['Doa Syafaat'] ?? "";
-        _etPenerimaTamu.text = p['Penerima Tamu'] ?? "";
-      }
+      return;
     }
-    setState(() => _isLoading = false);
+
+    try {
+      final doc = await _db.collection("churches").doc(churchId)
+          .collection("jadwal").doc(widget.jadwalId).get();
+
+      if (!doc.exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal tidak ditemukan.")));
+          Navigator.pop(context);
+        }
+        return;
+      }
+
+      final data = doc.data()!;
+      _originalKategori = data['kategoriKegiatan']?.toString();
+      _etNama.text = (data['namaKegiatan'] ?? "").toString();
+      _etTempat.text = (data['tempat'] ?? "").toString();
+      _etDeskripsi.text = (data['deskripsi'] ?? "").toString();
+
+      final rawTanggal = data['tanggal'];
+      if (rawTanggal is Timestamp) {
+        _selectedDateTime = rawTanggal.toDate();
+        _etWaktu.text = DateFormat('yyyy-MM-dd HH:mm').format(_selectedDateTime);
+      } else {
+        final rawWaktu = data['waktu']?.toString().trim() ?? "";
+        if (rawWaktu.isNotEmpty) {
+          try {
+            _selectedDateTime = DateFormat('yyyy-MM-dd HH:mm').parse(rawWaktu);
+            _etWaktu.text = rawWaktu;
+          } catch (_) {
+            _etWaktu.text = rawWaktu;
+          }
+        }
+      }
+
+      final p = data['pelayan'] is Map ? Map<String, dynamic>.from(data['pelayan'] as Map) : <String, dynamic>{};
+      _etWl.text = (p['Worship Leader'] ?? "").toString();
+      _etSinger.text = (p['Singer'] ?? "").toString();
+      _etMusik.text = (p['Pemain Musik'] ?? "").toString();
+      _etTamborin.text = (p['Pemain Tamborin'] ?? p['Tamborin'] ?? "").toString();
+      _etLcd.text = (p['Operator LCD'] ?? "").toString();
+      _etKolektan.text = (p['Kolektan'] ?? "").toString();
+      _etDoaSyafaat.text = (p['Doa Syafaat'] ?? "").toString();
+      _etPenerimaTamu.text = (p['Penerima Tamu'] ?? "").toString();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memuat jadwal."), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _pickDateTime() async {
@@ -105,7 +137,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     DateTime? date = await showDatePicker(
       context: context,
       initialDate: _selectedDateTime,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(1900),
       lastDate: DateTime(2100),
       builder: (context, child) {
         return Theme(
@@ -137,24 +169,31 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     }
   }
 
-  // 👇 --- VERSI WIB (GMT+0700): LEBIH GAMPANG DIBACA ADMIN --- 👇
-  Future<void> _scheduleNotification(String namaKeg, String tempat, DateTime waktuIbadah, String? churchId) async {
+  String _gmtOffset(DateTime date) {
+    final offset = date.timeZoneOffset;
+    final sign = offset.isNegative ? "-" : "+";
+    final totalMinutes = offset.inMinutes.abs();
+    final hours = (totalMinutes ~/ 60).toString().padLeft(2, '0');
+    final minutes = (totalMinutes % 60).toString().padLeft(2, '0');
+    return "GMT$sign$hours$minutes";
+  }
+
+  Future<bool> _scheduleNotification(String namaKeg, String tempat, DateTime waktuIbadah, String? churchId) async {
     try {
-      if (churchId == null) return;
+      if (churchId == null) return false;
       
       // 1. Kurangi waktu ibadah dengan 30 menit
       DateTime waktuNotif = waktuIbadah.subtract(const Duration(minutes: 30));
 
       // 2. Kalau jadwalnya untuk masa lalu batalkan alarm
-      if (waktuNotif.isBefore(DateTime.now())) return;
+      if (waktuNotif.isBefore(DateTime.now())) return true;
 
-      // 3. Format waktu LOKAL ADMIN dan cap sebagai WIB (GMT+0700)
-      String sendAfter = "${DateFormat('yyyy-MM-dd HH:mm:ss').format(waktuNotif)} GMT+0700";
+      // Gunakan offset zona waktu perangkat pada waktu jadwal, jangan memaksa WIB.
+      String sendAfter = "${DateFormat('yyyy-MM-dd HH:mm:ss').format(waktuNotif)} ${_gmtOffset(waktuNotif)}";
 
       // 4. Bungkus payload JSON
       Map<String, dynamic> payload = {
         "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
-        "included_segments": ["All"], 
         "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
         "headings": {"en": "⏰ 30 Menit Lagi!"},
         "contents": {"en": "$namaKeg akan dimulai 30 menit lagi di $tempat. Mari bersiap-siap!"},
@@ -175,22 +214,31 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         body: jsonEncode(payload),
       );
 
-      if (response.statusCode == 200) {
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      if (ok) {
         debugPrint("Berhasil setel alarm OneSignal: $sendAfter");
       } else {
-        debugPrint("Gagal setel alarm OneSignal: ${response.body}");
+        debugPrint("Gagal setel alarm OneSignal: ${response.statusCode}");
       }
+      return ok;
     } catch (e) {
       debugPrint("Error jaringan saat setel alarm: $e");
+      return false;
     }
   }
-  // 👆 -------------------------------------------------------- 👆
 
   Future<void> _saveJadwal() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
     String? churchId = _userManager.getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data gereja tidak valid.")));
+      }
+      return;
+    }
 
     Map<String, String> pelayanMap = {
       "Worship Leader": _etWl.text.trim(),
@@ -211,7 +259,8 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       "pelayan": pelayanMap,
       "tanggal": Timestamp.fromDate(_selectedDateTime), 
       "churchId": churchId,
-      "kategoriKegiatan": widget.filterKategorial, 
+      // Saat edit, pertahankan kategori asli agar jadwal tidak pindah kategori tanpa sengaja.
+      "kategoriKegiatan": _isEdit ? _originalKategori : widget.filterKategorial, 
       "lastUpdate": FieldValue.serverTimestamp(),
     };
 
@@ -224,11 +273,19 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
         await colRef.add(jadwalData);
       }
 
-      // Panggil fungsi notif dengan format WIB
-      await _scheduleNotification(_etNama.text.trim(), _etTempat.text.trim(), _selectedDateTime, churchId);
+      // Jadwalkan reminder hanya saat membuat jadwal baru. Edit tidak membuat reminder kedua.
+      bool notifOk = true;
+      if (!_isEdit) {
+        notifOk = await _scheduleNotification(_etNama.text.trim(), _etTempat.text.trim(), _selectedDateTime, churchId);
+      }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal Berhasil Disimpan!"), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_isEdit
+              ? "Jadwal berhasil diperbarui."
+              : notifOk ? "Jadwal berhasil disimpan & pengingat dijadwalkan." : "Jadwal tersimpan, tetapi pengingat gagal dijadwalkan."),
+          backgroundColor: notifOk ? Colors.green : Colors.orange,
+        ));
         Navigator.pop(context);
       }
     } catch (e) {
@@ -285,7 +342,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.indigo.shade100)),
                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.indigo, width: 2)),
                         ),
-                        validator: (v) => v!.isEmpty ? "Waktu wajib diisi" : null,
+                        validator: (v) => (v ?? '').trim().isEmpty ? "Waktu wajib diisi" : null,
                       ),
                       
                       const SizedBox(height: 15),
@@ -389,7 +446,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
           borderSide: const BorderSide(color: Colors.indigo, width: 2)
         ),
       ),
-      validator: (v) => (mandatory && v!.isEmpty) ? "$label tidak boleh kosong" : null,
+      validator: (v) => (mandatory && (v ?? '').trim().isEmpty) ? "$label tidak boleh kosong" : null,
     );
   }
 }

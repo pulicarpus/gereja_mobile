@@ -295,17 +295,24 @@ class _MainActivityState extends State<MainActivity> {
           stream: _db.collection('churches').doc(churchId).collection('jadwal')
               .where('tanggal', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime.now()))
               .orderBy('tanggal')
-              .limit(1)
+              .limit(20)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) return const SizedBox.shrink();
             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox.shrink();
-            final data = snapshot.data!.docs.first.data();
+            Map<String, dynamic>? data;
+            for (final doc in snapshot.data!.docs) {
+              final candidate = doc.data();
+              final kategori = candidate['kategoriKegiatan']?.toString().trim();
+              if (kategori == null || kategori.isEmpty || kategori == 'Umum') {
+                data = candidate;
+                break;
+              }
+            }
+            if (data == null) return const SizedBox.shrink();
             final tanggal = data['tanggal'];
             if (tanggal is! Timestamp) return const SizedBox.shrink();
             final date = tanggal.toDate();
-            final kategori = data['kategoriKegiatan']?.toString();
-            if (kategori != null && kategori.isNotEmpty && kategori != 'Umum') return const SizedBox.shrink();
             final nama = data['namaKegiatan']?.toString().trim();
             final tempat = data['tempat']?.toString().trim();
 

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
-import 'anggota_keluarga_page.dart'; // Memanggil halaman yang kita buat kemarin
+import 'anggota_keluarga_page.dart';
+import 'pilih_jemaat_page.dart'; // Memanggil halaman yang kita buat kemarin
 
 class DaftarKeluargaPage extends StatefulWidget {
   const DaftarKeluargaPage({super.key});
@@ -19,6 +20,45 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
   void initState() {
     super.initState();
     _churchId = _userManager.getChurchIdForCurrentView();
+  }
+
+  Future<void> _buatKeluargaBaru() async {
+    if (_churchId == null) return;
+    final selected = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(builder: (_) => const PilihJemaatPage()),
+    );
+    if (selected == null || !mounted) return;
+
+    final id = selected['id']?.toString();
+    final nama = (selected['namaLengkap'] ?? 'jemaat ini').toString();
+    if (id == null || id.isEmpty) return;
+
+    final currentFamily = (selected['idKepalaKeluarga'] ?? '').toString();
+    if (currentFamily.isNotEmpty && currentFamily != id) {
+      final lanjut = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Jemaat Sudah Terikat Keluarga"),
+          content: Text("$nama sudah menjadi anggota keluarga lain. Jadikan sebagai Kepala Keluarga baru?"),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Batal")),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Lanjutkan")),
+          ],
+        ),
+      ) ?? false;
+      if (!lanjut) return;
+    }
+
+    try {
+      await _db.collection("churches").doc(_churchId).collection("jemaat").doc(id).update({
+        "idKepalaKeluarga": id,
+        "statusKeluarga": "Kepala Keluarga",
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Keluarga $nama berhasil dibuat.")));
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal membuat keluarga.")));
+    }
   }
 
   @override
@@ -116,6 +156,15 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
           );
         },
       ),
+      floatingActionButton: _userManager.isAdmin()
+          ? FloatingActionButton.extended(
+              onPressed: _buatKeluargaBaru,
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.add_home_work),
+              label: const Text("Buat Keluarga"),
+            )
+          : null,
     );
   }
 }

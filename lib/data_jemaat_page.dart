@@ -24,6 +24,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   List<Map<String, dynamic>> _filteredJemaat = [];
   bool _isLoading = true;
   bool _isSearching = false;
+  String? _loadError;
   final _searchController = TextEditingController();
 
   @override
@@ -34,7 +35,11 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
 
   Future<void> _loadJemaat() async {
     String? churchId = _userManager.getChurchIdForCurrentView();
-    if (churchId == null) return;
+    if (churchId == null) {
+      if (mounted) setState(() { _isLoading = false; _loadError = "Data gereja tidak valid."; });
+      return;
+    }
+    if (mounted) setState(() { _isLoading = true; _loadError = null; });
     try {
       Query query = _db.collection("churches").doc(churchId).collection("jemaat");
       if (widget.filterKategorial != null) {
@@ -42,9 +47,8 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
       }
       final snapshot = await query.get();
       var tempData = snapshot.docs.map((doc) {
-        var data = doc.data() as Map<String, dynamic>;
-        data['id'] = doc.id;
-        return data;
+        final source = doc.data() as Map<String, dynamic>;
+        return <String, dynamic>{...source, 'id': doc.id};
       }).toList();
 
       // Urutkan berdasarkan nama secara default
@@ -61,8 +65,19 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _loadError = "Gagal memuat data jemaat."; });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _initial(Map<String, dynamic> j) {
+    final name = (j['namaLengkap'] ?? '').toString().trim();
+    return name.isEmpty ? '?' : name[0].toUpperCase();
   }
 
   // --- LOGIKA PENCARIAN ---
@@ -71,7 +86,9 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
       _filteredJemaat = _allJemaat
           .where((j) => 
             j['status'] != 'Meninggal' && 
-            (j['namaLengkap'] ?? '').toLowerCase().contains(query.toLowerCase())
+            [
+              j['namaLengkap'], j['nomorTelepon'], j['alamat'], j['kelompok']
+            ].any((v) => (v ?? '').toString().toLowerCase().contains(query.toLowerCase()))
           )
           .toList();
     });
@@ -133,7 +150,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                   child: CircleAvatar(
                     radius: 50,
                     backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                    child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?", style: const TextStyle(fontSize: 30)) : null,
+                    child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(_initial(j), style: const TextStyle(fontSize: 30)) : null,
                   ),
                 ),
               ),
@@ -246,9 +263,27 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           ),
         ],
       ),
-      body: _isLoading 
+      body: _isLoading
         ? LoadingSultan(size: 80)
-        : RefreshIndicator(
+        : _loadError != null
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.cloud_off, size: 48, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(_loadError!),
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: _loadJemaat, child: const Text("COBA LAGI")),
+            ]))
+          : _filteredJemaat.isEmpty
+            ? RefreshIndicator(
+                onRefresh: _loadJemaat,
+                child: ListView(children: const [
+                  SizedBox(height: 180),
+                  Icon(Icons.people_outline, size: 56, color: Colors.grey),
+                  SizedBox(height: 12),
+                  Center(child: Text("Tidak ada data jemaat yang cocok.", style: TextStyle(color: Colors.grey))),
+                ]),
+              )
+            : RefreshIndicator(
             onRefresh: _loadJemaat,
             child: ListView.builder(
               padding: const EdgeInsets.only(bottom: 80, top: 10),
@@ -266,7 +301,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                       child: CircleAvatar(
                         radius: 25,
                         backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                        child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?") : null,
+                        child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(_initial(j)) : null,
                       ),
                     ),
                     title: Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -290,6 +325,24 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     );
   }
 
+  Future<bool> _confirmAksi(String title, String message, {bool danger = false}) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Batal")),
+          ElevatedButton(
+            style: danger ? ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white) : null,
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text("Lanjutkan"),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
   void _showAksiAdmin(Map<String, dynamic> j) {
     showModalBottomSheet(
       context: context, 
@@ -310,18 +363,22 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
             leading: const Icon(Icons.heart_broken_rounded, color: Colors.orange), 
             title: const Text("Tandai Meninggal"), 
             onTap: () async { 
-              Navigator.pop(context); 
-              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).update({'status': 'Meninggal'}); 
-              _loadJemaat(); 
+              Navigator.pop(context);
+              final ok = await _confirmAksi("Tandai Meninggal", "Yakin menandai ${j['namaLengkap'] ?? 'jemaat ini'} sebagai meninggal?");
+              if (!ok) return;
+              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).update({'status': 'Meninggal'});
+              await _loadJemaat(); 
             },
           ),
           ListTile(
             leading: const Icon(Icons.delete_sweep_rounded, color: Colors.red), 
             title: const Text("Hapus Permanen", style: TextStyle(color: Colors.red)), 
             onTap: () { 
-              Navigator.pop(context); 
-              _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).delete(); 
-              _loadJemaat(); 
+              Navigator.pop(context);
+              final ok = await _confirmAksi("Hapus Permanen", "Data ${j['namaLengkap'] ?? 'jemaat ini'} akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.", danger: true);
+              if (!ok) return;
+              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).delete();
+              await _loadJemaat(); 
             },
           ),
           const SizedBox(height: 20),

@@ -93,7 +93,23 @@ class _DashboardPageState extends State<DashboardPage> {
                                         const SnackBar(content: Text("Status meninggal dibatalkan. Jemaat kembali aktif.")),
                                       );
                                     } else if (value == 'hapus') {
-                                      // 2. Hapus permanen dari database
+                                      final nama = (j['namaLengkap'] ?? 'jemaat ini').toString();
+                                      final yakin = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text("Hapus Permanen"),
+                                          content: Text("Data $nama akan dihapus permanen. Tindakan ini tidak dapat dibatalkan."),
+                                          actions: [
+                                            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Batal")),
+                                            ElevatedButton(
+                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                              onPressed: () => Navigator.pop(ctx, true),
+                                              child: const Text("Hapus"),
+                                            ),
+                                          ],
+                                        ),
+                                      ) ?? false;
+                                      if (!yakin) return;
                                       await FirebaseFirestore.instance
                                           .collection("churches")
                                           .doc(widget.churchId)

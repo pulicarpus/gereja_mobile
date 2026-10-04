@@ -373,7 +373,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           ListTile(
             leading: const Icon(Icons.delete_sweep_rounded, color: Colors.red), 
             title: const Text("Hapus Permanen", style: TextStyle(color: Colors.red)), 
-            onTap: () { 
+            onTap: () async {
               Navigator.pop(context);
               final ok = await _confirmAksi("Hapus Permanen", "Data ${j['namaLengkap'] ?? 'jemaat ini'} akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.", danger: true);
               if (!ok) return;

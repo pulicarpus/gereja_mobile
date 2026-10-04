@@ -59,7 +59,13 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
           }
 
           // Urutkan berdasarkan Abjad Nama Keluarga
-          var listKeluarga = snapshot.data!.docs.toList();
+          var listKeluarga = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['status'] != 'Meninggal';
+          }).toList();
+          if (listKeluarga.isEmpty) {
+            return const Center(child: Text("Belum ada keluarga aktif.", style: TextStyle(color: Colors.grey)));
+          }
           listKeluarga.sort((a, b) {
             var dataA = a.data() as Map<String, dynamic>;
             var dataB = b.data() as Map<String, dynamic>;

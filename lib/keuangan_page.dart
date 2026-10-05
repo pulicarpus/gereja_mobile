@@ -77,7 +77,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
     }
 
     DateTime startDate = DateTime(year, 1, 1);
-    DateTime endDate = DateTime(year, 12, 31, 23, 59, 59);
+    DateTime endDate = DateTime(year + 1, 1, 1);
 
     int tempPemasukan = 0;
     int tempPengeluaran = 0;
@@ -91,7 +91,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
       // 1. QUERY TRANSAKSI
       var trxQuery = await churchRef.collection("transaksi")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
-          .where("tanggal", isLessThanOrEqualTo: endDate)
+          .where("tanggal", isLessThan: endDate)
           .get();
 
       for (var doc in trxQuery.docs) {
@@ -123,7 +123,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
       if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
         var perpQuery = await churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDate)
-            .where("tanggal", isLessThanOrEqualTo: endDate)
+            .where("tanggal", isLessThan: endDate)
             .get();
 
         for (var doc in perpQuery.docs) {

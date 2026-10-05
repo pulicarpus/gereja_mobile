@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 // --- IMPORT SEMUA HALAMAN TERKAIT ---
 import 'gallery_page.dart';
-import 'laporan_transaksi_page.dart';
+import 'keuangan_page.dart';
 import 'data_jemaat_page.dart';
 import 'chatroom_page.dart'; 
 import 'jadwal_page.dart';      
@@ -145,7 +145,7 @@ class SubKategorialPage extends StatelessWidget {
                   () => Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => LaporanTransaksiPage(filterKategorial: namaKomisi),
+                      builder: (context) => KeuanganPage(filterKategorial: namaKomisi),
                     ),
                   ),
                 ),

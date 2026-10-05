@@ -106,39 +106,36 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     final String blnStr = _months[_selectedMonth - 1];
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text("Laporan Kas Operasional Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
-              pw.SizedBox(height: 20),
-              pw.TableHelper.fromTextArray(
-                headers: ['Tanggal', 'Jenis', 'Keterangan', 'Nominal (Rp)'],
-                data: _filteredDocs.map((doc) {
-                  var d = doc.data() as Map<String, dynamic>;
-                  DateTime dt = (d['tanggal'] as Timestamp).toDate();
-                  return [
-                    DateFormat('dd MMM yyyy').format(dt),
-                    d['jenis'],
-                    d['keterangan'],
-                    _currencyFormat.format(d['nominal']).replaceAll("Rp ", "")
-                  ];
-                }).toList(),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
-                cellAlignment: pw.Alignment.centerLeft,
-              ),
-              pw.SizedBox(height: 20),
-              pw.Text("Ringkasan Bulan Ini:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-              pw.Text("Total Pemasukan: ${_currencyFormat.format(_blnPemasukan)}", style: const pw.TextStyle(color: PdfColors.green)),
-              pw.Text("Total Pengeluaran: ${_currencyFormat.format(_blnPengeluaran)}", style: const pw.TextStyle(color: PdfColors.red)),
-              pw.Text("Saldo Bersih: ${_currencyFormat.format(_blnPemasukan - _blnPengeluaran)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-            ],
-          );
-        },
+        build: (pw.Context context) => [
+          pw.Text("Laporan Kas Operasional Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headers: ['Tanggal', 'Jenis', 'Keterangan', 'Nominal (Rp)'],
+            data: _filteredDocs.map((doc) {
+              var d = doc.data() as Map<String, dynamic>;
+              final rawTanggal = d['tanggal'];
+              if (rawTanggal is! Timestamp) return ["-", "-", "Data tanggal tidak valid", "-"];
+              DateTime dt = rawTanggal.toDate();
+              return [
+                DateFormat('dd MMM yyyy').format(dt),
+                d['jenis']?.toString() ?? "-",
+                d['keterangan']?.toString() ?? "-",
+                _currencyFormat.format(d['nominal'] is num ? d['nominal'] : 0).replaceAll("Rp ", "")
+              ];
+            }).toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
+            cellAlignment: pw.Alignment.centerLeft,
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text("Ringkasan Bulan Ini:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          pw.Text("Total Pemasukan: ${_currencyFormat.format(_blnPemasukan)}", style: const pw.TextStyle(color: PdfColors.green)),
+          pw.Text("Total Pengeluaran: ${_currencyFormat.format(_blnPengeluaran)}", style: const pw.TextStyle(color: PdfColors.red)),
+          pw.Text("Arus Bersih: ${_currencyFormat.format(_blnPemasukan - _blnPengeluaran)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        ],
       ),
     );
 
@@ -713,36 +710,33 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     final String blnStr = _months[_selectedMonth - 1];
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text("Laporan Perpuluhan Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
-              pw.SizedBox(height: 20),
-              pw.TableHelper.fromTextArray(
-                headers: ['Tanggal', 'Tipe', 'Nama Penyetor', 'Nominal (Rp)'],
-                data: _filteredDocs.map((doc) {
-                  var d = doc.data() as Map<String, dynamic>;
-                  DateTime dt = (d['tanggal'] as Timestamp).toDate();
-                  return [
-                    DateFormat('dd MMM yyyy').format(dt),
-                    d['tipe'],
-                    d['nama'],
-                    _currencyFormat.format(d['nominal']).replaceAll("Rp ", "")
-                  ];
-                }).toList(),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.deepOrange900),
-                cellAlignment: pw.Alignment.centerLeft,
-              ),
-              pw.SizedBox(height: 20),
-              pw.Text("Total Setoran Bulan Ini: ${_currencyFormat.format(_blnTotal)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.deepOrange)),
-            ],
-          );
-        },
+        build: (pw.Context context) => [
+          pw.Text("Laporan Perpuluhan Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headers: ['Tanggal', 'Tipe', 'Nama Penyetor', 'Nominal (Rp)'],
+            data: _filteredDocs.map((doc) {
+              var d = doc.data() as Map<String, dynamic>;
+              final rawTanggal = d['tanggal'];
+              if (rawTanggal is! Timestamp) return ["-", "-", "Data tanggal tidak valid", "-"];
+              DateTime dt = rawTanggal.toDate();
+              return [
+                DateFormat('dd MMM yyyy').format(dt),
+                d['tipe']?.toString() ?? "-",
+                d['nama']?.toString() ?? "-",
+                _currencyFormat.format(d['nominal'] is num ? d['nominal'] : 0).replaceAll("Rp ", "")
+              ];
+            }).toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.deepOrange900),
+            cellAlignment: pw.Alignment.centerLeft,
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text("Total Setoran Bulan Ini: ${_currencyFormat.format(_blnTotal)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.deepOrange)),
+        ],
       ),
     );
 

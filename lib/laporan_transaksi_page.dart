@@ -50,6 +50,8 @@ class LaporanTransaksiPage extends StatefulWidget {
 
 class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   final _db = FirebaseFirestore.instance;
+  final _searchController = TextEditingController();
+  String _searchQuery = "";
   
   List<TransaksiItem> _transaksiList = [];
   bool _isLoading = false;
@@ -79,6 +81,12 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     _tahunArray = List.generate(now.year - 2020 + 1, (index) => now.year - index);
     
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -458,6 +466,14 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   @override
   Widget build(BuildContext context) {
     final userManager = UserManager();
+    final visibleTransaksi = _transaksiList.where((t) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery.toLowerCase();
+      return t.keterangan.toLowerCase().contains(q) ||
+          t.jenis.toLowerCase().contains(q) ||
+          t.jumlah.toString().contains(q) ||
+          formatTanggal(t.tanggal).toLowerCase().contains(q);
+    }).toList();
     bool isGlobalAdmin = userManager.isAdmin();
     bool isPengurusKomisiIni = false;
     
@@ -683,6 +699,30 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
           const SizedBox(height: 5),
 
+          if (_transaksiList.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Cari keterangan, tanggal, atau nominal...",
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = "");
+                          },
+                        ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value.trim()),
+              ),
+            ),
+
           Expanded(
             child: _isLoading
               ? const Center(child: CircularProgressIndicator())
@@ -696,11 +736,13 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
                   ]))
               : _transaksiList.isEmpty
                 ? const Center(child: Text("Data Kosong", style: TextStyle(color: Colors.grey)))
+                : visibleTransaksi.isEmpty
+                  ? const Center(child: Text("Tidak ada data yang cocok.", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    itemCount: _transaksiList.length,
+                    itemCount: visibleTransaksi.length,
                     itemBuilder: (context, index) {
-                      var t = _transaksiList[index];
+                      var t = visibleTransaksi[index];
                       bool isMasuk = t.jenis == "Pemasukan";
                       
                       return Card(

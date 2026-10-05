@@ -44,6 +44,8 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
   final _db = FirebaseFirestore.instance;
   List<PerpuluhanItem> _perpuluhanList = [];
   bool _isLoading = false;
+  String? _loadError;
+  int _loadGeneration = 0;
 
   final List<String> _bulanArray = [
     "Januari", "Februari", "Maret", "April", "Mei", "Juni", 
@@ -57,53 +59,75 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
   }
 
   Future<void> _loadRincian() async {
-    setState(() => _isLoading = true);
+    final generation = ++_loadGeneration;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+        _perpuluhanList = [];
+      });
+    }
     
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
-      setState(() => _isLoading = false);
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _isLoading = false;
+          _loadError = "Data gereja tidak valid.";
+        });
+      }
       return;
     }
 
-    // Konversi bulan Android (0-11) ke bulan Flutter (1-12)
     DateTime startDate = DateTime(widget.tahun, widget.bulan + 1, 1);
-    DateTime endDate = DateTime(widget.tahun, widget.bulan + 2, 0, 23, 59, 59);
+    DateTime endDate = DateTime(widget.tahun, widget.bulan + 2, 1);
 
     try {
-      var query = _db.collection("churches").doc(churchId).collection("perpuluhan")
+      final snap = await _db.collection("churches").doc(churchId).collection("perpuluhan")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
-          .where("tanggal", isLessThanOrEqualTo: endDate);
-
-      // Filter berdasarkan ID atau Nama (Sesuai logika Kotlin Bos)
-      if (widget.jemaatId != null && widget.jemaatId!.isNotEmpty) {
-        query = query.where("jemaatId", isEqualTo: widget.jemaatId);
-      } else {
-        query = query.where("namaJemaat", isEqualTo: widget.namaJemaat);
-      }
-
-      var snap = await query.orderBy("tanggal", descending: true).get();
+          .where("tanggal", isLessThan: endDate)
+          .get();
 
       List<PerpuluhanItem> tempList = [];
+      final targetId = widget.jemaatId?.trim() ?? "";
+      final targetName = widget.namaJemaat?.trim() ?? "";
+
       for (var doc in snap.docs) {
-        var data = doc.data();
+        final data = doc.data();
+        final docIdJemaat = data['jemaatId']?.toString().trim() ?? "";
+        final docNama = data['namaJemaat']?.toString().trim() ?? "";
+        final cocok = targetId.isNotEmpty ? docIdJemaat == targetId : docNama == targetName;
+        if (!cocok) continue;
+
+        final rawJumlah = data['jumlah'];
+        final rawTanggal = data['tanggal'];
+        if (rawJumlah is! num || rawTanggal is! Timestamp) continue;
+
         tempList.add(PerpuluhanItem(
           id: doc.id,
-          jumlah: (data['jumlah'] ?? 0) as int,
-          jemaatId: data['jemaatId'] as String?,
-          namaJemaat: data['namaJemaat'] as String?,
-          tanggal: (data['tanggal'] as Timestamp?)?.toDate(),
+          jumlah: rawJumlah.toInt(),
+          jemaatId: docIdJemaat.isEmpty ? null : docIdJemaat,
+          namaJemaat: docNama.isEmpty ? null : docNama,
+          tanggal: rawTanggal.toDate(),
         ));
       }
 
-      setState(() => _perpuluhanList = tempList);
+      tempList.sort((a, b) {
+        final ad = a.tanggal ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final bd = b.tanggal ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return bd.compareTo(ad);
+      });
 
-      if (tempList.isEmpty && mounted) {
-        _showSnack("Tidak ada data rincian di periode ini.");
-      }
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() => _perpuluhanList = tempList);
     } catch (e) {
-      _showSnack("Error memuat rincian: $e");
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = "Gagal memuat rincian perpuluhan.");
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -186,8 +210,13 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
   }
 
   Future<void> _deletePerpuluhan(PerpuluhanItem perpuluhan) async {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return;
+    final user = UserManager();
+    if (!user.isAdmin()) {
+      _showSnack("Anda tidak memiliki izin untuk menghapus perpuluhan.");
+      return;
+    }
+    final churchId = user.getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) return;
 
     try {
       await _db.collection("churches").doc(churchId).collection("perpuluhan").doc(perpuluhan.id).delete();
@@ -233,6 +262,14 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
+                : _loadError != null
+                    ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                        const SizedBox(height: 10),
+                        Text(_loadError!),
+                        const SizedBox(height: 10),
+                        OutlinedButton(onPressed: _loadRincian, child: const Text("COBA LAGI")),
+                      ]))
                 : _perpuluhanList.isEmpty
                     ? const Center(child: Text("Belum ada transaksi.", style: TextStyle(color: Colors.grey)))
                     : ListView.builder(

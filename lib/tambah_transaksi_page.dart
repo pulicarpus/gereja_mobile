@@ -90,7 +90,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
+      lastDate: _selectedDate.isAfter(DateTime.now()) ? _selectedDate : DateTime.now(),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(

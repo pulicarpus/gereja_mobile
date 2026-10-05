@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'user_manager.dart';
-import 'secrets.dart'; // 👇 Pastikan ini di-import untuk membaca osRestKeySecret
+import 'secrets.dart';
 import 'loading_sultan.dart';
 
 class TambahDoaPage extends StatefulWidget {
@@ -23,19 +23,18 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserManager _userManager = UserManager();
-
   final TextEditingController _etIsiDoa = TextEditingController();
-  
+
   bool _isPrivat = false;
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    // Kalau ada data lama (Mode Edit), isi otomatis kotak teks dan saklarnya
-    if (widget.existingData != null) {
-      _etIsiDoa.text = widget.existingData!['isiDoa'] ?? "";
-      _isPrivat = widget.existingData!['isPrivat'] ?? false;
+    final existing = widget.existingData;
+    if (existing != null) {
+      _etIsiDoa.text = (existing['isiDoa'] ?? "").toString();
+      _isPrivat = existing['isPrivat'] == true;
     }
   }
 
@@ -45,95 +44,132 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
     super.dispose();
   }
 
-  // 👇 FUNGSI KIRIM NOTIFIKASI DOA BARU KE SEMUA JEMAAT DENGAN TIKET 👇
-  Future<void> _kirimNotifDoaBaru(String namaPemohon, String churchId, bool isPrivat) async {
-    final String osRestKey = osRestKeySecret; 
-    final String osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
-    
-    if (osRestKey.isEmpty) return;
+  void _showSnack(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
+  Future<bool> _kirimNotifDoaBaru(
+    String namaPemohon,
+    String churchId,
+    bool isPrivat,
+  ) async {
+    // Doa privat tidak boleh mengumumkan identitas pemohon ke seluruh gereja.
+    if (isPrivat) return true;
+
+    final osRestKey = osRestKeySecret;
+    const osAppId = "a9ff250a-56ef-413d-b825-67288008d614";
+    if (osRestKey.isEmpty) return false;
 
     try {
-      // Kalau privat, pesannya dibedakan sedikit biar admin tahu
-      String pesanNotif = isPrivat 
-          ? "$namaPemohon mengirimkan pokok doa khusus (Privat)."
-          : "$namaPemohon baru saja membagikan pokok doa. Mari kita dukung dalam doa.";
-
-      await http.post(
+      final response = await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
         headers: {
-          'Content-Type': 'application/json; charset=utf-8', 
-          'Authorization': 'Basic $osRestKey'
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Basic $osRestKey',
         },
         body: jsonEncode({
           "app_id": osAppId,
-          "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
+          "filters": [
+            {
+              "field": "tag",
+              "key": "active_church",
+              "relation": "=",
+              "value": churchId,
+            }
+          ],
           "headings": {"en": "🙏 Permohonan Doa Baru"},
-          "contents": {"en": pesanNotif},
-          // 👇 INI DIA TIKET MENUJU HALAMAN DOA 👇
-          "data": {
-            "type": "doa"
-          }
+          "contents": {
+            "en": "$namaPemohon baru saja membagikan pokok doa. Mari kita dukung dalam doa."
+          },
+          "data": {"type": "doa"},
         }),
       );
+      final ok = response.statusCode >= 200 && response.statusCode < 300;
+      if (!ok) {
+        debugPrint("Notifikasi doa ditolak: ${response.statusCode}");
+      }
+      return ok;
     } catch (e) {
       debugPrint("Gagal kirim notif doa baru: $e");
+      return false;
     }
   }
 
   Future<void> _simpanDoa() async {
-    if (!_formKey.currentState!.validate()) return;
-    
-    setState(() => _isLoading = true);
+    if (_isLoading || !(_formKey.currentState?.validate() ?? false)) return;
 
-    String userUid = _auth.currentUser?.uid ?? "";
-    String userNama = _userManager.userNama ?? "Jemaat";
-    String? churchId = _userManager.getChurchIdForCurrentView();
-
-    if (churchId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error: Data gereja tidak ditemukan.")));
-      setState(() => _isLoading = false);
+    final user = _auth.currentUser;
+    final churchId = _userManager.getChurchIdForCurrentView();
+    if (user == null) {
+      _showSnack("Sesi login tidak valid. Silakan login kembali.", color: Colors.red);
+      return;
+    }
+    if (churchId == null || churchId.trim().isEmpty) {
+      _showSnack("Data gereja tidak ditemukan.", color: Colors.red);
       return;
     }
 
+    final isEdit = widget.doaId != null;
+    if (isEdit) {
+      final existing = widget.existingData;
+      final ownerUid = existing?['uid']?.toString() ?? "";
+      final existingChurch = existing?['churchId']?.toString() ?? churchId;
+      if (ownerUid != user.uid || existingChurch != churchId) {
+        _showSnack("Anda tidak memiliki izin untuk mengedit doa ini.", color: Colors.red);
+        return;
+      }
+    }
+
+    setState(() => _isLoading = true);
+
+    final userNamaRaw = (_userManager.userNama ?? user.displayName ?? "Jemaat").trim();
+    final userNama = userNamaRaw.isEmpty ? "Jemaat" : userNamaRaw;
+    final isiDoa = _etIsiDoa.text.trim();
+
     try {
-      if (widget.doaId != null) {
-        // MODE EDIT
+      if (isEdit) {
         await _db.collection("prayers").doc(widget.doaId).update({
-          "isiDoa": _etIsiDoa.text.trim(),
+          "isiDoa": isiDoa,
           "isPrivat": _isPrivat,
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Permohonan doa diperbarui!")));
-        }
+        _showSnack("Permohonan doa diperbarui.");
       } else {
-        // MODE TAMBAH BARU
-        DocumentReference docRef = _db.collection("prayers").doc();
+        final docRef = _db.collection("prayers").doc();
         await docRef.set({
           "id": docRef.id,
-          "uid": userUid,
-          "nama": userNama, 
-          "isiDoa": _etIsiDoa.text.trim(),
-          "tanggal": FieldValue.serverTimestamp(), 
+          "uid": user.uid,
+          "nama": userNama,
+          "isiDoa": isiDoa,
+          "tanggal": FieldValue.serverTimestamp(),
           "churchId": churchId,
           "isPrivat": _isPrivat,
-          "daftarAmin": [], 
+          "daftarAmin": [],
         });
-        
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Doa berhasil dibagikan!")));
+
+        final notifOk = await _kirimNotifDoaBaru(
+          userNama,
+          churchId,
+          _isPrivat,
+        );
+
+        if (_isPrivat) {
+          _showSnack("Doa privat berhasil disimpan tanpa notifikasi publik.");
+        } else if (notifOk) {
+          _showSnack("Doa berhasil dibagikan dan notifikasi dikirim.");
+        } else {
+          _showSnack(
+            "Doa berhasil disimpan, tetapi notifikasi gagal dikirim.",
+            color: Colors.orange,
+          );
         }
-        
-        // 👇 PANGGIL FUNGSI NOTIFIKASI SETELAH DOA BERHASIL DISIMPAN 👇
-        _kirimNotifDoaBaru(userNama, churchId, _isPrivat);
       }
-      
-      // Tutup halaman setelah sukses
-      if (mounted) Navigator.pop(context);
-      
+
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
-      }
+      _showSnack("Gagal menyimpan permohonan doa.", color: Colors.red);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -141,112 +177,185 @@ class _TambahDoaPageState extends State<TambahDoaPage> {
 
   @override
   Widget build(BuildContext context) {
-    bool isEditMode = widget.doaId != null;
+    final isEditMode = widget.doaId != null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), // Background abu-abu elegan
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(isEditMode ? "Edit Doa" : "Tulis Doa", style: const TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          isEditMode ? "Edit Doa" : "Tulis Doa",
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _isLoading 
-        ? LoadingSultan(size: 80)
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // HEADER TEKS
-                  Row(
-                    children: [
-                      Icon(Icons.volunteer_activism, color: Colors.indigo.shade300, size: 28),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          "Bagikan pergumulan Anda agar kita bisa saling menopang dalam doa.",
-                          style: TextStyle(fontSize: 15, color: Colors.black87, fontWeight: FontWeight.w500),
+      body: _isLoading
+          ? LoadingSultan(size: 80)
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.volunteer_activism,
+                          color: Colors.indigo.shade300,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Text(
+                            "Bagikan pergumulan Anda agar kita bisa saling menopang dalam doa.",
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: TextFormField(
+                        controller: _etIsiDoa,
+                        maxLines: 10,
+                        maxLength: 1500,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: "Ketik permohonan doa di sini...",
+                          hintStyle: TextStyle(color: Colors.grey.shade400),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.all(20),
+                        ),
+                        validator: (value) {
+                          final text = (value ?? '').trim();
+                          if (text.isEmpty) return "Isi doa tidak boleh kosong!";
+                          if (text.length > 1500) return "Isi doa terlalu panjang.";
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _isPrivat
+                            ? Colors.red.shade50
+                            : Colors.indigo.shade50,
+                        borderRadius: BorderRadius.circular(15),
+                        border: Border.all(
+                          color: _isPrivat
+                              ? Colors.red.shade100
+                              : Colors.indigo.shade100,
+                        ),
+                      ),
+                      child: SwitchListTile(
+                        value: _isPrivat,
+                        activeColor: Colors.red,
+                        title: Text(
+                          "Jadikan Privat",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: _isPrivat
+                                ? Colors.red.shade700
+                                : Colors.indigo.shade900,
+                          ),
+                        ),
+                        subtitle: Text(
+                          _isPrivat
+                              ? "Disembunyikan dari jemaat lain di aplikasi dan tidak mengirim notifikasi publik."
+                              : "Semua jemaat di gereja ini dapat melihat dan mendoakan.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _isPrivat
+                                ? Colors.red.shade500
+                                : Colors.indigo.shade500,
+                          ),
+                        ),
+                        onChanged: (value) =>
+                            setState(() => _isPrivat = value),
+                        secondary: Icon(
+                          _isPrivat ? Icons.lock : Icons.public,
+                          color: _isPrivat ? Colors.red : Colors.indigo,
+                        ),
+                      ),
+                    ),
+                    if (_isPrivat) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.amber.shade200),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.security, size: 18, color: Colors.orange),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Privasi penuh memerlukan Firestore Rules khusus. Sampai aturan server diperketat, hindari menulis informasi yang sangat sensitif.",
+                                style: TextStyle(fontSize: 12, height: 1.35),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 24),
-
-                  // KOTAK INPUT DOA
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))]
-                    ),
-                    child: TextFormField(
-                      controller: _etIsiDoa,
-                      maxLines: 10, // Dibuat lega biar puas ngetik
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: "Ketik permohonan doa di sini...",
-                        hintStyle: TextStyle(color: Colors.grey.shade400),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
-                        contentPadding: const EdgeInsets.all(20),
-                      ),
-                      validator: (value) => value == null || value.trim().isEmpty ? "Isi doa tidak boleh kosong!" : null,
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // 👇 SAKLAR DOA PRIVAT SULTAN 👇
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _isPrivat ? Colors.red.shade50 : Colors.indigo.shade50,
-                      borderRadius: BorderRadius.circular(15),
-                      border: Border.all(color: _isPrivat ? Colors.red.shade100 : Colors.indigo.shade100)
-                    ),
-                    child: SwitchListTile(
-                      value: _isPrivat,
-                      activeColor: Colors.red,
-                      title: Text(
-                        "Jadikan Privat", 
-                        style: TextStyle(fontWeight: FontWeight.bold, color: _isPrivat ? Colors.red.shade700 : Colors.indigo.shade900)
-                      ),
-                      subtitle: Text(
-                        _isPrivat ? "Hanya Anda dan Gembala/Admin yang bisa melihat doa ini." : "Semua jemaat dapat melihat dan mendoakan.",
-                        style: TextStyle(fontSize: 12, color: _isPrivat ? Colors.red.shade400 : Colors.indigo.shade400),
-                      ),
-                      onChanged: (value) => setState(() => _isPrivat = value),
-                      secondary: Icon(
-                        _isPrivat ? Icons.lock : Icons.public, 
-                        color: _isPrivat ? Colors.red : Colors.indigo
+                    const SizedBox(height: 40),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _simpanDoa,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.indigo,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          elevation: 4,
+                        ),
+                        child: Text(
+                          isEditMode
+                              ? "UPDATE PERMOHONAN"
+                              : "KIRIM PERMOHONAN",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 40),
-
-                  // TOMBOL KIRIM
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: _simpanDoa,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.indigo,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        elevation: 4,
-                      ),
-                      child: Text(
-                        isEditMode ? "UPDATE PERMOHONAN" : "KIRIM PERMOHONAN", 
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1)
-                      ),
-                    ),
-                  )
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
     );
   }
 }

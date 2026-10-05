@@ -157,38 +157,37 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     final pdf = pw.Document();
     
     pdf.addPage(
-      pw.Page(
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.center,
-            children: [
-              pw.Text("Laporan Perpuluhan", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-              pw.Text("Periode: ${_bulanArray[_selectedMonth]} $_selectedYear"),
-              pw.SizedBox(height: 20),
-              pw.TableHelper.fromTextArray(
-                headers: ['Nama Jemaat', 'Total Perpuluhan'],
-                data: _rekapList.map((rekap) => [rekap.namaJemaat, formatRupiah(rekap.totalPerpuluhan)]).toList(),
-                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-                cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerRight},
-              ),
-              pw.SizedBox(height: 15),
-              pw.Align(
-                alignment: pw.Alignment.centerRight,
-                child: pw.Text("Grand Total: ${formatRupiah(_grandTotal)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
-              )
-            ],
-          );
-        },
+      pw.MultiPage(
+        build: (pw.Context context) => [
+          pw.Text("Laporan Perpuluhan", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+          pw.Text("Periode: ${_bulanArray[_selectedMonth]} $_selectedYear"),
+          pw.SizedBox(height: 20),
+          pw.TableHelper.fromTextArray(
+            headers: ['Nama Jemaat', 'Total Perpuluhan'],
+            data: _rekapList.map((rekap) => [rekap.namaJemaat, formatRupiah(rekap.totalPerpuluhan)]).toList(),
+            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+            headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+            cellAlignments: {0: pw.Alignment.centerLeft, 1: pw.Alignment.centerRight},
+          ),
+          pw.SizedBox(height: 15),
+          pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text("Grand Total: ${formatRupiah(_grandTotal)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+          ),
+        ],
       ),
     );
 
     final dir = await getExternalStorageDirectory();
-    final file = File("${dir!.path}/Laporan_Perpuluhan_${DateTime.now().millisecondsSinceEpoch}.pdf");
+    if (dir == null) return _showSnack("Penyimpanan tidak tersedia.");
+    final file = File("${dir.path}/Laporan_Perpuluhan_${DateTime.now().millisecondsSinceEpoch}.pdf");
     await file.writeAsBytes(await pdf.save());
-    
-    _showSnack("PDF berhasil dibuat!");
-    OpenFilex.open(file.path);
+    final result = await OpenFilex.open(file.path);
+    if (result.type == ResultType.error) {
+      _showSnack("PDF dibuat, tetapi tidak dapat dibuka otomatis.");
+    } else {
+      _showSnack("PDF berhasil dibuat!");
+    }
   }
 
   Future<void> _exportToCsv() async {
@@ -206,11 +205,15 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     String csv = const ListToCsvConverter().convert(rows);
     
     final dir = await getExternalStorageDirectory();
-    final file = File("${dir!.path}/Laporan_Perpuluhan_${DateTime.now().millisecondsSinceEpoch}.csv");
+    if (dir == null) return _showSnack("Penyimpanan tidak tersedia.");
+    final file = File("${dir.path}/Laporan_Perpuluhan_${DateTime.now().millisecondsSinceEpoch}.csv");
     await file.writeAsString(csv);
-
-    _showSnack("CSV berhasil dibuat!");
-    OpenFilex.open(file.path);
+    final result = await OpenFilex.open(file.path);
+    if (result.type == ResultType.error) {
+      _showSnack("CSV dibuat, tetapi tidak dapat dibuka otomatis.");
+    } else {
+      _showSnack("CSV berhasil dibuat!");
+    }
   }
 
   @override

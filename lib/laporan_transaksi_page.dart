@@ -354,7 +354,15 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   }
 
   Future<void> _deleteTransaksi(TransaksiItem trx) async {
-    final churchId = UserManager().getChurchIdForCurrentView();
+    final user = UserManager();
+    final kategori = widget.filterKategorial?.trim();
+    final canEdit = user.isAdmin() ||
+        (kategori != null && kategori.isNotEmpty && user.isPengurus && user.userKomisi == kategori);
+    if (!canEdit) {
+      _showSnack("Anda tidak memiliki izin untuk menghapus transaksi ini.");
+      return;
+    }
+    final churchId = user.getChurchIdForCurrentView();
     if (churchId == null || churchId.isEmpty) return;
 
     try {

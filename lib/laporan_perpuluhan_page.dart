@@ -34,6 +34,8 @@ class LaporanPerpuluhanPage extends StatefulWidget {
 
 class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   final _db = FirebaseFirestore.instance;
+  final _searchController = TextEditingController();
+  String _searchQuery = "";
   
   List<RekapPerpuluhanJemaat> _rekapList = [];
   RekapPerpuluhanJemaat? _selectedRekap;
@@ -61,6 +63,12 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     _tahunArray = List.generate(now.year - 2020 + 1, (index) => now.year - index);
     
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -219,6 +227,11 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   @override
   Widget build(BuildContext context) {
     bool isAdmin = UserManager().isAdmin();
+    final visibleRekap = _rekapList.where((r) {
+      if (_searchQuery.isEmpty) return true;
+      final q = _searchQuery.toLowerCase();
+      return r.namaJemaat.toLowerCase().contains(q) || r.totalPerpuluhan.toString().contains(q);
+    }).toList();
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -281,6 +294,30 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
             ),
           ),
 
+          if (_rekapList.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: "Cari nama pemberi perpuluhan...",
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = "");
+                          },
+                        ),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
+                ),
+                onChanged: (value) => setState(() => _searchQuery = value.trim()),
+              ),
+            ),
+
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
@@ -294,11 +331,13 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
                   ]))
               : _rekapList.isEmpty
                 ? const Center(child: Text("Tidak ada data perpuluhan di bulan ini", style: TextStyle(color: Colors.grey)))
+                : visibleRekap.isEmpty
+                  ? const Center(child: Text("Nama tidak ditemukan.", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     padding: const EdgeInsets.all(10),
-                    itemCount: _rekapList.length,
+                    itemCount: visibleRekap.length,
                     itemBuilder: (context, index) {
-                      var rekap = _rekapList[index];
+                      var rekap = visibleRekap[index];
                       bool isSelected = _selectedRekap == rekap;
                       
                       return Card(

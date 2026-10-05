@@ -39,6 +39,8 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   RekapPerpuluhanJemaat? _selectedRekap;
   int _grandTotal = 0;
   bool _isLoading = false;
+  String? _loadError;
+  int _loadGeneration = 0;
 
   late int _selectedMonth;
   late int _selectedYear;
@@ -62,25 +64,35 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() {
-      _isLoading = true;
-      _selectedRekap = null; 
-    });
+    final generation = ++_loadGeneration;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+        _selectedRekap = null;
+        _rekapList = [];
+        _grandTotal = 0;
+      });
+    }
 
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
-      _showSnack("ID Gereja tidak valid.");
-      setState(() => _isLoading = false);
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _isLoading = false;
+          _loadError = "Data gereja tidak valid.";
+        });
+      }
       return;
     }
 
     DateTime startDate = DateTime(_selectedYear, _selectedMonth + 1, 1);
-    DateTime endDate = DateTime(_selectedYear, _selectedMonth + 2, 0, 23, 59, 59);
+    DateTime endDate = DateTime(_selectedYear, _selectedMonth + 2, 1);
 
     try {
       var querySnap = await _db.collection("churches").doc(churchId).collection("perpuluhan")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
-          .where("tanggal", isLessThanOrEqualTo: endDate)
+.where("tanggal", isLessThan: endDate)
           .get();
 
       Map<String, RekapPerpuluhanJemaat> rekapMap = {};
@@ -88,9 +100,11 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
 
       for (var doc in querySnap.docs) {
         var data = doc.data();
-        int jumlah = (data['jumlah'] ?? 0) as int;
-        String jemaatId = data['jemaatId'] ?? "";
-        String namaJemaat = data['namaJemaat'] ?? "Tanpa Nama";
+        final rawJumlah = data['jumlah'];
+        if (rawJumlah is! num) continue;
+        int jumlah = rawJumlah.toInt();
+        String jemaatId = data['jemaatId']?.toString() ?? "";
+        String namaJemaat = data['namaJemaat']?.toString() ?? "Tanpa Nama";
         
         String key = jemaatId.isNotEmpty ? jemaatId : namaJemaat;
 
@@ -104,14 +118,19 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
       var sortedList = rekapMap.values.toList();
       sortedList.sort((a, b) => a.namaJemaat.compareTo(b.namaJemaat));
 
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _rekapList = sortedList;
         _grandTotal = tempGrandTotal;
       });
     } catch (e) {
-      _showSnack("Gagal memuat data: $e");
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = "Gagal memuat laporan perpuluhan.");
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -120,7 +139,15 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String _safeCsvText(String value) {
+    final trimmed = value.trimLeft();
+    if (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@")) {
+      return "'$value";
+    }
+    return value;
   }
 
   Future<void> _exportToPdf() async {
@@ -171,7 +198,7 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
     rows.add(["Nama Jemaat", "Total Perpuluhan"]); 
     
     for (var rekap in _rekapList) {
-      rows.add([rekap.namaJemaat, rekap.totalPerpuluhan]);
+      rows.add([_safeCsvText(rekap.namaJemaat), rekap.totalPerpuluhan]);
     }
     rows.add([""]);
     rows.add(["Grand Total", _grandTotal]);
@@ -254,6 +281,14 @@ class _LaporanPerpuluhanPageState extends State<LaporanPerpuluhanPage> {
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
+              : _loadError != null
+                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                    const SizedBox(height: 10),
+                    Text(_loadError!),
+                    const SizedBox(height: 10),
+                    OutlinedButton(onPressed: _loadData, child: const Text("COBA LAGI")),
+                  ]))
               : _rekapList.isEmpty
                 ? const Center(child: Text("Tidak ada data perpuluhan di bulan ini", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(

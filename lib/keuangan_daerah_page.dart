@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'user_manager.dart';
 
 // 👇 MESIN FORMAT TITIK OTOMATIS SAAT MENGETIK RUPIAH 👇
 class CurrencyInputFormatter extends TextInputFormatter {
@@ -31,6 +32,15 @@ class KeuanganDaerahPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = UserManager();
+    final target = namaDaerah.trim();
+    final hasAreaAccess = user.isSuperAdmin() ||
+        (user.isAdminDaerah() && user.adminDaerahArea?.trim() == target) ||
+        ((user.isGembala() || user.isBPJ()) && user.userDaerah?.trim() == target);
+    if (!hasAreaAccess) {
+      return const Scaffold(body: Center(child: Text("Anda tidak memiliki akses ke keuangan daerah ini.")));
+    }
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(

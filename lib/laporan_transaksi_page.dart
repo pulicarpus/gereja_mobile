@@ -120,10 +120,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           .where("tanggal", isGreaterThanOrEqualTo: startDateBulanan)
           .where("tanggal", isLessThan: endDateBulanan);
           
-      if (widget.tipeFilter != null) {
-        trxQueryBulanan = trxQueryBulanan.where("jenis", isEqualTo: widget.tipeFilter);
-      }
-
+      // Jenis difilter di perangkat agar tidak memerlukan composite index baru.
       List<Future<QuerySnapshot<Map<String, dynamic>>>> tasksToRun = [trxQueryBulanan.get()];
 
       bool fetchPerpuluhan = isModeUmum && (widget.tipeFilter == "Pemasukan" || widget.tipeFilter == null);
@@ -168,6 +165,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         final jenis = data['jenis']?.toString() ?? "";
         if (rawTanggal is! Timestamp || rawJumlah is! num) continue;
         if (jenis != "Pemasukan" && jenis != "Pengeluaran") continue;
+        if (widget.tipeFilter != null && jenis != widget.tipeFilter) continue;
 
         var trx = TransaksiItem(
           id: doc.id,

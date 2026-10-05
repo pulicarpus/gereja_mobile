@@ -27,8 +27,9 @@ class TransaksiEditData {
 class TambahTransaksiPage extends StatefulWidget {
   final String? filterKategorial; // Tangkapan Kategori dari halaman sebelumnya
   final TransaksiEditData? transaksiEdit;
+  final String? initialJenis;
 
-  const TambahTransaksiPage({super.key, this.filterKategorial, this.transaksiEdit});
+  const TambahTransaksiPage({super.key, this.filterKategorial, this.transaksiEdit, this.initialJenis});
 
   @override
   State<TambahTransaksiPage> createState() => _TambahTransaksiPageState();
@@ -54,6 +55,9 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     
     // 1. Tangkap Kategori dari parameter
     _kategoriAktif = widget.filterKategorial;
+    if (widget.initialJenis == "Pemasukan" || widget.initialJenis == "Pengeluaran") {
+      _jenisTransaksi = widget.initialJenis!;
+    }
 
     if (widget.transaksiEdit != null) {
       _setupEditMode();
@@ -85,8 +89,8 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -107,8 +111,16 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
   Future<void> _saveTransaction() async {
     if (!_formKey.currentState!.validate()) return;
     
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
+    final user = UserManager();
+    final churchId = user.getChurchIdForCurrentView();
+    final kategori = widget.filterKategorial?.trim();
+    final canEdit = user.isAdmin() ||
+        (kategori != null && kategori.isNotEmpty && user.isPengurus && user.userKomisi == kategori);
+    if (!canEdit) {
+      _showSnack("Anda tidak memiliki izin untuk mengubah keuangan ini.");
+      return;
+    }
+    if (churchId == null || churchId.isEmpty) {
       _showSnack("Gagal menyimpan, ID Gereja tidak ditemukan.");
       return;
     }
@@ -228,7 +240,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
                           hintText: "Contoh: Beli Token Listrik",
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        validator: (val) => val == null || val.isEmpty ? "Wajib diisi" : null,
+                        validator: (val) => val == null || val.trim().isEmpty ? "Wajib diisi" : null,
                       ),
                       const SizedBox(height: 20),
 

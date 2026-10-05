@@ -31,7 +31,7 @@ Branch kerja: `perbaikan-fitur-daerah`
 - Logout tidak lagi `SharedPreferences.clear()`; hanya key session yang dihapus sehingga cache fitur lain tidak ikut hilang.
 
 ## Fase 3 — UX halaman utama
-- Tambah Akses Cepat: Jadwal, Doa, Chat, Galeri, Alkitab, Renungan, Lagu; Data Jemaat hanya untuk admin/superadmin.
+- Quick Access sempat diuji lalu dibatalkan dan dihapus berdasarkan hasil uji pengguna.
 - Ayat home tidak lagi berubah akibat ketukan tidak sengaja; diperlakukan sebagai Ayat Hari Ini selama sesi/hari.
 - Empty state rekening tetap aman.
 
@@ -76,3 +76,23 @@ Branch kerja: `perbaikan-fitur-daerah`
 3. Audit Firebase Security Rules secara terpisah (tanpa deploy langsung).
 4. Rancang backend aman untuk OneSignal/Telegram secrets.
 5. Setelah disetujui dan diuji, baru tentukan strategi merge/release.
+
+
+## Pematangan Aset Gereja + Pokok Doa
+- Aset: query tidak lagi bergantung pada `createdAt` untuk sorting sehingga data legacy tanpa field tersebut tetap dapat tampil.
+- Aset: tambah/edit memakai validasi trim dan jumlah > 0, foto dikompresi saat dipilih, upload baru di-rollback bila save Firestore gagal, dan foto lama dibersihkan setelah update sukses.
+- Aset: delete memiliki guard permission di action layer dan melaporkan jika cleanup file foto gagal.
+- Aset: dashboard lokal Total Unit/Baik/Rusak, filter kondisi, pencarian, dan preview foto fullscreen; tidak menambah field Firebase baru.
+- Doa: Gembala ikut dapat melihat doa privat di UI sesuai keterangan fitur; owner/admin tetap mengelola delete sesuai perilaku lama.
+- Doa privat tidak lagi mengirim notifikasi publik ke seluruh gereja.
+- Doa: edit diverifikasi lagi berdasarkan UID pemilik + konteks gereja, owner tidak bisa meng-Amin-kan doanya sendiri, parsing data legacy dibuat toleran, sorting dilakukan lokal, ditambah search/filter.
+- Format lama `daftarAmin` berbasis nama dipertahankan untuk kompatibilitas aplikasi lama; kelemahan nama ganda belum dapat diselesaikan tanpa strategi schema kompatibel.
+- Firestore Rules production TIDAK diubah/deploy dari branch ini.
+
+## Audit Rules Firebase yang diberikan pengguna
+- CRITICAL: `users/{uid}` mengizinkan user menulis seluruh dokumennya sendiri. Secara rules, user dapat mencoba mengubah `role` miliknya menjadi `admin`; ini dapat mengalahkan helper `isPrivilegedUser()`.
+- CRITICAL: `churches/{churchId}` dan recursive `match /{allPaths=**}` memberi read/write ke semua user login. Rule khusus `jemaat`, `chats`, dan `aset` di bawahnya tidak membatasi akses karena allow Firestore bersifat OR.
+- HIGH: `prayers/{prayerId}` saat ini read/write untuk semua user login, sehingga label Privat belum merupakan perlindungan server-side.
+- HIGH: `keuangan_daerah`, `perpuluhan_daerah`, `info_surat_daerah`, dan beberapa modul global lain juga read/write untuk semua user login.
+- Aset global `aset_gereja` write sudah dibatasi oleh `isPrivilegedUser()`, tetapi helper tersebut tetap terdampak celah privilege escalation pada dokumen user.
+- Security Rules perlu diperketat sebagai pekerjaan terpisah dan diuji dengan Emulator/Rules Playground sebelum deploy agar aplikasi lama tidak putus.

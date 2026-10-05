@@ -180,12 +180,15 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
   }
 
   void _navigateToEdit(PerpuluhanItem perpuluhan) {
-    // Navigasi ke Edit dan Refresh saat kembali
-    /* Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage(
-      perpuluhanEdit: perpuluhan,
-    ))).then((_) => _loadRincian()); // Refresh data otomatis layaknya onResume()
-    */
-    _showSnack("Navigasi ke halaman Edit (Segera dibuat)");
+    Navigator.push(context, MaterialPageRoute(builder: (_) => TambahPerpuluhanPage(
+      perpuluhanEdit: PerpuluhanEditData(
+        id: perpuluhan.id,
+        jumlah: perpuluhan.jumlah,
+        jemaatId: perpuluhan.jemaatId,
+        namaJemaat: perpuluhan.namaJemaat,
+        tanggal: perpuluhan.tanggal,
+      ),
+    ))).then((_) => _loadRincian());
   }
 
   void _showDeleteConfirmationDialog(PerpuluhanItem perpuluhan) {

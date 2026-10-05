@@ -154,8 +154,9 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
       var d = doc.data() as Map<String, dynamic>;
       DateTime dt = (d['tanggal'] as Timestamp).toDate();
       String tgl = DateFormat('yyyy-MM-dd').format(dt);
-      String ket = d['keterangan'].toString().replaceAll('"', '""'); 
-      csvData += "$tgl,${d['jenis']},\"$ket\",${d['nominal']}\n";
+      String ket = _safeCsvValue(d['keterangan']?.toString() ?? "");
+      String jenis = _safeCsvValue(d['jenis']?.toString() ?? "");
+      csvData += "$tgl,$jenis,\"$ket\",${d['nominal']}\n";
     }
 
     final String blnStr = _months[_selectedMonth - 1];
@@ -259,7 +260,13 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
               children: [
                 InkWell(
                   onTap: () async {
-                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(1900), lastDate: DateTime.now());
+                    final today = DateTime.now();
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(1900),
+                      lastDate: selectedDate.isAfter(today) ? selectedDate : today,
+                    );
                     if (picked != null) setStateDialog(() => selectedDate = picked);
                   },
                   child: Container(
@@ -602,7 +609,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                               backgroundColor: isPemasukan ? Colors.green.shade50 : Colors.red.shade50,
                               child: Icon(isPemasukan ? Icons.south_west : Icons.north_east, color: isPemasukan ? Colors.green : Colors.red, size: 20),
                             ),
-                            title: Text(data['keterangan'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            title: Text((data['keterangan'] ?? "Tanpa Keterangan").toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                             subtitle: Text(DateFormat('dd MMM yyyy').format(ts.toDate()), style: const TextStyle(fontSize: 11)),
                             trailing: Text(
                               isPemasukan ? "+ ${_currencyFormat.format(data['nominal'])}" : "- ${_currencyFormat.format(data['nominal'])}",
@@ -743,8 +750,9 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
       var d = doc.data() as Map<String, dynamic>;
       DateTime dt = (d['tanggal'] as Timestamp).toDate();
       String tgl = DateFormat('yyyy-MM-dd').format(dt);
-      String nama = d['nama'].toString().replaceAll('"', '""'); 
-      csvData += "$tgl,${d['tipe']},\"$nama\",${d['nominal']}\n";
+      String nama = _safeCsvValuePerpuluhan(d['nama']?.toString() ?? "");
+      String tipe = _safeCsvValuePerpuluhan(d['tipe']?.toString() ?? "");
+      csvData += "$tgl,$tipe,\"$nama\",${d['nominal']}\n";
     }
 
     final String blnStr = _months[_selectedMonth - 1];
@@ -824,7 +832,13 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
               children: [
                 InkWell(
                   onTap: () async {
-                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(1900), lastDate: DateTime.now());
+                    final today = DateTime.now();
+                    DateTime? picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(1900),
+                      lastDate: selectedDate.isAfter(today) ? selectedDate : today,
+                    );
                     if (picked != null) setStateDialog(() => selectedDate = picked);
                   },
                   child: Container(
@@ -1156,7 +1170,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                               backgroundColor: Colors.orange.shade50,
                               child: Icon(data['tipe'] == "Gereja Lokal" ? Icons.church : Icons.person, color: Colors.orange),
                             ),
-                            title: Text(data['nama'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                            title: Text((data['nama'] ?? "Tanpa Nama").toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text("${data['tipe']} • ${DateFormat('dd MMM yyyy').format(ts.toDate())}", style: const TextStyle(fontSize: 11)),
                             trailing: Text(_currencyFormat.format(data['nominal']), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)),
                             onLongPress: () => _showOptionsBottomSheet(doc.id, data), 

@@ -20,6 +20,7 @@ class TransaksiItem {
   final DateTime tanggal;
   final String sumber; 
   final String? kategori;
+  final String? jemaatId;
 
   TransaksiItem({
     required this.id,
@@ -29,6 +30,7 @@ class TransaksiItem {
     required this.tanggal,
     required this.sumber,
     this.kategori,
+    this.jemaatId,
   });
 }
 
@@ -51,6 +53,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   
   List<TransaksiItem> _transaksiList = [];
   bool _isLoading = false;
+  String? _loadError;
+  int _loadGeneration = 0;
   
   int _totalPemasukan = 0;
   int _totalPengeluaran = 0;
@@ -78,20 +82,34 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    final generation = ++_loadGeneration;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+        _transaksiList = [];
+        _totalPemasukan = 0;
+        _totalPengeluaran = 0;
+        _totalSaldoTahunan = 0;
+      });
+    }
 
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
-      _showSnack("ID Gereja tidak valid.");
-      setState(() => _isLoading = false);
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _isLoading = false;
+          _loadError = "Data gereja tidak valid.";
+        });
+      }
       return;
     }
 
     DateTime startDateBulanan = DateTime(_selectedYear, _selectedMonth + 1, 1);
-    DateTime endDateBulanan = DateTime(_selectedYear, _selectedMonth + 2, 0, 23, 59, 59);
+    DateTime endDateBulanan = DateTime(_selectedYear, _selectedMonth + 2, 1);
 
     DateTime startDateTahunan = DateTime(_selectedYear, 1, 1);
-    DateTime endDateTahunan = DateTime(_selectedYear, 12, 31, 23, 59, 59);
+    DateTime endDateTahunan = DateTime(_selectedYear + 1, 1, 1);
 
     bool isModeUmum = widget.filterKategorial == null || widget.filterKategorial!.isEmpty;
 
@@ -100,7 +118,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
       var trxQueryBulanan = churchRef.collection("transaksi")
           .where("tanggal", isGreaterThanOrEqualTo: startDateBulanan)
-          .where("tanggal", isLessThanOrEqualTo: endDateBulanan);
+          .where("tanggal", isLessThan: endDateBulanan);
           
       if (widget.tipeFilter != null) {
         trxQueryBulanan = trxQueryBulanan.where("jenis", isEqualTo: widget.tipeFilter);
@@ -112,19 +130,19 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       if (fetchPerpuluhan) {
         var perpQueryBulanan = churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDateBulanan)
-            .where("tanggal", isLessThanOrEqualTo: endDateBulanan);
+            .where("tanggal", isLessThan: endDateBulanan);
         tasksToRun.add(perpQueryBulanan.get());
       }
 
       var trxQueryTahunan = churchRef.collection("transaksi")
           .where("tanggal", isGreaterThanOrEqualTo: startDateTahunan)
-          .where("tanggal", isLessThanOrEqualTo: endDateTahunan);
+          .where("tanggal", isLessThan: endDateTahunan);
       tasksToRun.add(trxQueryTahunan.get());
 
       if (fetchPerpuluhan) {
         var perpQueryTahunan = churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDateTahunan)
-            .where("tanggal", isLessThanOrEqualTo: endDateTahunan);
+            .where("tanggal", isLessThan: endDateTahunan);
         tasksToRun.add(perpQueryTahunan.get());
       }
 
@@ -145,33 +163,46 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           if (kat.toLowerCase() != widget.filterKategorial?.trim().toLowerCase()) continue;
         }
 
+        final rawTanggal = data['tanggal'];
+        final rawJumlah = data['jumlah'];
+        final jenis = data['jenis']?.toString() ?? "";
+        if (rawTanggal is! Timestamp || rawJumlah is! num) continue;
+        if (jenis != "Pemasukan" && jenis != "Pengeluaran") continue;
+
         var trx = TransaksiItem(
           id: doc.id,
-          keterangan: data['keterangan'] ?? "Tanpa Keterangan",
-          jumlah: (data['jumlah'] ?? 0) as int,
-          jenis: data['jenis'] ?? "Pemasukan",
-          tanggal: (data['tanggal'] as Timestamp).toDate(),
+          keterangan: (data['keterangan'] ?? "Tanpa Keterangan").toString(),
+          jumlah: rawJumlah.toInt(),
+          jenis: jenis,
+          tanggal: rawTanggal.toDate(),
           sumber: "transaksi",
           kategori: kat,
         );
         
         combinedList.add(trx);
-        if (trx.jenis == "Pemasukan") tempMasukBulan += trx.jumlah;
-        else tempKeluarBulan += trx.jumlah;
+        if (trx.jenis == "Pemasukan") {
+          tempMasukBulan += trx.jumlah;
+        } else if (trx.jenis == "Pengeluaran") {
+          tempKeluarBulan += trx.jumlah;
+        }
       }
 
       int offset = fetchPerpuluhan ? 1 : 0;
       if (fetchPerpuluhan) {
         for (var doc in results[1].docs) {
           var data = doc.data();
+          final rawTanggal = data['tanggal'];
+          final rawJumlah = data['jumlah'];
+          if (rawTanggal is! Timestamp || rawJumlah is! num) continue;
           var trx = TransaksiItem(
             id: doc.id,
             keterangan: "Perpuluhan: ${data['namaJemaat'] ?? 'Tanpa Nama'}",
-            jumlah: (data['jumlah'] ?? 0) as int,
+            jumlah: rawJumlah.toInt(),
             jenis: "Pemasukan",
-            tanggal: (data['tanggal'] as Timestamp).toDate(),
+            tanggal: rawTanggal.toDate(),
             sumber: "perpuluhan",
             kategori: "Umum",
+            jemaatId: data['jemaatId']?.toString(),
           );
           
           combinedList.add(trx);
@@ -190,23 +221,29 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
             if (kat.toLowerCase() != widget.filterKategorial?.trim().toLowerCase()) continue;
           }
 
-          int jml = (data['jumlah'] ?? 0) as int;
-          String jns = data['jenis'] ?? "Pemasukan";
+          final rawJumlah = data['jumlah'];
+          final jns = data['jenis']?.toString() ?? "";
+          if (rawJumlah is! num) continue;
+          final jml = rawJumlah.toInt();
           
-          if (jns == "Pemasukan") tempSaldoTahunan += jml;
-          else tempSaldoTahunan -= jml;
+          if (jns == "Pemasukan") {
+            tempSaldoTahunan += jml;
+          } else if (jns == "Pengeluaran") {
+            tempSaldoTahunan -= jml;
+          }
       }
 
       if (fetchPerpuluhan) {
          var docPerpTahunan = results[2 + offset].docs;
          for (var doc in docPerpTahunan) {
-            int jml = (doc.data()['jumlah'] ?? 0) as int;
-            tempSaldoTahunan += jml;
+            final rawJumlah = doc.data()['jumlah'];
+            if (rawJumlah is num) tempSaldoTahunan += rawJumlah.toInt();
          }
       }
 
       combinedList.sort((a, b) => b.tanggal.compareTo(a.tanggal));
 
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _transaksiList = combinedList;
         _totalPemasukan = tempMasukBulan;
@@ -215,9 +252,13 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       });
 
     } catch (e) {
-      _showSnack("Gagal memuat: $e");
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = "Gagal memuat laporan keuangan.");
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -273,6 +314,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         perpuluhanEdit: PerpuluhanEditData(
           id: trx.id, 
           jumlah: trx.jumlah, 
+          jemaatId: trx.jemaatId,
           namaJemaat: trx.keterangan.replaceAll("Perpuluhan: ", ""),
           tanggal: trx.tanggal
         )
@@ -314,8 +356,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   }
 
   Future<void> _deleteTransaksi(TransaksiItem trx) async {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return;
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) return;
 
     try {
       String collectionName = trx.sumber == "perpuluhan" ? "perpuluhan" : "transaksi";
@@ -378,12 +420,20 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     OpenFilex.open(file.path);
   }
 
+  String _safeCsvText(String value) {
+    final trimmed = value.trimLeft();
+    if (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@")) {
+      return "'$value";
+    }
+    return value;
+  }
+
   Future<void> _exportToCsv() async {
     if (_transaksiList.isEmpty) return _showSnack("Data kosong");
     
     List<List<dynamic>> rows = [["Tanggal", "Keterangan", "Jenis", "Jumlah"]];
     for (var t in _transaksiList) {
-      rows.add([formatTanggal(t.tanggal), t.keterangan, t.jenis, t.jumlah]);
+      rows.add([formatTanggal(t.tanggal), _safeCsvText(t.keterangan), t.jenis, t.jumlah]);
     }
     
     String csv = const ListToCsvConverter().convert(rows);
@@ -623,8 +673,16 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           const SizedBox(height: 5),
 
           Expanded(
-            child: _isLoading 
+            child: _isLoading
               ? const Center(child: CircularProgressIndicator())
+              : _loadError != null
+                ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                    const SizedBox(height: 10),
+                    Text(_loadError!),
+                    const SizedBox(height: 10),
+                    OutlinedButton(onPressed: _loadData, child: const Text("COBA LAGI")),
+                  ]))
               : _transaksiList.isEmpty
                 ? const Center(child: Text("Data Kosong", style: TextStyle(color: Colors.grey)))
                 : ListView.builder(
@@ -689,6 +747,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         onPressed: () {
           Navigator.push(context, MaterialPageRoute(builder: (_) => TambahTransaksiPage(
             filterKategorial: widget.filterKategorial,
+            initialJenis: widget.tipeFilter,
           ))).then((_) => _loadData());
         },
       ),

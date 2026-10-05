@@ -83,7 +83,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
   int _blnPemasukan = 0;
   int _blnPengeluaran = 0;
 
-  final List<int> _years = List.generate(5, (index) => DateTime.now().year - index);
+  final List<int> _years = List.generate(DateTime.now().year - 2020 + 1, (index) => DateTime.now().year - index);
   final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
   Future<void> _exportToPDF() async {
@@ -136,6 +136,14 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     final file = File('${dir.path}/Kas_${widget.namaDaerah}_${blnStr}_$_selectedYear.pdf');
     await file.writeAsBytes(await pdf.save());
     await Share.shareXFiles([XFile(file.path)], text: 'Laporan Kas Daerah ${widget.namaDaerah}');
+  }
+
+  String _safeCsvValue(String value) {
+    final clean = value.replaceAll('"', '""');
+    final trimmed = clean.trimLeft();
+    return (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@"))
+        ? "'$clean"
+        : clean;
   }
 
   Future<void> _exportToCSV() async {
@@ -192,7 +200,24 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
   void _showAddTransactionDialog(bool isPemasukan) => _showTransactionForm(isPemasukan: isPemasukan);
 
-  void _showEditTransactionDialog(String docId, Map<String, dynamic> data) {
+  Future<void> _showEditTransactionDialog(String docId, Map<String, dynamic> data) async {
+    try {
+      final linked = await _db.collection("perpuluhan_daerah").doc(docId).get();
+      if (linked.exists) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Transaksi ini berasal dari Perpuluhan. Edit melalui tab Perpuluhan agar data tetap sinkron."),
+            backgroundColor: Colors.orange,
+          ));
+        }
+        return;
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memeriksa sumber transaksi."), backgroundColor: Colors.red));
+      }
+      return;
+    }
     bool isPemasukan = data['jenis'] == "Pemasukan";
     _showTransactionForm(
       isPemasukan: isPemasukan,
@@ -234,7 +259,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
               children: [
                 InkWell(
                   onTap: () async {
-                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
+                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(1900), lastDate: DateTime.now());
                     if (picked != null) setStateDialog(() => selectedDate = picked);
                   },
                   child: Container(
@@ -354,11 +379,17 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
-              WriteBatch batch = _db.batch();
-              batch.delete(_db.collection("keuangan_daerah").doc(docId));
-              batch.delete(_db.collection("perpuluhan_daerah").doc(docId));
-              await batch.commit();
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
+              try {
+                final linkedRef = _db.collection("perpuluhan_daerah").doc(docId);
+                final linked = await linkedRef.get();
+                WriteBatch batch = _db.batch();
+                batch.delete(_db.collection("keuangan_daerah").doc(docId));
+                if (linked.exists) batch.delete(linkedRef);
+                await batch.commit();
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
+              } catch (_) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus data."), backgroundColor: Colors.red));
+              }
             },
             child: const Text("Hapus", style: TextStyle(color: Colors.white)),
           )
@@ -404,6 +435,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
               stream: _db.collection("keuangan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError) return const Center(child: Text("Gagal memuat kas daerah."));
                 
                 var docs = snapshot.data?.docs.toList() ?? [];
                 
@@ -423,14 +455,26 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   if (ts == null) continue;
 
                   DateTime dt = ts.toDate();
-                  int nom = data['nominal'] ?? 0;
-                  bool isMasuk = data['jenis'] == "Pemasukan";
+                  final rawNom = data['nominal'];
+                  if (rawNom is! num) continue;
+                  final nom = rawNom.toInt();
+                  final jenis = data['jenis']?.toString() ?? "";
+                  if (jenis != "Pemasukan" && jenis != "Pengeluaran") continue;
+                  final isMasuk = jenis == "Pemasukan";
 
                   if (dt.year == _selectedYear) {
-                    isMasuk ? thnPemasukan += nom : thnPengeluaran += nom;
+                    if (isMasuk) {
+                      thnPemasukan += nom;
+                    } else {
+                      thnPengeluaran += nom;
+                    }
                     
                     if (dt.month == _selectedMonth) {
-                      isMasuk ? _blnPemasukan += nom : _blnPengeluaran += nom;
+                      if (isMasuk) {
+                        _blnPemasukan += nom;
+                      } else {
+                        _blnPengeluaran += nom;
+                      }
                       _filteredDocs.add(doc);
                     }
                   }
@@ -599,7 +643,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   List<QueryDocumentSnapshot> _filteredDocs = [];
   int _blnTotal = 0;
 
-  final List<int> _years = List.generate(5, (index) => DateTime.now().year - index);
+  final List<int> _years = List.generate(DateTime.now().year - 2020 + 1, (index) => DateTime.now().year - index);
   final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
   List<String> _listGereja = [];
@@ -632,6 +676,14 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     } catch (e) {
       debugPrint("Gagal load suggestions: $e");
     }
+  }
+
+  String _safeCsvValuePerpuluhan(String value) {
+    final clean = value.replaceAll('"', '""');
+    final trimmed = clean.trimLeft();
+    return (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@"))
+        ? "'$clean"
+        : clean;
   }
 
   Future<void> _exportToPDF() async {
@@ -772,7 +824,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
               children: [
                 InkWell(
                   onTap: () async {
-                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(2000), lastDate: DateTime(2100));
+                    DateTime? picked = await showDatePicker(context: context, initialDate: selectedDate, firstDate: DateTime(1900), lastDate: DateTime.now());
                     if (picked != null) setStateDialog(() => selectedDate = picked);
                   },
                   child: Container(
@@ -1007,6 +1059,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
               stream: _db.collection("perpuluhan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError) return const Center(child: Text("Gagal memuat perpuluhan daerah."));
                 var docs = snapshot.data?.docs.toList() ?? [];
                 
                 docs.sort((a, b) {
@@ -1025,7 +1078,9 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                   if (ts == null) continue;
 
                   DateTime dt = ts.toDate();
-                  int nom = data['nominal'] ?? 0;
+                  final rawNom = data['nominal'];
+                  if (rawNom is! num) continue;
+                  final nom = rawNom.toInt();
 
                   if (dt.year == _selectedYear) {
                     thnTotal += nom;

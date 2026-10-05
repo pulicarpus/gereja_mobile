@@ -280,31 +280,102 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     keteranganController.dispose();
   }
 
-  void _confirmDelete(String docId, String? fotoUrl) {
-    showDialog(
+  Future<void> _confirmDelete(String docId, String? fotoUrl) async {
+    if (!_canManage) {
+      _showSnack("Anda tidak memiliki izin untuk menghapus aset ini.", color: Colors.red);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text("Hapus Aset"),
-        content: const Text("Apakah Anda yakin ingin menghapus aset ini?"),
+        content: const Text("Apakah Anda yakin ingin menghapus aset ini? Tindakan ini tidak dapat dibatalkan."),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text("Batal"),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(context);
-              await _firestore.collection('aset_gereja').doc(docId).delete();
-              if (fotoUrl != null && fotoUrl.isNotEmpty) {
-                try {
-                  await FirebaseStorage.instance.refFromURL(fotoUrl).delete();
-                } catch (_) {}
-              }
-            },
-            child: const Text("Hapus", style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Hapus"),
           ),
         ],
+      ),
+    ) ?? false;
+
+    if (!confirmed) return;
+
+    try {
+      await _firestore.collection('aset_gereja').doc(docId).delete();
+      bool photoCleaned = true;
+      if (fotoUrl != null && fotoUrl.trim().isNotEmpty) {
+        try {
+          await FirebaseStorage.instance.refFromURL(fotoUrl).delete();
+        } catch (e) {
+          photoCleaned = false;
+          debugPrint("Foto aset gagal dibersihkan setelah dokumen dihapus: $e");
+        }
+      }
+      _showSnack(
+        photoCleaned
+            ? "Aset berhasil dihapus."
+            : "Aset dihapus, tetapi file foto lama gagal dibersihkan.",
+        color: photoCleaned ? null : Colors.orange,
+      );
+    } catch (e) {
+      _showSnack("Gagal menghapus aset.", color: Colors.red);
+    }
+  }
+
+  Widget _buildSummaryCard(String label, int value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.15)),
+      ),
+      child: Column(
+        children: [
+          Text(value.toString(), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: color)),
+          const SizedBox(height: 2),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),
+        ],
+      ),
+    );
+  }
+
+  void _showImage(String url, String title) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.black,
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              minScale: 0.8,
+              maxScale: 4,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox(
+                  height: 300,
+                  child: Center(child: Text("Foto tidak dapat dimuat.", style: TextStyle(color: Colors.white))),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 4,
+              top: 4,
+              child: IconButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -317,7 +388,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
         backgroundColor: const Color(0xFF1A237E),
         foregroundColor: Colors.white,
       ),
-      floatingActionButton: UserManager().isAdmin()
+      floatingActionButton: _canManage
           ? FloatingActionButton(
               backgroundColor: const Color(0xFF1A237E),
               onPressed: () => _showAsetDialog(),
@@ -345,7 +416,6 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
               stream: _firestore
                   .collection('aset_gereja')
                   .where('gerejaId', isEqualTo: widget.gerejaId)
-                  .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -374,35 +444,89 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       child: Text("Belum ada data aset untuk gereja ini."));
                 }
 
-                final docs = snapshot.data!.docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final nama =
-                      (data['nama_aset'] ?? '').toString().toLowerCase();
-                  final kategori =
-                      (data['kategori'] ?? '').toString().toLowerCase();
-                  final lokasi =
-                      (data['lokasi'] ?? '').toString().toLowerCase();
-                  return nama.contains(_searchQuery) ||
-                      kategori.contains(_searchQuery) ||
-                      lokasi.contains(_searchQuery);
-                }).toList();
+                final allDocs = snapshot.data!.docs.toList()
+                  ..sort((a, b) {
+                    final aData = a.data() as Map<String, dynamic>;
+                    final bData = b.data() as Map<String, dynamic>;
+                    return _sortDate(bData).compareTo(_sortDate(aData));
+                  });
 
-                if (docs.isEmpty) {
-                  return const Center(child: Text("Aset tidak ditemukan."));
+                int totalUnit = 0;
+                int baik = 0;
+                int ringan = 0;
+                int berat = 0;
+                for (final doc in allDocs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final rawJumlah = data['jumlah'];
+                  final jumlah = rawJumlah is num ? rawJumlah.toInt() : int.tryParse(rawJumlah?.toString() ?? '') ?? 0;
+                  totalUnit += jumlah;
+                  final status = _safeStatus(data['status']);
+                  if (status == 'Baik') baik += jumlah;
+                  if (status == 'Rusak Ringan') ringan += jumlah;
+                  if (status == 'Rusak Berat') berat += jumlah;
                 }
 
-                return ListView.builder(
+                final docs = allDocs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final nama = (data['nama_aset'] ?? '').toString().toLowerCase();
+                  final kategori = (data['kategori'] ?? '').toString().toLowerCase();
+                  final lokasi = (data['lokasi'] ?? '').toString().toLowerCase();
+                  final status = _safeStatus(data['status']);
+                  final matchesSearch = nama.contains(_searchQuery) ||
+                      kategori.contains(_searchQuery) ||
+                      lokasi.contains(_searchQuery);
+                  final matchesStatus = _statusFilter == 'Semua' || status == _statusFilter;
+                  return matchesSearch && matchesStatus;
+                }).toList();
+
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                      child: Row(
+                        children: [
+                          Expanded(child: _buildSummaryCard("Total Unit", totalUnit, Colors.indigo)),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildSummaryCard("Baik", baik, Colors.green)),
+                          const SizedBox(width: 6),
+                          Expanded(child: _buildSummaryCard("Rusak", ringan + berat, Colors.red)),
+                        ],
+                      ),
+                    ),
+                    SizedBox(
+                      height: 42,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        children: ['Semua', 'Baik', 'Rusak Ringan', 'Rusak Berat'].map((label) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(label),
+                              selected: _statusFilter == label,
+                              onSelected: (_) => setState(() => _statusFilter = label),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Expanded(
+                      child: docs.isEmpty
+                          ? const Center(child: Text("Aset tidak ditemukan."))
+                          : ListView.builder(
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
-                    final namaAset = data['nama_aset'] ?? '';
-                    final kategori = data['kategori'] ?? '';
-                    final jumlah = data['jumlah'] ?? 0;
-                    final lokasi = data['lokasi'] ?? '';
-                    final status = data['status'] ?? 'Baik';
-                    final keterangan = data['keterangan'] ?? '';
-                    final fotoUrl = data['foto_url'] ?? '';
+                    final namaAset = (data['nama_aset'] ?? 'Tanpa Nama').toString();
+                    final kategori = (data['kategori'] ?? 'Tanpa Kategori').toString();
+                    final rawJumlah = data['jumlah'];
+                    final jumlah = rawJumlah is num ? rawJumlah.toInt() : int.tryParse(rawJumlah?.toString() ?? '') ?? 0;
+                    final lokasi = (data['lokasi'] ?? '-').toString();
+                    final status = _safeStatus(data['status']);
+                    final keterangan = (data['keterangan'] ?? '').toString();
+                    final fotoUrl = (data['foto_url'] ?? '').toString();
 
                     Color statusColor = Colors.green;
                     if (status == 'Rusak Ringan') statusColor = Colors.orange;
@@ -420,11 +544,20 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                             ClipRRect(
                               borderRadius: BorderRadius.circular(6),
                               child: fotoUrl.isNotEmpty
-                                  ? Image.network(
-                                      fotoUrl,
-                                      width: 70,
-                                      height: 70,
-                                      fit: BoxFit.cover,
+                                  ? GestureDetector(
+                                      onTap: () => _showImage(fotoUrl, namaAset),
+                                      child: Image.network(
+                                        fotoUrl,
+                                        width: 70,
+                                        height: 70,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Container(
+                                          width: 70,
+                                          height: 70,
+                                          color: Colors.grey[300],
+                                          child: const Icon(Icons.broken_image, color: Colors.grey),
+                                        ),
+                                      ),
                                     )
                                   : Container(
                                       width: 70,
@@ -515,7 +648,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     children: [
-                                      if (UserManager().isAdmin()) ...[
+                                      if (_canManage) ...[
                                         InkWell(
                                           onTap: () =>
                                               _showAsetDialog(doc: doc),
@@ -568,6 +701,9 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       ),
                     );
                   },
+                        ),
+                    ),
+                  ],
                 );
               },
             ),

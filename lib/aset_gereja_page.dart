@@ -23,6 +23,34 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  String _statusFilter = 'Semua';
+
+  bool get _canManage {
+    final user = UserManager();
+    final currentChurchId = user.getChurchIdForCurrentView();
+    return user.isAdmin() &&
+        currentChurchId != null &&
+        currentChurchId.isNotEmpty &&
+        currentChurchId == widget.gerejaId;
+  }
+
+  String _safeStatus(dynamic raw) {
+    final value = raw?.toString().trim() ?? '';
+    const allowed = {'Baik', 'Rusak Ringan', 'Rusak Berat'};
+    return allowed.contains(value) ? value : 'Baik';
+  }
+
+  DateTime _sortDate(Map<String, dynamic> data) {
+    final raw = data['createdAt'];
+    return raw is Timestamp ? raw.toDate() : DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
+  void _showSnack(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
 
   @override
   void initState() {
@@ -40,50 +68,112 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     super.dispose();
   }
 
-  void _showAsetDialog({DocumentSnapshot? doc}) {
-    final _formKey = GlobalKey<FormState>();
-    final TextEditingController _namaController = TextEditingController(
-      text: doc != null ? doc['nama_aset'] ?? '' : '',
-    );
-    final TextEditingController _kategoriController = TextEditingController(
-      text: doc != null ? doc['kategori'] ?? '' : '',
-    );
-    final TextEditingController _jumlahController = TextEditingController(
-      text: doc != null ? doc['jumlah']?.toString() ?? '' : '',
-    );
-    final TextEditingController _lokasiController = TextEditingController(
-      text: doc != null ? doc['lokasi'] ?? '' : '',
-    );
-    final TextEditingController _keteranganController = TextEditingController(
-      text: doc != null ? doc['keterangan'] ?? '' : '',
-    );
+  Future<void> _showAsetDialog({DocumentSnapshot? doc}) async {
+    if (!_canManage) {
+      _showSnack("Anda tidak memiliki izin untuk mengubah aset ini.", color: Colors.red);
+      return;
+    }
 
-    String? _status = doc != null ? doc['status'] ?? 'Baik' : 'Baik';
-    String? _fotoUrl = doc != null ? doc['foto_url'] : null;
-    File? _imageFile;
+    final formKey = GlobalKey<FormState>();
+    final existing = doc?.data() is Map<String, dynamic>
+        ? Map<String, dynamic>.from(doc!.data() as Map<String, dynamic>)
+        : <String, dynamic>{};
 
-    showDialog(
+    final namaController = TextEditingController(text: (existing['nama_aset'] ?? '').toString());
+    final kategoriController = TextEditingController(text: (existing['kategori'] ?? '').toString());
+    final jumlahController = TextEditingController(text: existing['jumlah']?.toString() ?? '');
+    final lokasiController = TextEditingController(text: (existing['lokasi'] ?? '').toString());
+    final keteranganController = TextEditingController(text: (existing['keterangan'] ?? '').toString());
+
+    String status = _safeStatus(existing['status']);
+    final oldFotoUrl = existing['foto_url']?.toString() ?? '';
+    String fotoUrl = oldFotoUrl;
+    File? imageFile;
+    bool saving = false;
+
+    await showDialog<void>(
       context: context,
-      builder: (context) {
+      barrierDismissible: false,
+      builder: (dialogContext) {
         return StatefulBuilder(
-          builder: (context, setStateDialog) {
+          builder: (dialogContext, setStateDialog) {
+            Future<void> save() async {
+              if (saving || !(formKey.currentState?.validate() ?? false)) return;
+
+              final jumlah = int.tryParse(jumlahController.text.trim());
+              if (jumlah == null || jumlah <= 0) {
+                _showSnack("Jumlah unit harus lebih dari 0.", color: Colors.orange);
+                return;
+              }
+
+              setStateDialog(() => saving = true);
+              Reference? uploadedRef;
+              try {
+                if (imageFile != null) {
+                  uploadedRef = FirebaseStorage.instance
+                      .ref()
+                      .child('aset_gereja')
+                      .child('${widget.gerejaId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+                  await uploadedRef.putFile(imageFile!);
+                  fotoUrl = await uploadedRef.getDownloadURL();
+                }
+
+                final data = <String, dynamic>{
+                  'gerejaId': widget.gerejaId,
+                  'nama_aset': namaController.text.trim(),
+                  'kategori': kategoriController.text.trim(),
+                  'jumlah': jumlah,
+                  'lokasi': lokasiController.text.trim(),
+                  'status': status,
+                  'keterangan': keteranganController.text.trim(),
+                  'foto_url': fotoUrl,
+                  if (doc == null) 'createdAt': FieldValue.serverTimestamp(),
+                };
+
+                if (doc == null) {
+                  await _firestore.collection('aset_gereja').add(data);
+                } else {
+                  await _firestore.collection('aset_gereja').doc(doc.id).update(data);
+                }
+
+                if (imageFile != null && oldFotoUrl.isNotEmpty && oldFotoUrl != fotoUrl) {
+                  try {
+                    await FirebaseStorage.instance.refFromURL(oldFotoUrl).delete();
+                  } catch (e) {
+                    debugPrint("Foto aset lama gagal dibersihkan: $e");
+                  }
+                }
+
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+                _showSnack(doc == null ? "Aset berhasil ditambahkan." : "Aset berhasil diperbarui.");
+              } catch (e) {
+                if (uploadedRef != null) {
+                  try {
+                    await uploadedRef.delete();
+                  } catch (_) {}
+                }
+                _showSnack("Gagal menyimpan aset. Data lama tetap dipertahankan.", color: Colors.red);
+                if (dialogContext.mounted) setStateDialog(() => saving = false);
+              }
+            }
+
             return AlertDialog(
               title: Text(doc == null ? "Tambah Aset" : "Edit Aset"),
               content: SingleChildScrollView(
                 child: Form(
-                  key: _formKey,
+                  key: formKey,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       GestureDetector(
-                        onTap: () async {
-                          final picker = ImagePicker();
-                          final pickedFile = await picker.pickImage(
-                              source: ImageSource.gallery);
-                          if (pickedFile != null) {
-                            setStateDialog(() {
-                              _imageFile = File(pickedFile.path);
-                            });
+                        onTap: saving ? null : () async {
+                          final pickedFile = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 1600,
+                            imageQuality: 75,
+                          );
+                          if (pickedFile != null && dialogContext.mounted) {
+                            setStateDialog(() => imageFile = File(pickedFile.path));
                           }
                         },
                         child: Container(
@@ -94,22 +184,23 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.grey[400]!),
                           ),
-                          child: _imageFile != null
-                              ? Image.file(_imageFile!, fit: BoxFit.cover)
-                              : _fotoUrl != null && _fotoUrl!.isNotEmpty
-                                  ? Image.network(_fotoUrl!, fit: BoxFit.cover)
+                          child: imageFile != null
+                              ? Image.file(imageFile!, fit: BoxFit.cover)
+                              : fotoUrl.isNotEmpty
+                                  ? Image.network(
+                                      fotoUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Center(
+                                        child: Icon(Icons.broken_image, color: Colors.grey),
+                                      ),
+                                    )
                                   : const Center(
                                       child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
+                                        mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
-                                          Icon(Icons.add_a_photo,
-                                              color: Colors.grey),
+                                          Icon(Icons.add_a_photo, color: Colors.grey),
                                           SizedBox(height: 4),
-                                          Text("Pilih Foto Aset",
-                                              style: TextStyle(
-                                                  color: Colors.grey,
-                                                  fontSize: 12)),
+                                          Text("Pilih Foto Aset", style: TextStyle(color: Colors.grey, fontSize: 12)),
                                         ],
                                       ),
                                     ),
@@ -117,52 +208,48 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
-                        controller: _namaController,
-                        decoration:
-                            const InputDecoration(labelText: 'Nama Aset'),
-                        validator: (val) =>
-                            val!.isEmpty ? 'Nama aset wajib diisi' : null,
+                        controller: namaController,
+                        enabled: !saving,
+                        decoration: const InputDecoration(labelText: 'Nama Aset'),
+                        validator: (val) => (val ?? '').trim().isEmpty ? 'Nama aset wajib diisi' : null,
                       ),
                       TextFormField(
-                        controller: _kategoriController,
-                        decoration:
-                            const InputDecoration(labelText: 'Kategori'),
-                        validator: (val) =>
-                            val!.isEmpty ? 'Kategori wajib diisi' : null,
+                        controller: kategoriController,
+                        enabled: !saving,
+                        decoration: const InputDecoration(labelText: 'Kategori'),
+                        validator: (val) => (val ?? '').trim().isEmpty ? 'Kategori wajib diisi' : null,
                       ),
                       TextFormField(
-                        controller: _jumlahController,
+                        controller: jumlahController,
+                        enabled: !saving,
                         keyboardType: TextInputType.number,
-                        decoration:
-                            const InputDecoration(labelText: 'Jumlah Unit'),
-                        validator: (val) =>
-                            val!.isEmpty ? 'Jumlah wajib diisi' : null,
-                      ),
-                      TextFormField(
-                        controller: _lokasiController,
-                        decoration:
-                            const InputDecoration(labelText: 'Lokasi'),
-                        validator: (val) =>
-                            val!.isEmpty ? 'Lokasi wajib diisi' : null,
-                      ),
-                      DropdownButtonFormField<String>(
-                        value: _status,
-                        decoration:
-                            const InputDecoration(labelText: 'Status'),
-                        items: ['Baik', 'Rusak Ringan', 'Rusak Berat']
-                            .map((label) => DropdownMenuItem(
-                                value: label, child: Text(label)))
-                            .toList(),
-                        onChanged: (val) {
-                          setStateDialog(() {
-                            _status = val;
-                          });
+                        decoration: const InputDecoration(labelText: 'Jumlah Unit'),
+                        validator: (val) {
+                          final number = int.tryParse((val ?? '').trim());
+                          if (number == null || number <= 0) return 'Jumlah harus lebih dari 0';
+                          return null;
                         },
                       ),
                       TextFormField(
-                        controller: _keteranganController,
-                        decoration: const InputDecoration(
-                            labelText: 'Keterangan (Opsional)'),
+                        controller: lokasiController,
+                        enabled: !saving,
+                        decoration: const InputDecoration(labelText: 'Lokasi'),
+                        validator: (val) => (val ?? '').trim().isEmpty ? 'Lokasi wajib diisi' : null,
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: status,
+                        decoration: const InputDecoration(labelText: 'Status'),
+                        items: const ['Baik', 'Rusak Ringan', 'Rusak Berat']
+                            .map((label) => DropdownMenuItem(value: label, child: Text(label)))
+                            .toList(),
+                        onChanged: saving ? null : (val) {
+                          if (val != null) setStateDialog(() => status = val);
+                        },
+                      ),
+                      TextFormField(
+                        controller: keteranganController,
+                        enabled: !saving,
+                        decoration: const InputDecoration(labelText: 'Keterangan (Opsional)'),
                       ),
                     ],
                   ),
@@ -170,50 +257,14 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: saving ? null : () => Navigator.pop(dialogContext),
                   child: const Text('Batal'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    if (_formKey.currentState!.validate()) {
-                      Navigator.pop(context);
-
-                      String? downloadUrl = _fotoUrl;
-                      if (_imageFile != null) {
-                        final ref = FirebaseStorage.instance
-                            .ref()
-                            .child('aset_gereja')
-                            .child(
-                                '${DateTime.now().millisecondsSinceEpoch}.jpg');
-                        await ref.putFile(_imageFile!);
-                        downloadUrl = await ref.getDownloadURL();
-                      }
-
-                      final data = {
-                        'gerejaId': widget.gerejaId,
-                        'nama_aset': _namaController.text.trim(),
-                        'kategori': _kategoriController.text.trim(),
-                        'jumlah': int.tryParse(_jumlahController.text) ?? 1,
-                        'lokasi': _lokasiController.text.trim(),
-                        'status': _status,
-                        'keterangan': _keteranganController.text.trim(),
-                        'foto_url': downloadUrl ?? '',
-                        'createdAt': doc == null
-                            ? FieldValue.serverTimestamp()
-                            : doc['createdAt'],
-                      };
-
-                      if (doc == null) {
-                        await _firestore.collection('aset_gereja').add(data);
-                      } else {
-                        await _firestore
-                            .collection('aset_gereja')
-                            .doc(doc.id)
-                            .update(data);
-                      }
-                    }
-                  },
-                  child: const Text('Simpan'),
+                  onPressed: saving ? null : save,
+                  child: saving
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Simpan'),
                 ),
               ],
             );
@@ -221,6 +272,12 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
         );
       },
     );
+
+    namaController.dispose();
+    kategoriController.dispose();
+    jumlahController.dispose();
+    lokasiController.dispose();
+    keteranganController.dispose();
   }
 
   void _confirmDelete(String docId, String? fotoUrl) {

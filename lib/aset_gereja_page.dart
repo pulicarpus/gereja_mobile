@@ -36,8 +36,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
 
   String _safeStatus(dynamic raw) {
     final value = raw?.toString().trim() ?? '';
-    const allowed = {'Baik', 'Rusak Ringan', 'Rusak Berat'};
-    return allowed.contains(value) ? value : 'Baik';
+    return value.isEmpty ? 'Baik' : value;
   }
 
   DateTime _sortDate(Map<String, dynamic> data) {
@@ -239,7 +238,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       DropdownButtonFormField<String>(
                         value: status,
                         decoration: const InputDecoration(labelText: 'Status'),
-                        items: const ['Baik', 'Rusak Ringan', 'Rusak Berat']
+                        items: <String>{'Baik', 'Rusak Ringan', 'Rusak Berat', status}
                             .map((label) => DropdownMenuItem(value: label, child: Text(label)))
                             .toList(),
                         onChanged: saving ? null : (val) {
@@ -382,6 +381,17 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.gerejaId.trim().isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("Aset Gereja"),
+          backgroundColor: const Color(0xFF1A237E),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: Text("Data gereja tidak valid.")),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text("Aset - ${widget.namaGereja}"),

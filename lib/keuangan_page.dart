@@ -25,6 +25,8 @@ class _KeuanganPageState extends State<KeuanganPage> {
   List<int> _availableYears = [];
 
   bool _isLoading = false;
+  String? _loadError;
+  int _loadGeneration = 0;
   int _totalPemasukan = 0;
   int _totalPengeluaran = 0;
   
@@ -50,11 +52,27 @@ class _KeuanganPageState extends State<KeuanganPage> {
   }
 
   Future<void> _loadDataForYear(int year) async {
-    setState(() => _isLoading = true);
+    final generation = ++_loadGeneration;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+        _totalPemasukan = 0;
+        _totalPengeluaran = 0;
+        _pemasukanBulanan = List.filled(12, 0);
+        _pengeluaranBulanan = List.filled(12, 0);
+        _saldoBulanan = List.filled(12, 0);
+      });
+    }
     
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
-      setState(() => _isLoading = false);
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _isLoading = false;
+          _loadError = "Data gereja tidak valid.";
+        });
+      }
       return;
     }
 
@@ -79,7 +97,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
       for (var doc in trxQuery.docs) {
         var data = doc.data();
         String? kategori = data['kategori'] as String?;
-        int jumlah = (data['jumlah'] ?? 0) as int;
+        int jumlah = (data['jumlah'] is num) ? (data['jumlah'] as num).toInt() : 0;
         DateTime? tgl = (data['tanggal'] as Timestamp?)?.toDate();
         String jenis = data['jenis'] ?? "";
 
@@ -94,7 +112,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
           if (jenis == "Pemasukan") {
             tempPemasukan += jumlah;
             tempPemBulanan[monthIndex] += jumlah;
-          } else {
+          } else if (jenis == "Pengeluaran") {
             tempPengeluaran += jumlah;
             tempPengBulanan[monthIndex] += jumlah;
           }
@@ -110,7 +128,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
         for (var doc in perpQuery.docs) {
           var data = doc.data();
-          int jumlah = (data['jumlah'] ?? 0) as int;
+          int jumlah = (data['jumlah'] is num) ? (data['jumlah'] as num).toInt() : 0;
           DateTime? tgl = (data['tanggal'] as Timestamp?)?.toDate();
 
           if (tgl != null) {
@@ -126,7 +144,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         tempSaldoBulanan[i] = tempPemBulanan[i] - tempPengBulanan[i];
       }
 
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _totalPemasukan = tempPemasukan;
           _totalPengeluaran = tempPengeluaran;
@@ -137,8 +155,11 @@ class _KeuanganPageState extends State<KeuanganPage> {
       }
     } catch (e) {
       debugPrint("Error mengambil data keuangan: $e");
+      if (mounted && generation == _loadGeneration) {
+        setState(() => _loadError = "Gagal memuat data keuangan. Jangan gunakan angka ini untuk laporan.");
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted && generation == _loadGeneration) setState(() => _isLoading = false);
     }
   }
 
@@ -167,9 +188,28 @@ class _KeuanganPageState extends State<KeuanganPage> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: _isLoading 
+      body: _isLoading
         ? LoadingSultan(size: 80)
-        : SingleChildScrollView(
+        : _loadError != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.error_outline, size: 54, color: Colors.redAccent),
+                    const SizedBox(height: 12),
+                    Text(_loadError!, textAlign: TextAlign.center),
+                    const SizedBox(height: 12),
+                    OutlinedButton(
+                      onPressed: () => _loadDataForYear(_selectedYear),
+                      child: const Text("COBA LAGI"),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -231,7 +271,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            const Text("Total Saldo Tahun Ini", style: TextStyle(color: Colors.grey, fontSize: 14)),
+            Text("Surplus / Defisit Tahun $_selectedYear", style: const TextStyle(color: Colors.grey, fontSize: 14)),
             const SizedBox(height: 5),
             Text(formatRupiah(saldoTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue)),
             const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(height: 1, thickness: 1)),
@@ -342,7 +382,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Saldo Bersih", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isPositive ? Colors.green.shade800 : Colors.red.shade800)),
+                Text("Arus Bersih Bulan", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: isPositive ? Colors.green.shade800 : Colors.red.shade800)),
                 Text(
                   isPositive ? "+${formatRupiah(saldo)}" : formatRupiah(saldo),
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isPositive ? Colors.green.shade800 : Colors.red.shade800),

@@ -73,7 +73,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
       _selectedDate = data.tanggal!;
     }
     // Jika tidak ada ID Jemaat, berarti dia Jemaat Luar
-    if (data.jemaatId == null) {
+    if (data.jemaatId == null || data.jemaatId!.trim().isEmpty) {
       _isJemaatLuar = true;
       _namaLuarController.text = data.namaJemaat ?? "";
     } else {
@@ -85,11 +85,11 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
 
   Future<void> _loadJemaatData() async {
     setState(() => _isFetchingJemaat = true);
-    String? churchId = UserManager().activeChurchId;
+    final churchId = UserManager().getChurchIdForCurrentView();
     
-    if (churchId == null) {
+    if (churchId == null || churchId.isEmpty) {
       _showSnack("ID Gereja tidak ditemukan.");
-      setState(() => _isFetchingJemaat = false);
+      if (mounted) setState(() => _isFetchingJemaat = false);
       return;
     }
 
@@ -101,19 +101,22 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
       List<Map<String, dynamic>> tempList = [];
       for (var doc in snap.docs) {
         var data = doc.data();
+        if (data['status'] == 'Meninggal') continue;
         tempList.add({
           'id': doc.id,
           'namaLengkap': data['namaLengkap'] ?? "Tanpa Nama",
         });
       }
       
-      setState(() {
-        _jemaatList = tempList;
-      });
+      if (mounted) {
+        setState(() {
+          _jemaatList = tempList;
+        });
+      }
     } catch (e) {
       _showSnack("Gagal memuat data jemaat: $e");
     } finally {
-      setState(() => _isFetchingJemaat = false);
+      if (mounted) setState(() => _isFetchingJemaat = false);
     }
   }
 
@@ -121,8 +124,8 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)), // Bisa maju 1 tahun
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -145,8 +148,13 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
   Future<void> _savePerpuluhan() async {
     if (!_formKey.currentState!.validate()) return;
     
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) {
+    final user = UserManager();
+    final churchId = user.getChurchIdForCurrentView();
+    if (!user.isAdmin()) {
+      _showSnack("Anda tidak memiliki izin untuk mengubah perpuluhan.");
+      return;
+    }
+    if (churchId == null || churchId.isEmpty) {
       _showSnack("Gagal menyimpan, ID Gereja tidak ditemukan.");
       return;
     }
@@ -213,7 +221,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   @override

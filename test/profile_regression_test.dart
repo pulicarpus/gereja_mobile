@@ -103,6 +103,9 @@ void main() {
       onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ProfilPage(gateway: gateway))), child: const Text('BUKA'))))));
     await tester.tap(find.text('BUKA')); await tester.pumpAndSettle();
   }
+  Future<void> reveal(WidgetTester tester, Finder target, {double delta = 200}) async {
+    await tester.scrollUntilVisible(target, delta, scrollable: find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)).first);
+  }
   testWidgets('Missing authentication shows login action without loading or remote requests', (tester) async {
     final gateway = FakeProfileGateway()..uid = null;
     await openProfile(tester, gateway);
@@ -141,25 +144,27 @@ void main() {
     gateway.saving = (_, __) => pending.future;
     await openProfile(tester, gateway);
     await tester.enterText(find.byType(TextField), 'Nama Baru');
-    await tester.ensureVisible(find.text('SIMPAN NAMA & FOTO'));
+    await reveal(tester, find.text('SIMPAN NAMA & FOTO'));
     await tester.tap(find.text('SIMPAN NAMA & FOTO')); await tester.pump();
     expect(tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, 'SIMPAN NAMA & FOTO')).onPressed, isNull);
     expect(gateway.saves, 1);
     pending.completeError(StateError('Simpan ditolak')); await tester.pumpAndSettle();
+    await reveal(tester, find.text('Simpan ditolak'), delta: -200);
     expect(find.text('Nama Baru'), findsOneWidget); expect(find.text('Simpan ditolak'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
   testWidgets('Uncertain save cannot be blindly repeated', (tester) async {
     final gateway = FakeProfileGateway()..saving = (_, __) async => throw TimeoutException('uncertain');
     await openProfile(tester, gateway);
-    await tester.ensureVisible(find.text('SIMPAN NAMA & FOTO')); await tester.tap(find.text('SIMPAN NAMA & FOTO')); await tester.pumpAndSettle();
+    await reveal(tester, find.text('SIMPAN NAMA & FOTO')); await tester.tap(find.text('SIMPAN NAMA & FOTO')); await tester.pumpAndSettle();
     expect(tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, 'SIMPAN NAMA & FOTO')).onPressed, isNull);
+    await reveal(tester, find.textContaining('Pengiriman ulang dinonaktifkan'), delta: -200);
     expect(find.textContaining('Pengiriman ulang dinonaktifkan'), findsOneWidget);
   });
   testWidgets('Cancellation of linking returns to existing profile and refreshes account', (tester) async {
     final gateway = FakeProfileGateway(); await openProfile(tester, gateway); final loads = gateway.loads;
     await tester.tap(find.text('HUBUNGKAN DATA JEMAAT')); await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Kembali ke Profil')); await tester.tap(find.text('Kembali ke Profil')); await tester.pumpAndSettle();
+    await reveal(tester, find.text('Kembali ke Profil')); await tester.tap(find.text('Kembali ke Profil')); await tester.pumpAndSettle();
     expect(find.text('Profil Saya'), findsOneWidget); expect(gateway.loads, loads + 1); expect(gateway.links, 0);
   });
   testWidgets('Successful linking returns to profile with refreshed book without resetting navigation', (tester) async {
@@ -207,6 +212,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SinkronisasiJemaatPage(gateway: gateway, returnToProfile: true))); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '081234567890'); await tester.tap(find.text('CARI DATA SAYA')); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '2000'); await tester.tap(find.text('VERIFIKASI & HUBUNGKAN')); await tester.pump();
+    await reveal(tester, find.text('Kembali ke Profil'));
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Bukan data saya, cari ulang')).onPressed, isNull);
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Kembali ke Profil')).onPressed, isNull);
     await tester.pumpWidget(const MaterialApp(home: SizedBox())); pending.completeError(StateError('Gagal'));
@@ -214,10 +220,11 @@ void main() {
   });
   testWidgets('Failed logout preserves the session and unlocks the page', (tester) async {
     final gateway = FakeProfileGateway(); final pending = Completer<void>(); gateway.loggingOut = () => pending.future;
-    await openProfile(tester, gateway); await tester.ensureVisible(find.text('Keluar dari akun')); await tester.tap(find.text('Keluar dari akun'));
+    await openProfile(tester, gateway); await reveal(tester, find.text('Keluar dari akun')); await tester.tap(find.text('Keluar dari akun'));
     await tester.pump(); await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Ya, keluar')); await tester.pump();
     pending.completeError(StateError('Logout ditolak')); await tester.pumpAndSettle();
+    await reveal(tester, find.text('Logout ditolak'), delta: -200);
     expect(gateway.uid, 'u'); expect(find.text('Logout ditolak'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });

@@ -1,14 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
 import 'dart:io';
-import 'dart:convert';
-import 'package:gal/gal.dart'; // 👈 IMPORT SENJATA UNTUK NGE-SAVE KE GALERI HP
 
-import 'secrets.dart'; 
+import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
+
+import 'secrets.dart';
+import 'telegram_gallery_cache.dart';
 
 class FullImageSliderPage extends StatefulWidget {
-  final List<String> images; 
+  final List<String> images;
   final int initialIndex;
 
   const FullImageSliderPage({
@@ -25,12 +24,14 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
   late PageController _pageController;
   int _currentIndex = 0;
   final String _botToken = teleBotTokenSecret;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    _currentIndex = widget.initialIndex;
-    _pageController = PageController(initialPage: widget.initialIndex);
+    final maxIndex = widget.images.isEmpty ? 0 : widget.images.length - 1;
+    _currentIndex = widget.initialIndex.clamp(0, maxIndex).toInt();
+    _pageController = PageController(initialPage: _currentIndex);
   }
 
   @override
@@ -39,127 +40,177 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
     super.dispose();
   }
 
-  void _showSnack(String msg, {bool isError = false}) {
+  void _showSnack(String message, {bool isError = false}) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg),
+        content: Text(message),
         backgroundColor: isError ? Colors.red : Colors.green,
-      )
+      ),
     );
   }
 
-  // 👇 FUNGSI SAKTI MENYIMPAN FOTO KE GALERI HP 👇
   Future<void> _saveImageToGallery(String fileId) async {
-    // Tampilkan loading muter-muter
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-    );
+    if (_isSaving) return;
+    if (_botToken.isEmpty) {
+      _showSnack("Layanan foto belum tersedia.", isError: true);
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
 
     try {
-      // 1. Cek dulu apakah fotonya sudah ada di memori internal (cache)
-      final dir = await getApplicationDocumentsDirectory();
-      File localFile = File('${dir.path}/IMG_$fileId.jpg');
+      final localFile = await TelegramGalleryCache.getOrDownload(
+        fileId: fileId,
+        botToken: _botToken,
+      );
 
-      // Jika belum ada di memori, download ulang dari Telegram
-      if (!await localFile.exists()) {
-        final urlInfo = Uri.parse("https://api.telegram.org/bot$_botToken/getFile?file_id=$fileId");
-        final resInfo = await http.get(urlInfo);
-
-        if (resInfo.statusCode == 200) {
-          final json = jsonDecode(resInfo.body);
-          if (json['ok'] == true) {
-            String path = json['result']['file_path'];
-            final downloadUrl = Uri.parse("https://api.telegram.org/file/bot$_botToken/$path");
-            final imgResponse = await http.get(downloadUrl);
-
-            if (imgResponse.statusCode == 200) {
-              await localFile.writeAsBytes(imgResponse.bodyBytes);
-            } else {
-              throw Exception("Gagal mengunduh gambar.");
-            }
-          } else {
-            throw Exception("Gagal mendapatkan info file.");
-          }
-        } else {
-          throw Exception("Gagal terhubung ke server.");
-        }
-      }
-
-      // 2. JURUS SULTAN: Pindahkan file ke Galeri Umum HP
-      // Minta izin akses galeri dulu (kalau belum)
-      bool hasAccess = await Gal.hasAccess(toAlbum: true);
+      var hasAccess = await Gal.hasAccess(toAlbum: true);
       if (!hasAccess) {
         await Gal.requestAccess(toAlbum: true);
+        hasAccess = await Gal.hasAccess(toAlbum: true);
       }
 
-      // Save fotonya ke folder "GKII Mobile"!
+      if (!hasAccess) {
+        throw const FileSystemException(
+          "Izin menyimpan foto ke galeri ditolak.",
+        );
+      }
+
       await Gal.putImage(localFile.path, album: 'GKII Mobile');
 
-      // Tutup loading
-      if (mounted) Navigator.pop(context);
-      _showSnack("Berhasil disimpan ke Galeri HP! 🎉");
-
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      }
+      _showSnack("Foto berhasil disimpan ke Galeri HP.");
     } catch (e) {
-      // Tutup loading
-      if (mounted) Navigator.pop(context);
-      _showSnack("Gagal menyimpan: $e", isError: true);
+      debugPrint("Gagal menyimpan foto ke galeri HP: $e");
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      }
+      _showSnack(
+        e is FileSystemException
+            ? e.message
+            : "Gagal menyimpan foto. Coba lagi.",
+        isError: true,
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.images.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Text(
+            "Foto tidak tersedia.",
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
-      backgroundColor: Colors.black, 
+      backgroundColor: Colors.black,
       body: Stack(
         children: [
           PageView.builder(
             controller: _pageController,
             itemCount: widget.images.length,
+            allowImplicitScrolling: true,
             onPageChanged: (index) {
               setState(() => _currentIndex = index);
             },
             itemBuilder: (context, index) {
+              final fileId = widget.images[index];
               return InteractiveViewer(
                 minScale: 1.0,
-                maxScale: 4.0, 
-                child: FullscreenTelegramImage(fileId: widget.images[index]),
+                maxScale: 4.0,
+                child: FullscreenTelegramImage(
+                  key: ValueKey(fileId),
+                  fileId: fileId,
+                ),
               );
             },
           ),
-
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: Container(
-              padding: const EdgeInsets.only(top: 40, left: 10, right: 10, bottom: 10),
+              padding: const EdgeInsets.only(
+                top: 40,
+                left: 10,
+                right: 10,
+                bottom: 10,
+              ),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  colors: [
+                    Colors.black.withOpacity(0.7),
+                    Colors.transparent,
+                  ],
                 ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                    icon: const Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                      size: 28,
+                    ),
                     onPressed: () => Navigator.pop(context),
                   ),
                   Text(
                     "${_currentIndex + 1} / ${widget.images.length}",
-                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.download_rounded, color: Colors.white, size: 28),
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.download_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
                     tooltip: "Simpan ke Galeri",
-                    onPressed: () {
-                      String currentFileId = widget.images[_currentIndex];
-                      _saveImageToGallery(currentFileId);
-                    },
+                    onPressed: _isSaving
+                        ? null
+                        : () => _saveImageToGallery(
+                              widget.images[_currentIndex],
+                            ),
                   ),
                 ],
               ),
@@ -173,16 +224,23 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
 
 class FullscreenTelegramImage extends StatefulWidget {
   final String fileId;
-  const FullscreenTelegramImage({super.key, required this.fileId});
+
+  const FullscreenTelegramImage({
+    super.key,
+    required this.fileId,
+  });
 
   @override
-  State<FullscreenTelegramImage> createState() => _FullscreenTelegramImageState();
+  State<FullscreenTelegramImage> createState() =>
+      _FullscreenTelegramImageState();
 }
 
-class _FullscreenTelegramImageState extends State<FullscreenTelegramImage> {
+class _FullscreenTelegramImageState
+    extends State<FullscreenTelegramImage> {
   final String _botToken = teleBotTokenSecret;
   File? _localFile;
   bool _isError = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -191,55 +249,88 @@ class _FullscreenTelegramImageState extends State<FullscreenTelegramImage> {
   }
 
   Future<void> _fetchImage() async {
+    if (mounted) {
+      setState(() {
+        _isError = false;
+        _isLoading = true;
+      });
+    }
+
     try {
-      final dir = await getApplicationDocumentsDirectory();
-      final file = File('${dir.path}/IMG_${widget.fileId}.jpg');
-
-      if (await file.exists()) {
-        if (mounted) setState(() => _localFile = file);
-        return;
+      final file = await TelegramGalleryCache.getOrDownload(
+        fileId: widget.fileId,
+        botToken: _botToken,
+      );
+      if (mounted) {
+        setState(() {
+          _localFile = file;
+          _isLoading = false;
+        });
       }
-
-      final url = Uri.parse("https://api.telegram.org/bot$_botToken/getFile?file_id=${widget.fileId}");
-      final response = await http.get(url);
-      
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        if (json['ok'] == true) {
-          String path = json['result']['file_path'];
-          final downloadUrl = Uri.parse("https://api.telegram.org/file/bot$_botToken/$path");
-          
-          final imgResponse = await http.get(downloadUrl);
-          if (imgResponse.statusCode == 200) {
-            await file.writeAsBytes(imgResponse.bodyBytes);
-            if (mounted) setState(() => _localFile = file);
-            return;
-          }
-        }
-      }
-      if (mounted) setState(() => _isError = true);
     } catch (e) {
-      if (mounted) setState(() => _isError = true);
+      debugPrint("Fullscreen foto gagal dimuat: $e");
+      if (mounted) {
+        setState(() {
+          _localFile = null;
+          _isError = true;
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_localFile != null) {
-      return Image.file(_localFile!, fit: BoxFit.contain);
-    }
-    if (_isError) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.broken_image, color: Colors.white54, size: 60),
-            SizedBox(height: 10),
-            Text("Gagal memuat gambar", style: TextStyle(color: Colors.white54)),
-          ],
-        ),
+      return Image.file(
+        _localFile!,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _errorWidget(),
       );
     }
-    return const Center(child: CircularProgressIndicator(color: Colors.white));
+
+    if (_isError) return _errorWidget();
+
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.white),
+      );
+    }
+
+    return _errorWidget();
+  }
+
+  Widget _errorWidget() {
+    return Center(
+      child: InkWell(
+        onTap: _fetchImage,
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.broken_image,
+                color: Colors.white54,
+                size: 60,
+              ),
+              SizedBox(height: 10),
+              Text(
+                "Gagal memuat gambar",
+                style: TextStyle(color: Colors.white54),
+              ),
+              SizedBox(height: 6),
+              Text(
+                "Ketuk untuk mencoba lagi",
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -436,11 +436,17 @@ class _MainActivityState extends State<MainActivity> {
 
   void _setupOneSignal() {
     final user = _auth.currentUser;
-    final churchId = UserManager().activeChurchId; 
+    final manager = UserManager();
+    final churchId = manager.getChurchIdForCurrentView();
     if (user != null) {
       OneSignal.login(user.uid);
-      if (churchId != null) {
-        OneSignal.User.addTagWithKey("active_church", churchId);
+      OneSignal.User.addTagWithKey("role", manager.userRole ?? "user");
+      OneSignal.User.addTagWithKey("kelompok", manager.userKomisi ?? "Umum");
+
+      if (churchId != null && churchId.trim().isNotEmpty) {
+        OneSignal.User.addTagWithKey("active_church", churchId.trim());
+      } else if (manager.isSuperAdmin()) {
+        OneSignal.User.addTagWithKey("active_church", "SUPERADMIN");
       }
     }
   }

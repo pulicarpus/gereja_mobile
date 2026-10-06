@@ -96,3 +96,28 @@ Branch kerja: `perbaikan-fitur-daerah`
 - HIGH: `keuangan_daerah`, `perpuluhan_daerah`, `info_surat_daerah`, dan beberapa modul global lain juga read/write untuk semua user login.
 - Aset global `aset_gereja` write sudah dibatasi oleh `isPrivilegedUser()`, tetapi helper tersebut tetap terdampak celah privilege escalation pada dokumen user.
 - Security Rules perlu diperketat sebagai pekerjaan terpisah dan diuji dengan Emulator/Rules Playground sebelum deploy agar aplikasi lama tidak putus.
+
+
+## Pematangan Ruang Chat
+- Chat memakai `getChurchIdForCurrentView()` dan mempunyai guard akses di halaman, bukan hanya dari menu sebelumnya.
+- Anggota kategorial yang sesuai dapat membuka Chat Group kategorial; hak moderasi tetap hanya admin/superadmin atau pengurus kategorial yang sesuai.
+- Mute diperiksa untuk teks, gambar, dokumen, dan voice note; jika status mute tidak dapat diverifikasi, pengiriman diblokir sementara agar tidak fail-open.
+- Edit pesan diverifikasi ulang berdasarkan UID pemilik dan hanya berlaku untuk pesan teks.
+- Hapus pesan mempunyai konfirmasi, guard action-layer, verifikasi ulang pemilik/moderator, serta error handling.
+- Voice note tidak lagi membuka dua recorder mikrofon sekaligus. Rekaman memakai satu AudioRecorder dan waveform playback dirender lokal tanpa PlayerController kosong per pesan.
+- Lampiran dokumen dibatasi ke tipe dokumen umum dan maksimal 20 MB; tipe berbahaya seperti APK/EXE/script diblokir saat membuka.
+- Download dokumen memakai nama file yang disanitasi, cache key berdasarkan URL, status HTTP/ukuran dicek, dan kegagalan OpenFile ditangani.
+- Kamera pada input chat sekarang benar-benar membuka kamera; menu lampiran tetap membuka galeri.
+- Pesan dibatasi 2.000 karakter, caption gambar 500 karakter, double-send ditekan dengan state pengiriman dan throttle singkat.
+- Daftar chat memakai limit awal 100 pesan dengan tombol memuat riwayat lebih lama untuk mengurangi beban baca/render.
+- Error/empty state chat dibuat eksplisit, data legacy untuk timestamp/waveform/file URL lebih toleran, dan ikon centang biru palsu (seolah read receipt) diganti indikator pesan tersimpan.
+- Notifikasi chat kategorial ditargetkan berdasarkan `active_church` + tag OneSignal `kelompok`; login/home menjaga tag kelompok tetap sinkron.
+- Sesi OneSignal dilepas ketika akun diblokir atau keluar dari alur validasi sehingga perangkat tidak terus menerima notifikasi akun lama.
+- Info/Surat Daerah yang dibagikan ke chat memakai konteks gereja yang sedang aktif.
+- Firestore Rules production tetap TIDAK diubah pada fase ini.
+
+## Sisa Ruang Chat yang membutuhkan backend/Rules
+- Telegram bot token dan OneSignal REST key masih berada di APK; keduanya harus dipindahkan ke backend/server dan token perlu dirotasi setelah migrasi.
+- URL file Telegram lama masih mengandung bot token karena format ini diperlukan aplikasi lama; menghilangkannya secara kompatibel membutuhkan endpoint/proxy backend.
+- Hapus pesan belum dapat menjamin penghapusan file eksternal Cloudinary/Telegram; cleanup media membutuhkan backend.
+- Mute, kepemilikan pesan, identitas pengirim, akses chat kategorial, dan hak moderator baru benar-benar aman setelah Firestore Rules diperketat.

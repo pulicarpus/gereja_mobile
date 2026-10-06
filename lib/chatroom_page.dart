@@ -187,249 +187,617 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
   Future<void> _uploadImage() async {
-    if (await _checkIfMuted()) return; 
-    
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 60);
-    if (image == null) return;
+    if (_isUploading || _isSending || _editingMessageId != null) {
+      if (_editingMessageId != null) {
+        _showSnack("Selesaikan atau batalkan edit pesan sebelum mengirim lampiran.");
+      }
+      return;
+    }
+    if (await _checkIfMuted()) return;
 
-    final TextEditingController _etCaption = TextEditingController();
-    
-    showDialog(
+    final image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 60,
+      maxWidth: 1800,
+    );
+    if (image == null || !mounted) return;
+
+    final captionController = TextEditingController();
+    final caption = await showDialog<String?>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Kirim Gambar", style: TextStyle(fontWeight: FontWeight.bold)),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          "Kirim Gambar",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(image.path), height: 150, width: double.infinity, fit: BoxFit.cover)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.file(
+                File(image.path),
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+            ),
             const SizedBox(height: 15),
             TextField(
-              controller: _etCaption,
-              decoration: InputDecoration(hintText: "Tambah keterangan...", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none)),
-              maxLines: null,
+              controller: captionController,
+              maxLength: 500,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: "Tambah keterangan...",
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal", style: TextStyle(color: Colors.red))),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text("Batal", style: TextStyle(color: Colors.red)),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
-            onPressed: () {
-              String caption = _etCaption.text.trim();
-              Navigator.pop(context);
-              _executeImageUpload(image, caption.isEmpty ? "[Gambar]" : caption);
-            }, 
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF075E54),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              captionController.text.trim(),
+            ),
             child: const Text("Kirim"),
           ),
         ],
       ),
     );
+    captionController.dispose();
+
+    if (caption == null) return;
+    await _executeImageUpload(
+      image,
+      caption.isEmpty ? "[Gambar]" : caption,
+    );
   }
 
   Future<void> _executeImageUpload(XFile image, String caption) async {
-    setState(() => _isUploading = true);
+    if (_isUploading || await _checkIfMuted()) return;
+    if (mounted) setState(() => _isUploading = true);
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('https://api.cloudinary.com/v1_1/dw1ynjbod/image/upload'));
-      request.fields['upload_preset'] = 'preset_gereja'; 
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.cloudinary.com/v1_1/dw1ynjbod/image/upload'),
+      );
+      request.fields['upload_preset'] = 'preset_gereja';
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
-      var res = await request.send();
-      var json = jsonDecode(await res.stream.bytesToString());
-      if (res.statusCode == 200) {
-        _sendToFirestore(isi: caption, tipe: "image", url: json['secure_url'], name: "img.jpg", cloudId: json['public_id']);
+
+      final res = await request.send();
+      final body = await res.stream.bytesToString();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _showSnack("Upload gambar gagal. Coba lagi.");
+        return;
       }
-    } catch (e) { 
-      _showSnack("Gagal upload gambar: $e"); 
-    } finally { 
-      setState(() => _isUploading = false); 
+
+      final decoded = jsonDecode(body);
+      if (decoded is! Map ||
+          decoded['secure_url'] == null ||
+          decoded['public_id'] == null) {
+        _showSnack("Respons upload gambar tidak valid.");
+        return;
+      }
+
+      await _sendToFirestore(
+        isi: caption,
+        tipe: "image",
+        url: decoded['secure_url'].toString(),
+        name: "img.jpg",
+        cloudId: decoded['public_id'].toString(),
+      );
+    } catch (e) {
+      debugPrint("Gagal upload gambar: $e");
+      _showSnack("Gagal upload gambar.");
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
   // --- 2. UPLOAD FILE DOKUMEN ---
   Future<void> _uploadFile() async {
-    if (await _checkIfMuted()) return; 
-    
-    FilePickerResult? result = await FilePicker.platform.pickFiles();
-    if (result == null) return;
-    File file = File(result.files.single.path!);
-    String fileName = result.files.single.name;
-    setState(() => _isUploading = true);
-    try {
-      var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendDocument'));
-      request.fields['chat_id'] = teleChatId;
-      request.files.add(await http.MultipartFile.fromPath('document', file.path));
-      var res = await request.send();
-      var jsonRes = jsonDecode(await res.stream.bytesToString());
-      if (res.statusCode == 200) {
-        String fileId = jsonRes['result']['document']['file_id'];
-        var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String filePath = jsonDecode(getFile.body)['result']['file_path'];
-        _sendToFirestore(isi: fileName, tipe: "file", url: "https://api.telegram.org/file/bot$teleBotToken/$filePath", name: fileName);
+    if (_isUploading || _isSending || _editingMessageId != null) {
+      if (_editingMessageId != null) {
+        _showSnack("Selesaikan atau batalkan edit pesan sebelum mengirim lampiran.");
       }
-    } catch (e) { 
-      _showSnack("Gagal kirim file: $e"); 
-    } finally { 
-      setState(() => _isUploading = false); 
+      return;
+    }
+    if (await _checkIfMuted()) return;
+
+    final result = await FilePicker.platform.pickFiles();
+    if (result == null || result.files.isEmpty) return;
+
+    final picked = result.files.single;
+    final path = picked.path;
+    if (path == null || path.isEmpty) {
+      _showSnack("File tidak dapat diakses.");
+      return;
+    }
+    const maxFileSize = 20 * 1024 * 1024;
+    if (picked.size > maxFileSize) {
+      _showSnack("Ukuran dokumen maksimal 20 MB.");
+      return;
+    }
+
+    final file = File(path);
+    final fileName = _safeFileName(picked.name);
+    if (mounted) setState(() => _isUploading = true);
+
+    try {
+      if (teleBotToken.isEmpty) {
+        _showSnack("Layanan dokumen sedang tidak tersedia.");
+        return;
+      }
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.telegram.org/bot$teleBotToken/sendDocument'),
+      );
+      request.fields['chat_id'] = teleChatId;
+      request.files.add(
+        await http.MultipartFile.fromPath('document', file.path),
+      );
+
+      final res = await request.send();
+      final body = await res.stream.bytesToString();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _showSnack("Upload dokumen gagal.");
+        return;
+      }
+
+      final jsonRes = jsonDecode(body);
+      final fileId = jsonRes is Map
+          ? jsonRes['result']?['document']?['file_id']?.toString()
+          : null;
+      if (fileId == null || fileId.isEmpty) {
+        _showSnack("Respons upload dokumen tidak valid.");
+        return;
+      }
+
+      final getFile = await http.get(
+        Uri.parse(
+          'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
+        ),
+      );
+      if (getFile.statusCode < 200 || getFile.statusCode >= 300) {
+        _showSnack("Dokumen terunggah tetapi tautannya gagal dibuat.");
+        return;
+      }
+
+      final getFileJson = jsonDecode(getFile.body);
+      final filePath = getFileJson is Map
+          ? getFileJson['result']?['file_path']?.toString()
+          : null;
+      if (filePath == null || filePath.isEmpty) {
+        _showSnack("Tautan dokumen tidak tersedia.");
+        return;
+      }
+
+      await _sendToFirestore(
+        isi: fileName,
+        tipe: "file",
+        url: "https://api.telegram.org/file/bot$teleBotToken/$filePath",
+        name: fileName,
+      );
+    } catch (e) {
+      debugPrint("Gagal kirim file: $e");
+      _showSnack("Gagal mengirim dokumen.");
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
-  // --- 3. VOICE NOTE DEWA ---
+  // --- 3. VOICE NOTE ---
   Future<void> _startRecording() async {
-    if (await _checkIfMuted()) return; 
-    
-    try {
-      if (await _audioRecorder.hasPermission()) {
-        HapticFeedback.heavyImpact(); 
-        await _recorderController.record(); 
-        final dir = await getTemporaryDirectory();
-        final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        await _audioRecorder.start(const RecordConfig(), path: path); 
-        setState(() => _isRecording = true);
-      }
-    } catch (e) { 
-      _showSnack("Gagal merekam: $e"); 
+    if (_isRecording || _isUploading || _isSending || _editingMessageId != null) {
+      return;
     }
+    if (await _checkIfMuted()) return;
+
+    try {
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        _showSnack("Izin mikrofon diperlukan untuk mengirim voice note.");
+        return;
+      }
+
+      HapticFeedback.heavyImpact();
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/vn_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      _recordingSamples.clear();
+      await _amplitudeSubscription?.cancel();
+      _amplitudeSubscription = _audioRecorder
+          .onAmplitudeChanged(const Duration(milliseconds: 120))
+          .listen((amp) {
+        // Nilai dB biasanya negatif. Normalisasi -60..0 menjadi 0..1.
+        final normalized = ((amp.current + 60) / 60).clamp(0.05, 1.0);
+        _recordingSamples.add(normalized.toDouble());
+        if (_recordingSamples.length > 600) {
+          _recordingSamples.removeAt(0);
+        }
+      });
+
+      await _audioRecorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: path,
+      );
+      if (mounted) setState(() => _isRecording = true);
+    } catch (e) {
+      debugPrint("Gagal merekam: $e");
+      await _amplitudeSubscription?.cancel();
+      _amplitudeSubscription = null;
+      if (mounted) setState(() => _isRecording = false);
+      _showSnack("Gagal memulai rekaman.");
+    }
+  }
+
+  List<double> _compressWaveData(List<double> raw) {
+    if (raw.isEmpty) return const [];
+    final result = <double>[];
+    final step = (raw.length / 30).ceil().clamp(1, raw.length);
+    for (var i = 0; i < raw.length && result.length < 30; i += step) {
+      result.add(raw[i]);
+    }
+    return result;
   }
 
   Future<void> _stopRecording() async {
-    if (!_isRecording) return; 
-    
-    HapticFeedback.mediumImpact(); 
-    
-    final rawWaveData = List<double>.from(_recorderController.waveData);
-    List<double> compressedData = [];
-    
-    if (rawWaveData.isNotEmpty) {
-      int step = (rawWaveData.length / 30).floor().clamp(1, 999);
-      for (int i = 0; i < rawWaveData.length; i += step) {
-        compressedData.add(rawWaveData[i]);
-        if (compressedData.length >= 30) break;
-      }
+    if (!_isRecording) return;
+
+    HapticFeedback.mediumImpact();
+    String? path;
+    try {
+      path = await _audioRecorder.stop();
+    } catch (e) {
+      debugPrint("Gagal menghentikan rekaman: $e");
+    } finally {
+      await _amplitudeSubscription?.cancel();
+      _amplitudeSubscription = null;
+      if (mounted) setState(() => _isRecording = false);
     }
 
-    final path = await _audioRecorder.stop();
-    await _recorderController.stop(); 
-    if (mounted) setState(() => _isRecording = false);
-    
-    if (path != null) { 
-      _uploadVN(File(path), compressedData); 
+    if (path == null || path.isEmpty) {
+      _showSnack("Rekaman tidak berhasil disimpan.");
+      return;
     }
+
+    final file = File(path);
+    if (!await file.exists() || await file.length() == 0) {
+      _showSnack("Rekaman kosong.");
+      return;
+    }
+
+    await _uploadVN(file, _compressWaveData(_recordingSamples));
   }
 
   Future<void> _uploadVN(File file, List<double> waveData) async {
-    setState(() => _isUploading = true);
+    if (_isUploading || await _checkIfMuted()) return;
+    if (mounted) setState(() => _isUploading = true);
+
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('https://api.telegram.org/bot$teleBotToken/sendAudio'));
-      request.fields['chat_id'] = teleChatId;
-      request.files.add(await http.MultipartFile.fromPath('audio', file.path));
-      var res = await request.send();
-      var jsonRes = jsonDecode(await res.stream.bytesToString());
-      if (res.statusCode == 200) {
-        String fileId = jsonRes['result']['audio']['file_id'];
-        var getFile = await http.get(Uri.parse('https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId'));
-        String filePath = jsonDecode(getFile.body)['result']['file_path'];
-        String audioUrl = "https://api.telegram.org/file/bot$teleBotToken/$filePath";
-        
-        _sendToFirestore(isi: "[Voice Note]", tipe: "audio", url: audioUrl, waveData: waveData);
+      if (teleBotToken.isEmpty) {
+        _showSnack("Layanan voice note sedang tidak tersedia.");
+        return;
       }
-    } catch (e) { 
-      _showSnack("Gagal kirim VN: $e"); 
-    } finally { 
-      setState(() => _isUploading = false); 
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.telegram.org/bot$teleBotToken/sendAudio'),
+      );
+      request.fields['chat_id'] = teleChatId;
+      request.files.add(
+        await http.MultipartFile.fromPath('audio', file.path),
+      );
+
+      final res = await request.send();
+      final body = await res.stream.bytesToString();
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _showSnack("Upload voice note gagal.");
+        return;
+      }
+
+      final jsonRes = jsonDecode(body);
+      final fileId = jsonRes is Map
+          ? (jsonRes['result']?['audio']?['file_id'] ??
+                  jsonRes['result']?['voice']?['file_id'])
+              ?.toString()
+          : null;
+      if (fileId == null || fileId.isEmpty) {
+        _showSnack("Respons voice note tidak valid.");
+        return;
+      }
+
+      final getFile = await http.get(
+        Uri.parse(
+          'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
+        ),
+      );
+      if (getFile.statusCode < 200 || getFile.statusCode >= 300) {
+        _showSnack("Voice note terunggah tetapi tautannya gagal dibuat.");
+        return;
+      }
+
+      final fileInfo = jsonDecode(getFile.body);
+      final filePath = fileInfo is Map
+          ? fileInfo['result']?['file_path']?.toString()
+          : null;
+      if (filePath == null || filePath.isEmpty) {
+        _showSnack("Tautan voice note tidak tersedia.");
+        return;
+      }
+
+      await _sendToFirestore(
+        isi: "[Voice Note]",
+        tipe: "audio",
+        url: "https://api.telegram.org/file/bot$teleBotToken/$filePath",
+        waveData: waveData,
+      );
+    } catch (e) {
+      debugPrint("Gagal kirim VN: $e");
+      _showSnack("Gagal mengirim voice note.");
+    } finally {
+      try {
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+      if (mounted) setState(() => _isUploading = false);
     }
   }
 
   Future<void> _playAudio(String url, String id) async {
-    if (_playingId != id && _playingId != null) {
-      await _audioPlayer.stop();
-      if (mounted) setState(() => _currentPosition = Duration.zero);
+    if (url.trim().isEmpty) {
+      _showSnack("Voice note tidak tersedia.");
+      return;
     }
+    try {
+      if (_playingId != id && _playingId != null) {
+        await _audioPlayer.stop();
+        if (mounted) {
+          setState(() {
+            _currentPosition = Duration.zero;
+            _totalDuration = Duration.zero;
+          });
+        }
+      }
 
-    if (_playingId == id) { 
-      await _audioPlayer.pause(); 
-      setState(() => _playingId = null); 
-    } else { 
-      await _audioPlayer.play(UrlSource(url)); 
-      setState(() => _playingId = id); 
+      if (_playingId == id) {
+        await _audioPlayer.pause();
+        if (mounted) setState(() => _playingId = null);
+      } else {
+        await _audioPlayer.play(UrlSource(url));
+        if (mounted) {
+          setState(() {
+            _playingId = id;
+            _currentPosition = Duration.zero;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal memutar audio: $e");
+      if (mounted) setState(() => _playingId = null);
+      _showSnack("Voice note gagal diputar.");
     }
   }
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
-  Future<void> _sendToFirestore({required String isi, required String tipe, String? url, String? name, String? cloudId, List<double>? waveData}) async {
-    // Mute berlaku untuk teks, gambar, dokumen, dan audio.
-    if (await _checkIfMuted()) return;
-    
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return;
-    
-    if (_editingMessageId != null) {
-      await _db.collection("churches").doc(churchId).collection(_collectionPath).doc(_editingMessageId).update({"pesan": "$isi (diedit)"});
-      setState(() { _editingMessageId = null; _etPesan.clear(); });
-      return;
+  Future<bool> _sendToFirestore({
+    required String isi,
+    required String tipe,
+    String? url,
+    String? name,
+    String? cloudId,
+    List<double>? waveData,
+  }) async {
+    if (_isSending) return false;
+    if (!_canAccessRoom) {
+      _showSnack("Anda tidak memiliki akses ke ruang chat ini.");
+      return false;
     }
-    
-    await _db.collection("churches").doc(churchId).collection(_collectionPath).add({
-      "pengirimId": _auth.currentUser?.uid,
-      "pengirimNama": UserManager().userNama,
-      "pengirimFoto": UserManager().userFotoUrl,
-      "pesan": isi, 
-      "timestamp": FieldValue.serverTimestamp(), 
-      "tipe": tipe,
-      "fileUrl": url, 
-      "fileName": name, 
-      "cloudPublicId": cloudId,
-      "waveData": waveData,
-      "isReply": _replyMessage != null,
-      "replyToName": _replyMessage?['pengirimNama'],
-      "replyToText": _replyMessage?['pesan'],
-      "replyToImage": (_replyMessage != null && _replyMessage!['tipe'] == 'image') ? _replyMessage!['fileUrl'] : null,
-    });
-    
-    _kirimNotif(isi);
-    setState(() { _replyMessage = null; _etPesan.clear(); });
+    if (await _checkIfMuted()) return false;
+
+    final churchId = _churchId;
+    final currentUser = _auth.currentUser;
+    if (churchId == null || currentUser == null) {
+      _showSnack("Sesi chat tidak valid.");
+      return false;
+    }
+
+    final text = isi.trim();
+    if (tipe == "text" && text.isEmpty) return false;
+    if (text.length > 2000) {
+      _showSnack("Pesan maksimal 2.000 karakter.");
+      return false;
+    }
+
+    final now = DateTime.now();
+    if (_editingMessageId == null &&
+        _lastSendAt != null &&
+        now.difference(_lastSendAt!) < const Duration(milliseconds: 700)) {
+      return false;
+    }
+
+    if (mounted) setState(() => _isSending = true);
+    try {
+      if (_editingMessageId != null) {
+        if (tipe != "text") {
+          _showSnack("Lampiran tidak dapat dikirim saat sedang mengedit pesan.");
+          return false;
+        }
+
+        final ref = _db
+            .collection("churches")
+            .doc(churchId)
+            .collection(_collectionPath)
+            .doc(_editingMessageId);
+        final current = await ref.get();
+        if (!current.exists) {
+          _showSnack("Pesan yang diedit sudah tidak tersedia.");
+          return false;
+        }
+        final data = current.data() as Map<String, dynamic>;
+        final ownerUid =
+            (data['pengirimId'] ?? data['senderId'] ?? '').toString();
+        if (ownerUid != currentUser.uid ||
+            (data['tipe'] ?? 'text').toString() != 'text') {
+          _showSnack("Pesan ini tidak dapat diedit.");
+          return false;
+        }
+
+        await ref.update({"pesan": "$text (diedit)"});
+        if (mounted) {
+          setState(() {
+            _editingMessageId = null;
+            _replyMessage = null;
+            _etPesan.clear();
+          });
+        }
+        return true;
+      }
+
+      final reply = _replyMessage;
+      await _db
+          .collection("churches")
+          .doc(churchId)
+          .collection(_collectionPath)
+          .add({
+        "pengirimId": currentUser.uid,
+        "pengirimNama": UserManager().userNama ?? currentUser.displayName ?? "Jemaat",
+        "pengirimFoto": UserManager().userFotoUrl,
+        "pesan": text,
+        "timestamp": FieldValue.serverTimestamp(),
+        "tipe": tipe,
+        "fileUrl": url,
+        "fileName": name,
+        "cloudPublicId": cloudId,
+        "waveData": waveData,
+        "isReply": reply != null,
+        "replyToName": reply?['pengirimNama'] ?? reply?['senderNama'],
+        "replyToText": reply?['pesan'],
+        "replyToImage":
+            (reply != null && reply['tipe'] == 'image') ? reply['fileUrl'] : null,
+      });
+
+      _lastSendAt = now;
+      if (mounted) {
+        setState(() {
+          _replyMessage = null;
+          _etPesan.clear();
+        });
+      }
+      unawaited(_kirimNotif(text));
+      return true;
+    } catch (e) {
+      debugPrint("Gagal menyimpan pesan chat: $e");
+      _showSnack("Pesan gagal dikirim. Coba lagi.");
+      return false;
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
   }
 
   Future<void> _kirimNotif(String pesan) async {
-    String? churchId = UserManager().activeChurchId;
+    final churchId = _churchId;
     if (churchId == null || osRestKey.isEmpty) return;
-    
+
+    final kategori = widget.filterKategorial?.trim();
+    final filters = <Map<String, dynamic>>[
+      {
+        "field": "tag",
+        "key": "active_church",
+        "relation": "=",
+        "value": churchId,
+      },
+    ];
+
+    if (kategori != null && kategori.isNotEmpty) {
+      filters
+        ..add({"operator": "AND"})
+        ..add({
+          "field": "tag",
+          "key": "kelompok",
+          "relation": "=",
+          "value": kategori,
+        });
+    }
+
     try {
-      var response = await http.post(
+      final response = await http.post(
         Uri.parse('https://onesignal.com/api/v1/notifications'),
         headers: {
-          'Content-Type': 'application/json; charset=utf-8', 
-          'Authorization': 'Basic $osRestKey'
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Basic $osRestKey',
         },
         body: jsonEncode({
           "app_id": osAppId,
-          "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
-          "headings": {"en": "Chat: ${UserManager().userNama}"},
-          "contents": {"en": pesan},
+          "filters": filters,
+          "headings": {"en": "Chat: ${UserManager().userNama ?? 'Jemaat'}"},
+          "contents": {
+            "en": pesan.isEmpty ? "Pesan baru" : pesan,
+          },
           "data": {
-             "type": "chat",
-             "kategorial": widget.filterKategorial 
-          }
+            "type": "chat",
+            "kategorial": widget.filterKategorial,
+          },
         }),
       );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        debugPrint("Notifikasi chat ditolak: ${response.statusCode}");
+      }
     } catch (e) {
-      print("ERROR FATAL NOTIF: $e");
+      debugPrint("Gagal mengirim notifikasi chat: $e");
     }
   }
 
   // --- 5. UI BUILDING ---
   Future<void> _bukaFile(String url, String fileName) async {
+    if (url.trim().isEmpty) {
+      _showSnack("Dokumen tidak tersedia.");
+      return;
+    }
     _showSnack("Mengunduh dokumen...");
     try {
       final dir = await getTemporaryDirectory();
-      final savePath = '${dir.path}/$fileName';
+      final safeName = _safeFileName(fileName);
+      final key = url.hashCode.abs();
+      final savePath = '${dir.path}/${key}_$safeName';
       final file = File(savePath);
+
       if (!await file.exists()) {
-        var response = await http.get(Uri.parse(url));
-        await file.writeAsBytes(response.bodyBytes);
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          _showSnack("Dokumen gagal diunduh.");
+          return;
+        }
+        const maxDownloadSize = 25 * 1024 * 1024;
+        if (response.bodyBytes.length > maxDownloadSize) {
+          _showSnack("Dokumen terlalu besar untuk dibuka dari chat.");
+          return;
+        }
+        await file.writeAsBytes(response.bodyBytes, flush: true);
       }
-      await OpenFilex.open(savePath);
-    } catch (e) { 
-      _showSnack("Gagal membuka file."); 
+
+      final result = await OpenFilex.open(savePath);
+      if (result.type == ResultType.error) {
+        _showSnack("Dokumen sudah diunduh tetapi tidak dapat dibuka.");
+      }
+    } catch (e) {
+      debugPrint("Gagal membuka file: $e");
+      _showSnack("Gagal membuka file.");
     }
   }
 

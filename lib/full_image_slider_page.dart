@@ -82,7 +82,7 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
       }
 
       if (!hasAccess) {
-        throw const FileSystemException(
+        throw FileSystemException(
           "Izin menyimpan foto ke galeri ditolak.",
         );
       }

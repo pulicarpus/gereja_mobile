@@ -38,8 +38,34 @@ class _KategorialPageState extends State<KategorialPage> {
 
       final data = doc.data() ?? <String, dynamic>{};
       final rawKelompok = data['kelompok']?.toString().trim() ?? "";
-      final kelompok = rawKelompok.isEmpty ? "Umum" : rawKelompok;
+      var kelompok = rawKelompok.isEmpty ? "Umum" : rawKelompok;
       final isPengurus = data['isPengurus'] == true;
+
+      final jemaatId = data['jemaatId']?.toString().trim() ?? "";
+      final registeredChurchId =
+          data['churchId']?.toString().trim() ?? "";
+
+      if (jemaatId.isNotEmpty && registeredChurchId.isNotEmpty) {
+        try {
+          final jemaatDoc = await FirebaseFirestore.instance
+              .collection("churches")
+              .doc(registeredChurchId)
+              .collection("jemaat")
+              .doc(jemaatId)
+              .get();
+          if (jemaatDoc.exists) {
+            final jemaatKelompok = KategorialConfig.canonicalJemaat(
+              jemaatDoc.data()?['kelompok'],
+            );
+            if (!KategorialConfig.same(kelompok, jemaatKelompok)) {
+              kelompok = jemaatKelompok;
+              await doc.reference.update({"kelompok": kelompok});
+            }
+          }
+        } catch (e) {
+          debugPrint("Gagal sinkron kelompok buku induk: $e");
+        }
+      }
 
       final manager = UserManager();
       await manager.updateKategorialContext(

@@ -150,13 +150,16 @@ void main() {
     expect(gateway.saves, 1);
     pending.completeError(StateError('Simpan ditolak')); await tester.pumpAndSettle();
     await reveal(tester, find.text('Simpan ditolak'), delta: -200);
-    expect(find.text('Nama Baru'), findsOneWidget); expect(find.text('Simpan ditolak'), findsOneWidget);
+    expect(find.text('Simpan ditolak'), findsOneWidget);
+    await reveal(tester, find.text('Nama Baru'));
+    expect(find.text('Nama Baru'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
   });
   testWidgets('Uncertain save cannot be blindly repeated', (tester) async {
     final gateway = FakeProfileGateway()..saving = (_, __) async => throw TimeoutException('uncertain');
     await openProfile(tester, gateway);
     await reveal(tester, find.text('SIMPAN NAMA & FOTO')); await tester.tap(find.text('SIMPAN NAMA & FOTO')); await tester.pumpAndSettle();
+    await reveal(tester, find.text('SIMPAN NAMA & FOTO'));
     expect(tester.widget<ElevatedButton>(find.widgetWithText(ElevatedButton, 'SIMPAN NAMA & FOTO')).onPressed, isNull);
     await reveal(tester, find.textContaining('Pengiriman ulang dinonaktifkan'), delta: -200);
     expect(find.textContaining('Pengiriman ulang dinonaktifkan'), findsOneWidget);

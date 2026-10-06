@@ -17,6 +17,7 @@ class _ProfilPageState extends State<ProfilPage> {
   late final String? _sessionUid;
   StreamSubscription<String?>? _authSubscription;
   final _name = TextEditingController();
+  final _scroll = ScrollController();
   ProfileAccount? _account;
   ProfileBook _book = const ProfileBook(null);
   File? _image;
@@ -40,7 +41,17 @@ class _ProfilPageState extends State<ProfilPage> {
     });
     _reload();
   }
-  @override void dispose() { _request++; _authSubscription?.cancel(); _name.dispose(); super.dispose(); }
+  @override void dispose() { _request++; _authSubscription?.cancel(); _name.dispose(); _scroll.dispose(); super.dispose(); }
+  void _scrollToError() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _scroll.hasClients) unawaited(_scroll.animateTo(0, duration: const Duration(milliseconds: 250), curve: Curves.easeOut));
+    });
+  }
+  void _presentError(String message, {bool uncertain = false}) {
+    if (!mounted) return;
+    setState(() { _error = message; if (uncertain) _uncertainSave = true; });
+    _scrollToError();
+  }
   Future<void> _reload() async {
     if (!mounted || !_sameSession || _busy) return;
     final request = ++_request;
@@ -59,7 +70,7 @@ class _ProfilPageState extends State<ProfilPage> {
         }
       }
     } catch (e) {
-      if (mounted && request == _request && _sameSession) setState(() => _error = profileError(e));
+      if (mounted && request == _request && _sameSession) _presentError(profileError(e));
     } finally {
       if (mounted && request == _request) setState(() => _loading = false);
     }
@@ -71,13 +82,14 @@ class _ProfilPageState extends State<ProfilPage> {
       final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 75, maxWidth: 1600, maxHeight: 1600);
       if (mounted && _sameSession && picked != null) setState(() { _image = File(picked.path); _useBookPhoto = false; });
     } catch (_) {
-      if (mounted && _sameSession) setState(() => _error = 'Foto tidak dapat dipilih. Silakan coba lagi.');
+      if (mounted && _sameSession) _presentError('Foto tidak dapat dipilih. Silakan coba lagi.');
     } finally { if (mounted) setState(() => _picking = false); }
   }
   Future<void> _save() async {
     if (_busy || _loading || _uncertainSave || !_sameSession || _account == null) return;
     final name = _name.text.trim();
-    if (name.isEmpty || name.length > 120) { setState(() => _error = 'Nama wajib diisi, maksimal 120 karakter.'); return; }
+    if (name.isEmpty || name.length > 120) { _presentError('Nama wajib diisi, maksimal 120 karakter.'); return; }
+    FocusScope.of(context).unfocus();
     final account = _account!, image = _image, useBook = _useBookPhoto;
     setState(() { _saving = true; _error = null; });
     try {
@@ -87,13 +99,13 @@ class _ProfilPageState extends State<ProfilPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.cacheSaved
         ? 'Profil akun berhasil disimpan.' : 'Profil berhasil disimpan. Cache lokal belum diperbarui; muat ulang saat koneksi tersedia.')));
     } catch (e) {
-      if (mounted && _sameSession) setState(() { _error = profileError(e); _uncertainSave = e is TimeoutException; });
+      if (mounted && _sameSession) _presentError(profileError(e), uncertain: e is TimeoutException);
     } finally { if (mounted) setState(() => _saving = false); }
   }
   Future<void> _link() async {
     if (_busy || _loading || !_sameSession) return;
     if (_dirty) {
-      setState(() => _error = 'Simpan atau batalkan perubahan nama/foto sebelum membuka tautan jemaat.'); return;
+      _presentError('Simpan atau batalkan perubahan nama/foto sebelum membuka tautan jemaat.'); return;
     }
     setState(() => _navigating = true);
     try {
@@ -117,7 +129,7 @@ class _ProfilPageState extends State<ProfilPage> {
     } catch (e) {
       if (!mounted) return;
       if (_gateway.signedInUid == null) { Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false); }
-      else { setState(() => _error = profileError(e)); }
+      else { _presentError(profileError(e)); }
     } finally { if (mounted) setState(() => _leaving = false); }
   }
   Future<void> _back() async {
@@ -148,7 +160,7 @@ class _ProfilPageState extends State<ProfilPage> {
         actions: [IconButton(tooltip: 'Muat ulang profil', onPressed: _busy || _loading || !_sameSession ? null : _reload, icon: const Icon(Icons.refresh))]),
       body: !_sameSession ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Text('Sesi login berakhir atau akun berubah. Silakan masuk ulang.'), TextButton(onPressed: _leaving ? null : () => Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false), child: const Text('Masuk ulang')),
-      ]))) : ListView(padding: const EdgeInsets.all(24), children: [
+      ]))) : ListView(controller: _scroll, padding: const EdgeInsets.all(24), children: [
         if (_loading || _saving || _picking || _leaving) const LinearProgressIndicator(),
         if (_error != null) _notice(_error!, retry: _busy || _loading ? null : _reload),
         if (_uncertainSave) _notice('Pengiriman ulang dinonaktifkan agar tidak menimpa hasil yang mungkin sudah tersimpan. Tutup halaman lalu periksa profil terbaru.'),

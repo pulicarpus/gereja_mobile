@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'secrets.dart'; 
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 import 'chat_waveform.dart';
 
 class ChatroomPage extends StatefulWidget {
@@ -100,7 +101,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     final user = UserManager();
     final kategori = widget.filterKategorial?.trim();
     if (kategori == null || kategori.isEmpty) return _auth.currentUser != null;
-    return user.isAdmin() || user.userKomisi?.trim() == kategori;
+    return user.isAdmin() || KategorialConfig.same(user.userKomisi, kategori);
   }
 
   bool get _canModerate {
@@ -110,7 +111,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return kategori != null &&
         kategori.isNotEmpty &&
         user.isPengurus &&
-        user.userKomisi?.trim() == kategori;
+        KategorialConfig.same(user.userKomisi, kategori);
   }
 
   DateTime? _readTimestamp(dynamic raw) {

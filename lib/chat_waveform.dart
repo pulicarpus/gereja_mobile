@@ -32,7 +32,7 @@ class ChatWaveform extends StatelessWidget {
       child: CustomPaint(
         painter: _WaveformPainter(
           samples: samples,
-          progress: progress.clamp(0.0, 1.0),
+          progress: progress.clamp(0.0, 1.0).toDouble(),
           playedColor: isMe ? const Color(0xFF075E54) : Colors.indigo,
           pendingColor: isMe ? Colors.black26 : Colors.grey.shade400,
         ),
@@ -60,7 +60,7 @@ class _WaveformPainter extends CustomPainter {
 
     final maxAbs = samples
         .map((e) => e.isFinite ? e.abs() : 0.0)
-        .fold<double>(0.0, math.max);
+        .fold<double>(0.0, (a, b) => math.max(a, b).toDouble());
     final divisor = maxAbs <= 0 ? 1.0 : maxAbs;
     final count = samples.length;
     final spacing = size.width / count;

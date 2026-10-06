@@ -143,7 +143,12 @@ class UserManager {
   // Cek apakah akun tertaut dengan database jemaat
   bool isLinked() => jemaatId != null && jemaatId!.trim().isNotEmpty;
 
-  String? getChurchIdForCurrentView() => activeChurchId ?? originalChurchId;
+  String? getChurchIdForCurrentView() {
+    final active = activeChurchId?.trim() ?? "";
+    if (active.isNotEmpty) return active;
+    final original = originalChurchId?.trim() ?? "";
+    return original.isEmpty ? null : original;
+  }
 
   // Pindah Konteks Gereja (Khusus Superadmin)
   Future<void> enterChurchContext(String churchId, String churchName) async {
@@ -169,7 +174,18 @@ class UserManager {
   }
 
   Future<void> updateKomisi(String komisiBaru) async {
-    userKomisi = komisiBaru;
+    userKomisi = komisiBaru.trim().isEmpty ? "Umum" : komisiBaru.trim();
+    await saveToPrefs();
+  }
+
+  Future<void> updateKategorialContext(
+    String komisiBaru, {
+    bool? pengurus,
+  }) async {
+    userKomisi = komisiBaru.trim().isEmpty ? "Umum" : komisiBaru.trim();
+    if (pengurus != null) {
+      isPengurus = pengurus;
+    }
     await saveToPrefs();
   }
 

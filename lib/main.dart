@@ -394,11 +394,16 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
     final userManager = UserManager();
     await userManager.loadFromPrefs();
+    if (!mounted) { _isRefreshingSession = false; return; }
 
     final firebaseUser = _auth.currentUser;
     if (firebaseUser != null) {
       try {
         final userDoc = await _db.collection("users").doc(firebaseUser.uid).get();
+        if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) {
+          _isRefreshingSession = false;
+          return;
+        }
         if (userDoc.exists) {
           final data = userDoc.data() ?? <String, dynamic>{};
 
@@ -452,6 +457,10 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       }
     }
 
+    if (!mounted || (firebaseUser != null && _auth.currentUser?.uid != firebaseUser.uid)) {
+      _isRefreshingSession = false;
+      return;
+    }
     _setupOneSignal();
     _loadDataGereja();
     await _loadHomeLocalState();
@@ -1338,8 +1347,9 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
                     Navigator.pop(context); 
                     Navigator.push(context, MaterialPageRoute(
                       builder: (context) => const ProfilPage()
-                    )).then((_) {
-                      setState(() { _initSession(); });
+                    )).then((_) async {
+                      if (!mounted) return;
+                      await _initSession();
                     });
                   },
                   child: Column(
@@ -1529,3 +1539,4 @@ class FullScreenImagePage extends StatelessWidget {
     );
   }
 }
+

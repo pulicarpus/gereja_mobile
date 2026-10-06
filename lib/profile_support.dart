@@ -37,10 +37,11 @@ String? profilePhone(String value) {
   var number = value.trim();
   if (number.isEmpty || RegExp(r'[^0-9+\s().-]').hasMatch(number)) return null;
   number = number.replaceAll(RegExp(r'[\s().-]'), '');
-  if (number.startsWith('+')) number = number.substring(1);
+  final explicitInternational = number.startsWith('+');
+  if (explicitInternational) number = number.substring(1);
   if (number.contains('+')) return null;
   if (number.startsWith('62')) number = '0${number.substring(2)}';
-  else if (number.startsWith('8')) number = '0$number';
+  else if (!explicitInternational && number.startsWith('8')) number = '0$number';
   if (!RegExp(r'^0[1-9][0-9]{7,12}$|^[1-9][0-9]{7,14}$').hasMatch(number)) return null;
   return number;
 }

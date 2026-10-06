@@ -82,7 +82,7 @@ jobs:
         run: flutter test test/pengurus_regression_test.dart
 
       - name: Analyze Profile changes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/profil_page.dart lib/sinkronisasi_jemaat_page.dart lib/profile_service.dart lib/profile_support.dart lib/main.dart
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/profil_page.dart lib/sinkronisasi_jemaat_page.dart lib/profile_service.dart lib/profile_support.dart lib/main.dart test/profile_regression_test.dart
 
       - name: Test Profile regressions
         run: flutter test test/profile_regression_test.dart

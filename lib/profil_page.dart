@@ -48,7 +48,7 @@ class _ProfilPageState extends State<ProfilPage> {
     try {
       final account = await _gateway.loadAccount();
       if (!mounted || request != _request || !_sameSession || account.uid != _sessionUid) return;
-      final preserveName = _dirty;
+      final preserveName = _account != null && _name.text.trim() != _account!.name;
       setState(() { _account = account; if (!preserveName) _name.text = account.name; });
       if (account.linked) {
         try {

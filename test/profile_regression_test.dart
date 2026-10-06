@@ -21,7 +21,7 @@ class FakeProfileGateway extends ProfileGateway {
   @override String? get signedInUid => uid;
   @override Stream<String?> get authChanges => auth.stream;
   @override ProfileAccount? get cachedAccount => uid == account.uid ? account : null;
-  @override Future<ProfileAccount> loadAccount() async { loads++; return loading == null ? account : loading!(); }
+  @override Future<ProfileAccount> loadAccount() async { loads++; return loading == null ? account : await loading!(); }
   @override Future<ProfileBook> loadBook(ProfileAccount account) async => book;
   @override Future<ProfileSaved> save(ProfileAccount original, String name, {File? photo, bool useBookPhoto = false}) async {
     saves++;
@@ -64,6 +64,7 @@ void main() {
     expect(profilePhoneVariants('+6281234567890'), containsAll(['081234567890', '6281234567890', 81234567890]));
     expect(profilePhoneVariants('bad'), isEmpty);
     expect(profilePhone('++6281234567890'), isNull);
+    expect(profilePhone('+852 9999 9999'), '85299999999');
     expect(profilePhone('123'), isNull);
     expect(profileText(['Musik', 'Mengajar']), 'Musik, Mengajar');
   });

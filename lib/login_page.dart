@@ -94,6 +94,7 @@ class _LoginPageState extends State<LoginPage> {
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇
         OneSignal.User.addTagWithKey("role", role);
+        OneSignal.User.addTagWithKey("kelompok", data['kelompok']?.toString() ?? "Umum");
         if (daerah.isNotEmpty) {
           OneSignal.User.addTagWithKey("daerah", daerah);
         }

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 
 // --- KELAS BANTUAN UNTUK MODE EDIT ---
 class TransaksiEditData {
@@ -115,7 +116,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     final churchId = user.getChurchIdForCurrentView();
     final kategori = widget.filterKategorial?.trim();
     final canEdit = user.isAdmin() ||
-        (kategori != null && kategori.isNotEmpty && user.isPengurus && user.userKomisi == kategori);
+        (kategori != null && kategori.isNotEmpty && user.isPengurus && KategorialConfig.same(user.userKomisi, kategori));
     if (!canEdit) {
       _showSnack("Anda tidak memiliki izin untuk mengubah keuangan ini.");
       return;

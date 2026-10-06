@@ -1,196 +1,77 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart'; 
+import 'package:flutter/services.dart';
+import 'add_edit_gereja_page.dart';
+import 'management_service.dart';
+import 'management_support.dart';
+import 'user_manager.dart';
 
-import 'add_edit_gereja_page.dart'; 
-import 'user_manager.dart'; 
-
-class KelolaGerejaPage extends StatelessWidget {
-  const KelolaGerejaPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    bool isSuperAdmin = UserManager().isSuperAdmin();
-
-    if (!isSuperAdmin) {
-      return Scaffold(
-        appBar: AppBar(title: const Text("Akses Ditolak"), backgroundColor: Colors.red[900]),
-        body: const Center(child: Text("Hanya Superadmin yang diizinkan masuk.")),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.grey[100], 
-      appBar: AppBar(
-        title: const Text("Kelola & Pilih Gereja"),
-        backgroundColor: Colors.indigo[900],
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('churches').snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
-          }
-
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text("Belum ada data gereja.\nTekan + untuk menambah.", textAlign: TextAlign.center),
-            );
-          }
-
-          var gerejaList = snapshot.data!.docs;
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: gerejaList.length,
-            itemBuilder: (context, index) {
-              var data = gerejaList[index].data() as Map<String, dynamic>;
-              var docId = gerejaList[index].id;
-              
-              // ✅ DIPERBAIKI: Membaca 'namaGereja' sesuai dengan yang disimpan di AddEditGerejaPage
-              String namaGereja = data['namaGereja'] ?? data['nama'] ?? data['churchName'] ?? "Gereja Tanpa Nama";
-              String alamatGereja = data['alamat'] ?? "Alamat belum diisi";
-              String kodeUndangan = data['kodeUndangan'] ?? "-";
-              String namaDaerah = data['daerah'] ?? "Belum Diatur";
-
-              bool isActive = UserManager().activeChurchId == docId;
-
-              return Card(
-                elevation: isActive ? 4 : 1, 
-                margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  side: BorderSide(color: isActive ? Colors.indigo : Colors.transparent, width: 2),
-                ),
-                child: Column(
-                  children: [
-                    ListTile(
-                      contentPadding: const EdgeInsets.fromLTRB(16, 8, 8, 0),
-                      leading: CircleAvatar(
-                        backgroundColor: isActive ? Colors.indigo : Colors.indigo[50],
-                        child: Icon(Icons.church, color: isActive ? Colors.white : Colors.indigo),
-                      ),
-                      title: Text(
-                        namaGereja, 
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          fontSize: 17, 
-                          color: isActive ? Colors.indigo[900] : Colors.black87
-                        )
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade100,
-                              borderRadius: BorderRadius.circular(5)
-                            ),
-                            child: Text(
-                              "Daerah: $namaDaerah", 
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900)
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(alamatGereja, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit_note, color: Colors.blueGrey, size: 28),
-                        tooltip: "Edit Info Gereja",
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => AddEditGerejaPage(gerejaId: docId)),
-                          );
-                        },
-                      ),
-                    ),
-                    const Divider(height: 1),
-                    
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isActive ? Colors.indigo[50] : Colors.transparent,
-                        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(15))
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Text(kodeUndangan, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey, fontSize: 15)),
-                              const SizedBox(width: 4),
-                              InkWell(
-                                onTap: () {
-                                  Clipboard.setData(ClipboardData(text: kodeUndangan));
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text("Kode $kodeUndangan disalin!"), backgroundColor: Colors.green[700]),
-                                  );
-                                },
-                                child: const Padding(
-                                  padding: EdgeInsets.all(4.0),
-                                  child: Icon(Icons.copy, size: 18, color: Colors.indigo),
-                                ),
-                              ),
-                            ],
-                          ),
-                          
-                          ElevatedButton.icon(
-                            onPressed: isActive ? null : () async {
-                              await UserManager().enterChurchContext(docId, namaGereja);
-                              
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text("Memasuki sistem: $namaGereja", style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    backgroundColor: Colors.indigo[900],
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                                Navigator.pop(context);
-                              }
-                            },
-                            icon: Icon(isActive ? Icons.check_circle : Icons.login, size: 18),
-                            label: Text(isActive ? "Sedang Aktif" : "Kelola Data"),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: isActive ? Colors.green : Colors.indigo[900],
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                          )
-                        ],
-                      ),
-                    )
-                  ],
-                ),
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: Colors.indigo[900],
-        foregroundColor: Colors.white,
-        tooltip: "Tambah Gereja Baru",
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const AddEditGerejaPage()),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
-    );
+class KelolaGerejaPage extends StatefulWidget {
+  final ManagementGateway? gateway;
+  const KelolaGerejaPage({super.key, this.gateway});
+  @override State<KelolaGerejaPage> createState() => _KelolaGerejaPageState();
+}
+class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
+  late final ManagementGateway _gateway;
+  late Stream<List<ManagementRecord>> _stream;
+  StreamSubscription<String?>? _auth;
+  bool _busy = false, _expired = false;
+  String? _error;
+  @override void initState() {
+    super.initState();
+    _gateway = widget.gateway ?? FirebaseManagementGateway();
+    _stream = _gateway.churches();
+    final uid = _gateway.signedInUid;
+    _auth = _gateway.authChanges.listen((id) { if (mounted && id != uid) setState(() { _expired = true; _busy = false; }); });
   }
+  @override void dispose() { _auth?.cancel(); super.dispose(); }
+  Future<void> _enter(ManagementRecord church) async {
+    if (_busy || _expired) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      await _gateway.enterChurch(church);
+      if (!mounted || _expired) return;
+      setState(() => _busy = false);
+      Navigator.pop(context, true);
+    } catch (error) { if (mounted && !_expired) setState(() => _error = managementError(error)); }
+    finally { if (mounted && !_expired) setState(() => _busy = false); }
+  }
+  Future<void> _edit([String? id]) async {
+    if (_busy || _expired) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => AddEditGerejaPage(gerejaId: id, gateway: _gateway)));
+    if (mounted && !_expired) setState(() => _stream = _gateway.churches());
+  }
+  Future<void> _copy(String code) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: code));
+      if (mounted && !_expired) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kode undangan disalin.')));
+    } catch (_) { if (mounted && !_expired) setState(() => _error = 'Kode belum dapat disalin.'); }
+  }
+  @override Widget build(BuildContext context) => PopScope(canPop: !_busy, child: Scaffold(
+    appBar: AppBar(title: const Text('Kelola & Pilih Gereja')),
+    floatingActionButton: _expired ? null : FloatingActionButton(onPressed: _busy ? null : () => _edit(), tooltip: 'Tambah Gereja Baru', child: const Icon(Icons.add)),
+    body: _expired ? const Center(child: Text('Sesi berubah. Silakan masuk ulang.')) : Column(children: [
+      if (_busy) const LinearProgressIndicator(),
+      if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+      Expanded(child: StreamBuilder<List<ManagementRecord>>(stream: _stream, builder: (context, snapshot) {
+        if (snapshot.hasError) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(padding: const EdgeInsets.all(16), child: Text(managementError(snapshot.error!), textAlign: TextAlign.center)),
+          TextButton(onPressed: _busy ? null : () => setState(() => _stream = _gateway.churches()), child: const Text('Coba lagi'))]));
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final churches = List<ManagementRecord>.of(snapshot.data!)..sort((a, b) => managementChurchName(a.data).compareTo(managementChurchName(b.data)));
+        if (churches.isEmpty) return const Center(child: Text('Belum ada data gereja. Tekan + untuk menambah.'));
+        return ListView.builder(padding: const EdgeInsets.all(16), itemCount: churches.length, itemBuilder: (context, index) {
+          final church = churches[index], data = church.data;
+          final name = managementChurchName(data), code = managementText(data['kodeUndangan']);
+          final active = UserManager().getChurchIdForCurrentView() == church.id;
+          return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.church), title: Text(name),
+              subtitle: Text('Daerah: ${managementText(data['daerah'], 'Belum diatur')}\n${managementText(data['alamat'], 'Alamat belum diisi')}'),
+              trailing: IconButton(onPressed: _busy ? null : () => _edit(church.id), icon: const Icon(Icons.edit), tooltip: 'Edit Info Gereja')),
+            Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(code.isEmpty ? 'Kode belum tersedia' : code),
+              if (code.isNotEmpty) IconButton(onPressed: _busy ? null : () => _copy(code), icon: const Icon(Icons.copy), tooltip: 'Salin kode'),
+              ElevatedButton(onPressed: _busy || active ? null : () => _enter(church), child: Text(active ? 'Sedang Aktif' : 'Kelola Data'))])])));
+        });
+      }))])));
 }

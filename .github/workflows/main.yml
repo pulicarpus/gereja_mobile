@@ -87,6 +87,12 @@ jobs:
       - name: Test Profile regressions
         run: flutter test test/profile_regression_test.dart
 
+      - name: Analyze Management changes
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/daftar_pengguna_page.dart lib/detail_pengguna_page.dart lib/kelola_gereja_page.dart lib/add_edit_gereja_page.dart lib/management_support.dart lib/management_service.dart test/management_regression_test.dart
+
+      - name: Test Management regressions
+        run: flutter test test/management_regression_test.dart
+
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
         working-directory: .

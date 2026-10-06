@@ -502,6 +502,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
   void _loadDataGereja() {
     final churchId = UserManager().activeChurchId;
+    final sessionUid = _auth.currentUser?.uid;
 
     _churchSubscription?.cancel();
     _churchSubscription = null;
@@ -525,7 +526,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
         .snapshots()
         .listen(
       (snapshot) {
-        if (!mounted) return;
+        if (!mounted || _auth.currentUser?.uid != sessionUid || UserManager().activeChurchId != churchId) return;
 
         if (!snapshot.exists) {
           setState(() => _alamatGereja = "Data gereja tidak ditemukan");
@@ -533,6 +534,14 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
         }
 
         final data = snapshot.data();
+        final manager = UserManager();
+        final names = [data?['namaGereja'], data?['nama'], data?['churchName']]
+            .map((value) => value?.toString().trim() ?? '').where((value) => value.isNotEmpty);
+        if (names.isNotEmpty && manager.activeChurchName != names.first) {
+          manager.activeChurchName = names.first;
+          if (manager.originalChurchId == churchId) manager.originalChurchName = names.first;
+          manager.saveToPrefs().catchError((Object error) { debugPrint('Nama gereja belum tersimpan di cache lokal.'); });
+        }
         setState(() {
           _namaGembala = data?['namaGembala']?.toString() ?? "Gembala Sidang";
           _fotoGembalaUrl = data?['fotoGembalaUrl']?.toString();
@@ -1458,7 +1467,8 @@ _buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
                 subtitle: const Text("Atur Role & Kategorial Akun", style: TextStyle(fontSize: 12)),
                 onTap: () {
                   Navigator.pop(context);
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const DaftarPenggunaPage()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const DaftarPenggunaPage()))
+                  .then((_) async { if (!mounted) return; await _initSession(); });
                 },
               ),
               const Divider(height: 1),
@@ -1472,7 +1482,7 @@ _buildDrawerItem(Icons.inventory_2, "Aset Gereja", () {
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const KelolaGerejaPage()))
-                  .then((_) => setState(() { _initSession(); }));
+                  .then((_) async { if (!mounted) return; await _initSession(); });
                 },
               ),
             ],
@@ -1539,4 +1549,3 @@ class FullScreenImagePage extends StatelessWidget {
     );
   }
 }
-

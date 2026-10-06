@@ -1,228 +1,58 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'user_manager.dart';
 import 'detail_pengguna_page.dart';
+import 'management_service.dart';
+import 'management_support.dart';
 
 class DaftarPenggunaPage extends StatefulWidget {
-  const DaftarPenggunaPage({super.key});
-
-  @override
-  State<DaftarPenggunaPage> createState() => _DaftarPenggunaPageState();
+  final ManagementGateway? gateway;
+  const DaftarPenggunaPage({super.key, this.gateway});
+  @override State<DaftarPenggunaPage> createState() => _DaftarPenggunaPageState();
 }
-
 class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final UserManager _userManager = UserManager();
-  
-  String _searchQuery = "";
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
+  late final ManagementGateway _gateway;
+  late Stream<List<ManagementRecord>> _stream;
+  StreamSubscription<String?>? _auth;
+  final _search = TextEditingController();
+  String _query = '';
+  bool _expired = false;
+  @override void initState() {
+    super.initState();
+    _gateway = widget.gateway ?? FirebaseManagementGateway();
+    final uid = _gateway.signedInUid;
+    _stream = _gateway.users();
+    _auth = _gateway.authChanges.listen((id) {
+      if (mounted && id != uid) setState(() => _expired = true);
+    });
   }
-
-  @override
-  Widget build(BuildContext context) {
-    // 👇 INI YANG MEMBUAT SUPERADMIN HANYA MELIHAT JEMAAT DI GEREJA LOKAL YANG SEDANG DIBUKA 👇
-    String? activeChurchId = _userManager.getChurchIdForCurrentView();
-
-    Query query = _db.collection("users");
-    if (activeChurchId != null && activeChurchId.isNotEmpty) {
-      query = query.where("churchId", isEqualTo: activeChurchId);
-    }
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), 
-      appBar: AppBar(
-        title: const Text("Manajemen Pengguna", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.indigo[900],
-        foregroundColor: Colors.white,
-        elevation: 0,
-      ),
-      body: Column(
-        children: [
-          Container(
-            color: Colors.indigo[900],
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase(); 
-                });
-              },
-              decoration: InputDecoration(
-                hintText: "Cari nama atau email...",
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey),
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() { _searchQuery = ""; });
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(15),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: query.snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.indigo));
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.group_off, size: 80, color: Colors.grey.shade300),
-                        const SizedBox(height: 16),
-                        Text("Belum ada data pengguna di gereja ini.", style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                      ],
-                    ),
-                  );
-                }
-
-                var users = snapshot.data!.docs;
-
-                if (_searchQuery.isNotEmpty) {
-                  users = users.where((doc) {
-                    var data = doc.data() as Map<String, dynamic>;
-                    String nama = (data['namaLengkap'] ?? "").toString().toLowerCase();
-                    String email = (data['email'] ?? "").toString().toLowerCase();
-                    return nama.contains(_searchQuery) || email.contains(_searchQuery);
-                  }).toList();
-                }
-
-                if (users.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.search_off, size: 60, color: Colors.grey.shade400),
-                        const SizedBox(height: 16),
-                        Text("Tidak ada jemaat bernama '${_searchController.text}'", style: TextStyle(color: Colors.grey.shade600)),
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: users.length,
-                  itemBuilder: (context, index) {
-                    var data = users[index].data() as Map<String, dynamic>;
-                    String docId = users[index].id;
-                    
-                    String nama = data['namaLengkap'] ?? "Tanpa Nama";
-                    String email = data['email'] ?? "Tidak ada email";
-                    String role = data['role'] ?? "user";
-                    String kelompok = data['kelompok'] ?? "Umum / Belum diatur";
-                    
-                    // 👇 DETEKSI JABATAN ADMIN DAERAH 👇
-                    String? adminDaerahArea = data['adminDaerahArea']; 
-
-                    Color avatarBgColor;
-                    Color avatarIconColor;
-                    IconData avatarIcon;
-
-                    if (role == 'superadmin') {
-                      avatarBgColor = Colors.red.shade50;
-                      avatarIconColor = Colors.red;
-                      avatarIcon = Icons.security;
-                    } else if (role == 'admin') {
-                      avatarBgColor = Colors.orange.shade50;
-                      avatarIconColor = Colors.orange;
-                      avatarIcon = Icons.admin_panel_settings;
-                    } else {
-                      avatarBgColor = Colors.indigo.shade50;
-                      avatarIconColor = Colors.indigo;
-                      avatarIcon = Icons.person;
-                    }
-
-                    return Card(
-                      elevation: 1,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(15),
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(
-                            builder: (context) => DetailPenggunaPage(userId: docId)
-                          ));
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(12.0),
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 25,
-                                backgroundColor: avatarBgColor,
-                                child: Icon(avatarIcon, color: avatarIconColor),
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(nama, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    const SizedBox(height: 2),
-                                    Text(email, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(5)),
-                                          child: Text(role.toUpperCase(), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade800)),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(kelompok, style: const TextStyle(fontSize: 11, color: Colors.indigo, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
-                                        ),
-                                      ],
-                                    ),
-                                    // 👇 MUNCULKAN BADGE KHUSUS JIKA DIA PENGURUS DAERAH 👇
-                                    if (adminDaerahArea != null && adminDaerahArea.isNotEmpty)
-                                      Container(
-                                        margin: const EdgeInsets.only(top: 6),
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                        decoration: BoxDecoration(
-                                          color: Colors.purple.shade50, 
-                                          borderRadius: BorderRadius.circular(5), 
-                                          border: Border.all(color: Colors.purple.shade200)
-                                        ),
-                                        child: Text("👑 PENGURUS DAERAH: ${adminDaerahArea.toUpperCase()}", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.purple.shade700)),
-                                      )
-                                  ],
-                                ),
-                              ),
-                              const Icon(Icons.chevron_right, color: Colors.grey),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  @override void dispose() { _auth?.cancel(); _search.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Manajemen Pengguna')),
+    body: _expired ? const Center(child: Text('Sesi berubah. Silakan masuk ulang.')) : Column(children: [
+      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _search,
+        onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
+        decoration: InputDecoration(labelText: 'Cari nama atau email', prefixIcon: const Icon(Icons.search),
+          suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { _search.clear(); setState(() => _query = ''); })))),
+      Expanded(child: StreamBuilder<List<ManagementRecord>>(stream: _stream, builder: (context, snapshot) {
+        if (snapshot.hasError) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(padding: const EdgeInsets.all(16), child: Text(managementError(snapshot.error!), textAlign: TextAlign.center)),
+          TextButton(onPressed: () => setState(() => _stream = _gateway.users()), child: const Text('Coba lagi'))]));
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        final records = snapshot.data!.where((item) => _query.isEmpty ||
+          managementText(item.data['namaLengkap']).toLowerCase().contains(_query) ||
+          managementText(item.data['email']).toLowerCase().contains(_query)).toList()
+          ..sort((a, b) => managementText(a.data['namaLengkap']).compareTo(managementText(b.data['namaLengkap'])));
+        if (records.isEmpty) return Center(child: Text(_query.isEmpty ? 'Belum ada pengguna di gereja ini.' : 'Nama atau email tidak ditemukan.'));
+        return ListView.builder(itemCount: records.length, itemBuilder: (context, index) {
+          final user = records[index], data = user.data;
+          return Card(child: ListTile(leading: const CircleAvatar(child: Icon(Icons.person)),
+            title: Text(managementText(data['namaLengkap'], 'Tanpa Nama')),
+            subtitle: Text('${managementText(data['email'], 'Tidak ada email')}\n'
+              '${managementText(data['role'], 'user').toUpperCase()} • ${managementText(data['kelompok'], 'Belum diatur')}'
+              '${managementText(data['adminDaerahArea']).isEmpty ? '' : '\nPengurus Daerah: ${managementText(data['adminDaerahArea'])}'}'
+              '${data['isBlocked'] == true ? '\nAkun dinonaktifkan' : ''}'),
+            trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => DetailPenggunaPage(userId: user.id, gateway: _gateway)))));
+        });
+      }))]));
 }

@@ -1,516 +1,128 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'user_manager.dart';
 import 'kategorial_config.dart';
+import 'management_service.dart';
+import 'management_support.dart';
 
 class DetailPenggunaPage extends StatefulWidget {
   final String userId;
-
-  const DetailPenggunaPage({super.key, required this.userId});
-
-  @override
-  State<DetailPenggunaPage> createState() => _DetailPenggunaPageState();
+  final ManagementGateway? gateway;
+  const DetailPenggunaPage({super.key, required this.userId, this.gateway});
+  @override State<DetailPenggunaPage> createState() => _DetailPenggunaPageState();
 }
-
 class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final UserManager _userManager = UserManager();
-
-  Map<String, dynamic>? _targetUserData;
-  String _churchName = "(Belum diatur)";
-  String _kategorial = "Umum / Belum diatur"; 
-  bool _isPengurus = false; 
-  
-  // 👇 STATE BARU UNTUK JABATAN DAERAH 👇
-  String? _adminDaerahArea;
-
-  bool _isLoading = true;
-
-  @override
-  void initState() {
+  late final ManagementGateway _gateway;
+  StreamSubscription<String?>? _auth;
+  ManagementRecord? _user;
+  ManagementAccess? _access;
+  String? _error;
+  bool _busy = false, _expired = false;
+  int _request = 0;
+  @override void initState() {
     super.initState();
-    _loadUserData();
+    _gateway = widget.gateway ?? FirebaseManagementGateway();
+    final uid = _gateway.signedInUid;
+    _auth = _gateway.authChanges.listen((id) {
+      if (mounted && id != uid) { _request++; setState(() { _expired = true; _busy = false; _user = null; }); }
+    });
+    _load();
   }
-
-  Future<void> _loadUserData() async {
-    setState(() => _isLoading = true);
+  @override void dispose() { _request++; _auth?.cancel(); super.dispose(); }
+  Future<void> _load() async {
+    if (!mounted || _expired) return;
+    final request = ++_request;
+    setState(() { _busy = true; _error = null; _user = null; });
     try {
-      var doc = await _db.collection("users").doc(widget.userId).get();
-      if (doc.exists) {
-        _targetUserData = doc.data();
-        final kelompokRaw =
-            _targetUserData?['kelompok']?.toString().trim() ?? "";
-        _kategorial =
-            kelompokRaw.isEmpty ? "Umum / Belum diatur" : kelompokRaw;
-        _isPengurus = _targetUserData?['isPengurus'] == true;
-        
-        // 👇 BACA JABATAN DAERAH DARI FIREBASE 👇
-        _adminDaerahArea = _targetUserData?['adminDaerahArea'];
-        
-        String? targetChurchId = _targetUserData?['churchId'];
-        if (targetChurchId != null && targetChurchId.isNotEmpty) {
-          var churchDoc = await _db.collection("churches").doc(targetChurchId).get();
-          if (churchDoc.exists) {
-            _churchName = churchDoc.data()?['namaGereja'] ?? "(Nama tidak ditemukan)";
-          } else {
-            _churchName = "(ID Gereja tidak valid)";
-          }
-        } else {
-          _churchName = "(Belum diatur)";
+      final access = await _gateway.access();
+      final user = await _gateway.loadUser(widget.userId);
+      if (mounted && request == _request) setState(() { _access = access; _user = user; });
+    } catch (error) { if (mounted && request == _request) setState(() => _error = managementError(error)); }
+    finally { if (mounted && request == _request) setState(() => _busy = false); }
+  }
+  Future<void> _change(String field, dynamic value) async {
+    if (_busy || _expired || _user == null) return;
+    final expected = _user!;
+    final confirm = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Konfirmasi perubahan'),
+      content: Text(field == 'churchId' ? 'Pindahkan akun ke gereja yang dipilih? Akun yang tertaut ke buku induk harus menyelesaikan tautan lama terlebih dahulu.' :
+        field == 'kelompok' ? 'Ubah kategorial ke $value? Status pengurus lokal akan di-reset.' : 'Simpan perubahan ${field == 'role' ? 'hak akses' : field == 'isPengurus' ? 'pengurus lokal' : 'jabatan daerah'}?'),
+      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Batal')),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Simpan'))]));
+    if (confirm != true || !mounted || _expired || _busy) return;
+    setState(() { _busy = true; _error = null; });
+    var saved = false;
+    try {
+      await _gateway.changeUser(expected, field, value);
+      saved = true;
+      if (!mounted || _expired) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Perubahan berhasil disimpan.')));
+    } catch (error) {
+      if (mounted && !_expired) setState(() { _error = managementError(error); _user = null; });
+    } finally { if (mounted && !_expired) setState(() => _busy = false); }
+    if (saved && mounted && !_expired) await _load();
+  }
+  Future<void> _choose(String field) async {
+    if (_busy || _expired || _user == null) return;
+    List<MapEntry<String, String>> choices;
+    if (field == 'kelompok') {
+      choices = KategorialConfig.pilihanJemaat.map((v) => MapEntry(v, v)).toList();
+    } else {
+      setState(() { _busy = true; _error = null; });
+      try {
+        final churches = await _gateway.churchChoices();
+        choices = field == 'churchId'
+          ? churches.map((c) => MapEntry(c.id, managementChurchName(c.data))).toList()
+          : (churches.map((c) => managementText(c.data['daerah'])).where((v) => v.isNotEmpty).toSet().toList()..sort()).map((v) => MapEntry(v, v)).toList();
+        if (field == 'adminDaerahArea' && managementText(_user?.data['adminDaerahArea']).isNotEmpty) {
+          choices.insert(0, const MapEntry('', 'Cabut Jabatan Daerah'));
         }
-      }
-    } catch (e) {
-      debugPrint("Gagal memuat data: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      } catch (error) {
+        if (mounted && !_expired) setState(() => _error = managementError(error));
+        return;
+      } finally { if (mounted && !_expired) setState(() => _busy = false); }
     }
+    if (!mounted || _expired) return;
+    final selected = await showModalBottomSheet<String>(context: context, builder: (context) => SafeArea(child: Column(children: [
+      Padding(padding: const EdgeInsets.all(16), child: Text(field == 'churchId' ? 'Pilih Gereja' : field == 'kelompok' ? 'Pilih Kategorial' : 'Atur Jabatan Daerah')),
+      Expanded(child: choices.isEmpty ? const Center(child: Text('Belum ada pilihan tersedia.')) : ListView(children: choices.map((entry) => ListTile(
+        title: Text(entry.value), onTap: () => Navigator.pop(context, entry.key))).toList()))])));
+    if (selected != null && mounted && !_expired) await _change(field, selected);
   }
-
-  Future<void> _togglePengurusStatus() async {
-    setState(() => _isLoading = true);
-    try {
-      bool statusBaru = !_isPengurus;
-      await _db.collection("users").doc(widget.userId).update({"isPengurus": statusBaru});
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(statusBaru ? "Berhasil diangkat menjadi Pengurus $_kategorial." : "Status Pengurus dicabut."))
-      );
-      await _loadUserData();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengubah status: $e")));
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _updateUserRole(String newRole) async {
-    String? targetChurchId = _targetUserData?['churchId'];
-    
-    if (newRole == "admin" && (targetChurchId == null || targetChurchId.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Pengguna harus diatur gerejanya terlebih dahulu sebelum dijadikan Admin!"), backgroundColor: Colors.red)
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      await _db.collection("users").doc(widget.userId).update({"role": newRole});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sukses mengubah role menjadi $newRole")));
-      await _loadUserData(); 
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal mengubah role: $e")));
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _assignUserToKategorial(
-    String kategorialPilihan,
-  ) async {
-    final kategori = KategorialConfig.canonicalJemaat(kategorialPilihan);
-    setState(() => _isLoading = true);
-
-    try {
-      final userRef = _db.collection("users").doc(widget.userId);
-      final targetChurchId =
-          _targetUserData?['churchId']?.toString().trim() ?? "";
-      final jemaatId =
-          _targetUserData?['jemaatId']?.toString().trim() ?? "";
-
-      final batch = _db.batch();
-      batch.update(userRef, {
-        "kelompok": kategori,
-        "isPengurus": false,
-      });
-
-      var linkedJemaatFound = false;
-      if (targetChurchId.isNotEmpty && jemaatId.isNotEmpty) {
-        final jemaatRef = _db
-            .collection("churches")
-            .doc(targetChurchId)
-            .collection("jemaat")
-            .doc(jemaatId);
-        final jemaatDoc = await jemaatRef.get();
-        if (jemaatDoc.exists) {
-          batch.update(jemaatRef, {"kelompok": kategori});
-          linkedJemaatFound = true;
-        }
-      }
-
-      await batch.commit();
-
-      if (_userManager.userId == widget.userId) {
-        await _userManager.updateKategorialContext(
-          kategori,
-          pengurus: false,
-        );
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              linkedJemaatFound
-                  ? "Kategorial di akun dan buku induk dipindah ke $kategori. Status pengurus di-reset."
-                  : "Kategorial akun dipindah ke $kategori. Data buku induk tertaut tidak ditemukan.",
-            ),
-            backgroundColor:
-                linkedJemaatFound ? Colors.green : Colors.orange,
-          ),
-        );
-      }
-      await _loadUserData();
-    } catch (e) {
-      debugPrint("Gagal menetapkan kategorial: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Gagal menetapkan kategorial."),
-            backgroundColor: Colors.red,
-          ),
-        );
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _showChurchSelectionDialog() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const Padding(padding: EdgeInsets.all(16.0), child: Text("Pilih Gereja", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo))),
-            const Divider(height: 1),
-            Expanded(
-              child: FutureBuilder<QuerySnapshot>(
-                future: _db.collection("churches").get(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Tidak ada data gereja."));
-
-                  return ListView.builder(
-                    itemCount: snapshot.data!.docs.length,
-                    itemBuilder: (context, index) {
-                      var doc = snapshot.data!.docs[index];
-                      var gerejaData = doc.data() as Map<String, dynamic>;
-                      return ListTile(
-                        leading: const Icon(Icons.church, color: Colors.indigo),
-                        title: Text(gerejaData['namaGereja'] ?? "Gereja Tanpa Nama", style: const TextStyle(fontWeight: FontWeight.bold)),
-                        onTap: () {
-                          Navigator.pop(context); 
-                          _assignUserToChurch(doc.id);
-                        },
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // 👇 DIALOG KHUSUS UNTUK MEMILIH DAERAH 👇
-  void _showDaerahSelectionDialog() async {
-    // 1. Sedot dulu semua daftar Daerah yang ada di Firebase
-    var snapshot = await _db.collection("churches").get();
-    Set<String> daftarDaerah = {};
-    for (var doc in snapshot.docs) {
-      var data = doc.data();
-      if (data.containsKey('daerah') && data['daerah'] != null && data['daerah'].toString().trim().isNotEmpty) {
-        daftarDaerah.add(data['daerah'].toString().trim());
-      }
-    }
-    List<String> listDaerah = daftarDaerah.toList()..sort();
-
-    if (!mounted) return;
-
-    // 2. Tampilkan Dropdown
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const Padding(
-              padding: EdgeInsets.all(16.0), 
-              child: Text("Atur Jabatan Pengurus Daerah", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple))
-            ),
-            const Divider(height: 1),
-            if (listDaerah.isEmpty)
-              const Padding(padding: EdgeInsets.all(20), child: Text("Belum ada data daerah di sistem."))
-            else
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: listDaerah.length,
-                  itemBuilder: (context, index) {
-                    return ListTile(
-                      leading: const Icon(Icons.map, color: Colors.purple),
-                      title: Text(listDaerah[index], style: const TextStyle(fontWeight: FontWeight.w600)),
-                      onTap: () async {
-                        Navigator.pop(context); 
-                        setState(() => _isLoading = true);
-                        try {
-                          await _db.collection("users").doc(widget.userId).update({
-                            "adminDaerahArea": listDaerah[index],
-                          });
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Berhasil diangkat menjadi Pengurus Daerah ${listDaerah[index]}.")));
-                          await _loadUserData();
-                        } catch (e) {
-                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
-                          setState(() => _isLoading = false);
-                        }
-                      },
-                    );
-                  },
-                ),
-              ),
-            // Tombol Cabut Jabatan (Jika dia sudah punya jabatan daerah)
-            if (_adminDaerahArea != null && _adminDaerahArea!.isNotEmpty) ...[
-               const Divider(),
-               ListTile(
-                 leading: const Icon(Icons.remove_circle, color: Colors.red),
-                 title: const Text("Cabut Jabatan Daerah", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                 onTap: () async {
-                    Navigator.pop(context); 
-                    setState(() => _isLoading = true);
-                    try {
-                      await _db.collection("users").doc(widget.userId).update({
-                        "adminDaerahArea": FieldValue.delete(),
-                      });
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jabatan daerah dicabut.")));
-                      await _loadUserData();
-                    } catch (e) {
-                      setState(() => _isLoading = false);
-                    }
-                 },
-               )
-            ],
+  Widget _action(String title, VoidCallback onTap) => Padding(padding: const EdgeInsets.symmetric(vertical: 4),
+    child: OutlinedButton(onPressed: _busy ? null : onTap, child: Text(title, textAlign: TextAlign.center)));
+  @override Widget build(BuildContext context) {
+    final user = _user, access = _access;
+    final data = user?.data ?? <String, dynamic>{};
+    final name = managementText(data['namaLengkap'], 'Tanpa Nama');
+    final role = managementText(data['role'], 'user');
+    final canManage = access?.canManage(data) == true;
+    return PopScope(canPop: !_busy, child: Scaffold(appBar: AppBar(title: const Text('Detail Pengguna'),
+      actions: [IconButton(onPressed: _busy || _expired ? null : _load, icon: const Icon(Icons.refresh), tooltip: 'Muat ulang')]),
+      body: _expired ? const Center(child: Text('Sesi berubah. Silakan masuk ulang.')) : _busy ? const Center(child: CircularProgressIndicator()) :
+        SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (_error != null) ...[Text(_error!, style: const TextStyle(color: Colors.red)), TextButton(onPressed: _load, child: const Text('Muat ulang data'))],
+          if (user != null) ...[
+            CircleAvatar(radius: 36, child: Text(name.characters.first.toUpperCase())),
+            const SizedBox(height: 16), Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Text(managementText(data['email'], 'Tidak ada email'), textAlign: TextAlign.center),
             const SizedBox(height: 20),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showKategorialSelectionDialog() {
-    final List<String> daftarKategorial =
-        KategorialConfig.pilihanJemaat;
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 12),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-            const Padding(
-              padding: EdgeInsets.all(16.0), 
-              child: Text("Pilih Kategorial", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo))
-            ),
-            const Divider(height: 1),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: daftarKategorial.length,
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    leading: const Icon(Icons.group, color: Colors.indigo),
-                    title: Text(daftarKategorial[index], style: const TextStyle(fontWeight: FontWeight.w600)),
-                    onTap: () {
-                      Navigator.pop(context); 
-                      _assignUserToKategorial(daftarKategorial[index]);
-                    },
-                  );
-                },
-              ),
-            ),
+            Text('Gereja: ${managementText(data['churchName'], managementText(data['churchId'], 'Belum diatur'))}'),
+            Text('Kategorial: ${managementText(data['kelompok'], 'Belum diatur')}'),
+            Text('Hak akses: ${role.toUpperCase()}'),
+            Text('Pengurus lokal: ${data['isPengurus'] == true ? 'Ya' : 'Tidak'}'),
+            if (managementText(data['adminDaerahArea']).isNotEmpty) Text('Pengurus Daerah: ${managementText(data['adminDaerahArea'])}'),
+            if (data['isBlocked'] == true) const Text('Akun dinonaktifkan.'),
             const SizedBox(height: 20),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _assignUserToChurch(String selectedChurchId) async {
-    setState(() => _isLoading = true);
-    try {
-      await _db.collection("users").doc(widget.userId).update({"churchId": selectedChurchId});
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Pengguna berhasil dimasukkan ke gereja.")));
-      await _loadUserData();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menetapkan gereja: $e")));
-      setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(appBar: AppBar(title: const Text("Detail Pengguna"), backgroundColor: Colors.indigo[900]), body: const Center(child: CircularProgressIndicator(color: Colors.indigo)));
-    }
-    if (_targetUserData == null) {
-      return Scaffold(appBar: AppBar(title: const Text("Detail Pengguna"), backgroundColor: Colors.indigo[900]), body: const Center(child: Text("Data pengguna tidak ditemukan.")));
-    }
-
-    String email = _targetUserData?['email'] ?? "Tidak ada email";
-    String role = _targetUserData?['role'] ?? "user";
-    String nama = _targetUserData?['namaLengkap'] ?? "Jemaat";
-    
-    bool isSuperAdmin = _userManager.isSuperAdmin();
-    bool isAdmin = _userManager.isAdmin();
-    String myOriginalChurchId = _userManager.originalChurchId ?? "";
-    String targetChurchId = _targetUserData?['churchId'] ?? "";
-    bool canManageRoles = isSuperAdmin || (isAdmin && targetChurchId == myOriginalChurchId);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
-      appBar: AppBar(
-        title: const Text("Detail Pengguna", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]),
-              child: Column(
-                children: [
-                  CircleAvatar(radius: 40, backgroundColor: Colors.indigo.shade50, child: Text(nama[0].toUpperCase(), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.indigo))),
-                  const SizedBox(height: 16),
-                  Text(nama, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 4),
-                  Text(email, style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
-                  
-                  // 👇 BADGE PENGURUS DAERAH 👇
-                  if (_adminDaerahArea != null && _adminDaerahArea!.isNotEmpty)
-                     Container(
-                       margin: const EdgeInsets.only(top: 15),
-                       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-                       decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.purple.shade200)),
-                       child: Text("👑 PENGURUS DAERAH: ${_adminDaerahArea!.toUpperCase()}", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.purple.shade700)),
-                     ),
-                     
-                  const SizedBox(height: 24),
-                  const Divider(),
-                  const SizedBox(height: 16),
-                  
-                  _buildProfileRow(Icons.church, "Gereja Terdaftar", _churchName, Colors.blue),
-                  const SizedBox(height: 16),
-                  
-                  _buildProfileRow(
-                    Icons.category, 
-                    "Kategorial", 
-                    _isPengurus ? "$_kategorial (PENGURUS LOKAL)" : _kategorial, 
-                    _isPengurus ? Colors.teal : Colors.indigo
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  _buildProfileRow(
-                    role == 'admin' || role == 'superadmin' ? Icons.admin_panel_settings : Icons.person, 
-                    "Hak Akses Gereja Lokal", 
-                    role.toUpperCase(), 
-                    role == 'admin' ? Colors.orange : Colors.green
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 30),
-
-            if (canManageRoles) ...[
-              const Align(alignment: Alignment.centerLeft, child: Text("TINDAKAN LOKAL", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13))),
-              const SizedBox(height: 10),
-
-              _buildActionButton("Atur Kategorial", Icons.category, Colors.indigo, _showKategorialSelectionDialog),
-
-              if (KategorialConfig.isPelayanan(_kategorial) &&
-                  role != "admin" &&
-                  role != "superadmin")
-                _buildActionButton(
-                  _isPengurus ? "Cabut Pengurus Lokal" : "Jadikan Pengurus $_kategorial", 
-                  _isPengurus ? Icons.person_remove : Icons.person_add_alt_1, 
-                  _isPengurus ? Colors.redAccent : Colors.teal, 
-                  _togglePengurusStatus
-                ),
-
-              if (role == "user")
-                _buildActionButton("Jadikan Admin Gereja", Icons.arrow_upward, Colors.orange, () => _updateUserRole("admin")),
-              
-              if (role == "admin" && !isSuperAdmin) 
-                _buildActionButton("Turunkan ke Jemaat Biasa", Icons.arrow_downward, Colors.grey.shade700, () => _updateUserRole("user")),
-            ],
-
-            if (isSuperAdmin) ...[
-              const SizedBox(height: 20),
-              const Align(alignment: Alignment.centerLeft, child: Text("TINDAKAN SUPERADMIN PUSAT", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 13))),
-              const SizedBox(height: 10),
-              
-              if (role == "admin") 
-                _buildActionButton("Turunkan ke Jemaat Biasa", Icons.arrow_downward, Colors.grey.shade700, () => _updateUserRole("user")),
-              
-              _buildActionButton("Atur / Pindah Gereja", Icons.swap_horiz, Colors.blue, _showChurchSelectionDialog),
-
-              // 👇 TOMBOL SAKTI: PENGANGKATAN PEJABAT DAERAH 👇
-              _buildActionButton("Atur Jabatan Daerah", Icons.map, Colors.purple, _showDaerahSelectionDialog),
-            ]
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileRow(IconData icon, String title, String value, MaterialColor color) {
-    return Row(
-      children: [
-        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.shade50, shape: BoxShape.circle), child: Icon(icon, color: color)),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              Text(value, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black87)),
-            ],
-          ),
-        )
-      ],
-    );
-  }
-
-  Widget _buildActionButton(String title, IconData icon, Color color, VoidCallback onTap) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ElevatedButton(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.white, foregroundColor: color,
-          elevation: 1, padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          side: BorderSide(color: color.withOpacity(0.3))
-        ),
-        onPressed: onTap,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 20),
-            const SizedBox(width: 10),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          ],
-        ),
-      ),
-    );
+            if (canManage) ...[
+              _action('Atur Kategorial', () => _choose('kelompok')),
+              if (role == 'user' && KategorialConfig.isPelayanan(data['kelompok']))
+                _action(data['isPengurus'] == true ? 'Cabut Pengurus Lokal' : 'Jadikan Pengurus Lokal', () => _change('isPengurus', data['isPengurus'] != true)),
+              if (user.id != access!.uid && (role == 'user' || role == 'admin'))
+                _action(role == 'user' ? 'Jadikan Admin Gereja' : 'Turunkan ke Jemaat Biasa', () => _change('role', role == 'user' ? 'admin' : 'user')),
+              if (access!.superAdmin) ...[
+                if (user.id != access.uid) _action('Atur / Pindah Gereja', () => _choose('churchId')),
+                _action('Atur Jabatan Daerah', () => _choose('adminDaerahArea'))],
+            ] else const Text('Hak akses akun ini dilindungi atau berada di luar kewenangan Anda.'),
+          ]]))));
   }
 }

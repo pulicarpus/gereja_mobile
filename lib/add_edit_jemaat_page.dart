@@ -5,12 +5,19 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 
 class AddEditJemaatPage extends StatefulWidget {
   final Map<String, dynamic>? jemaatData; // Jika null = Tambah, Jika isi = Edit
   final String? idKepalaKeluargaBaru; // Untuk tambah anggota keluarga baru
+  final String? initialKelompok;
 
-  const AddEditJemaatPage({super.key, this.jemaatData, this.idKepalaKeluargaBaru});
+  const AddEditJemaatPage({
+    super.key,
+    this.jemaatData,
+    this.idKepalaKeluargaBaru,
+    this.initialKelompok,
+  });
 
   @override
   State<AddEditJemaatPage> createState() => _AddEditJemaatPageState();
@@ -59,8 +66,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       _jenisKelamin = d['jenisKelamin'] ?? "Pria";
       _statusNikah = d['statusPernikahan'] ?? "Belum Menikah";
       _statusBaptis = d['statusBaptis'] ?? "Belum";
-      _kelompok = d['kelompok'] ?? "Lainnya";
+      _kelompok = KategorialConfig.canonicalJemaat(d['kelompok']);
       _statusKeluarga = d['statusKeluarga'] ?? "Belum Diatur";
+    } else if (widget.initialKelompok != null) {
+      _kelompok = KategorialConfig.canonicalJemaat(widget.initialKelompok);
     }
     
     // Logika Status Keluarga jika menambah anggota dari list keluarga
@@ -134,8 +143,31 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       final colRef = _db.collection("churches").doc(churchId).collection("jemaat");
 
       if (widget.jemaatData != null) {
-        // UPDATE (Dulu pakai .document, sekarang pakai .doc agar lolos GitHub)
-        await colRef.doc(widget.jemaatData!['id']).update(jemaatMap);
+        final jemaatId = widget.jemaatData!['id']?.toString().trim() ?? "";
+        if (jemaatId.isEmpty) {
+          throw StateError("ID jemaat tidak valid");
+        }
+
+        final jemaatRef = colRef.doc(jemaatId);
+        final linkedUid = widget.jemaatData!['uid']?.toString().trim() ?? "";
+
+        if (linkedUid.isNotEmpty) {
+          final userRef = _db.collection("users").doc(linkedUid);
+          final userDoc = await userRef.get();
+
+          final batch = _db.batch();
+          batch.update(jemaatRef, jemaatMap);
+          if (userDoc.exists) {
+            batch.update(userRef, {"kelompok": _kelompok});
+          }
+          await batch.commit();
+
+          if (UserManager().userId == linkedUid) {
+            await UserManager().updateKomisi(_kelompok);
+          }
+        } else {
+          await jemaatRef.update(jemaatMap);
+        }
       } else {
         // TAMBAH BARU
         if (widget.idKepalaKeluargaBaru != null) {
@@ -207,7 +239,12 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
                 const SizedBox(height: 15),
 
                 _buildDropdown("Jenis Kelamin", ["Pria", "Wanita"], _jenisKelamin, (v) => setState(() => _jenisKelamin = v!)),
-                _buildDropdown("Kelompok", ["Sekolah Minggu", "AMKI", "Perkawan", "Perkaria", "Lainnya"], _kelompok, (v) => setState(() => _kelompok = v!)),
+                _buildDropdown(
+                  "Kelompok",
+                  KategorialConfig.pilihanJemaat,
+                  _kelompok,
+                  (v) => setState(() => _kelompok = v!),
+                ),
                 if (widget.idKepalaKeluargaBaru != null)
                   _buildDropdown("Hubungan Keluarga", ["Istri", "Anak", "Ayah", "Ibu"], _statusKeluarga, (v) => setState(() => _statusKeluarga = v!))
                 else if (widget.jemaatData != null)

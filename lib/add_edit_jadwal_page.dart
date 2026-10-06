@@ -109,6 +109,18 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
 
       final data = doc.data()!;
       _originalKategori = data['kategoriKegiatan']?.toString();
+      if (!_canManageCategory(_originalKategori)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Anda tidak memiliki izin mengedit jadwal ini."),
+              backgroundColor: Colors.red,
+            ),
+          );
+          Navigator.pop(context);
+        }
+        return;
+      }
       _etNama.text = (data['namaKegiatan'] ?? "").toString();
       _etTempat.text = (data['tempat'] ?? "").toString();
       _etDeskripsi.text = (data['deskripsi'] ?? "").toString();

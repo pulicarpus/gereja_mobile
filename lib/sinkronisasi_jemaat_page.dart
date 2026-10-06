@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 import 'main.dart'; // Asumsi main.dart berisi MainActivity kita
 
 class SinkronisasiJemaatPage extends StatefulWidget {
@@ -74,16 +75,24 @@ class _SinkronisasiJemaatPageState extends State<SinkronisasiJemaatPage> {
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
 
-    String inputTahun = _securityController.text.trim();
-    String? tanggalLahirAsli = _dataJemaatDitemukan?['tanggalLahir']; // Contoh format Admin: "15-08-1985"
+    final inputTahun = _securityController.text.trim();
+    final rawTanggal = _dataJemaatDitemukan?['tanggalLahir'];
+    String tanggalLahirAsli = "";
+    if (rawTanggal is Timestamp) {
+      tanggalLahirAsli = rawTanggal.toDate().year.toString();
+    } else if (rawTanggal is DateTime) {
+      tanggalLahirAsli = rawTanggal.year.toString();
+    } else {
+      tanggalLahirAsli = rawTanggal?.toString().trim() ?? "";
+    }
 
-    if (tanggalLahirAsli == null || tanggalLahirAsli.isEmpty) {
+    if (tanggalLahirAsli.isEmpty) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data tanggal lahir Anda belum diisi Admin. Silakan hubungi Admin Gereja.")));
       return;
     }
 
-    // Cek apakah input jemaat (misal "1985") ada di dalam string tanggal lahir asli
+    // Cek apakah input jemaat (misal "1985") ada di dalam data tanggal lahir.
     if (tanggalLahirAsli.contains(inputTahun) && inputTahun.length == 4) {
       // ✅ VERIFIKASI BERHASIL! LANGSUNG HUBUNGKAN!
       final user = _auth.currentUser;
@@ -91,22 +100,65 @@ class _SinkronisasiJemaatPageState extends State<SinkronisasiJemaatPage> {
 
       if (user != null && churchId != null && _jemaatDocId != null) {
         try {
-          // 1. Update di Data Jemaat (Tanamkan UID User)
-          await _db.collection("churches").doc(churchId).collection("jemaat").doc(_jemaatDocId).update({
-            "uid": user.uid,
-          });
+          final currentLinkedUid =
+              _dataJemaatDitemukan?['uid']?.toString().trim() ?? "";
+          if (currentLinkedUid.isNotEmpty && currentLinkedUid != user.uid) {
+            if (mounted) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Data jemaat ini sudah tertaut ke akun lain. Hubungi Admin Gereja.",
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
 
-          // 2. Update di Profil User (Tanamkan ID Jemaat)
-          await _db.collection("users").doc(user.uid).set({
-            "jemaatId": _jemaatDocId,
-          }, SetOptions(merge: true));
+          final kategori = KategorialConfig.canonicalJemaat(
+            _dataJemaatDitemukan?['kelompok'],
+          );
+          final jemaatRef = _db
+              .collection("churches")
+              .doc(churchId)
+              .collection("jemaat")
+              .doc(_jemaatDocId);
+          final userRef = _db.collection("users").doc(user.uid);
 
-          // 3. Update di Memori Lokal (UserManager)
-          await UserManager().linkJemaatId(_jemaatDocId!);
+          final batch = _db.batch();
+          batch.update(jemaatRef, {"uid": user.uid});
+          batch.set(
+            userRef,
+            {
+              "jemaatId": _jemaatDocId,
+              "kelompok": kategori,
+            },
+            SetOptions(merge: true),
+          );
+          await batch.commit();
+
+          final manager = UserManager();
+          await manager.linkJemaatId(_jemaatDocId!);
+          await manager.updateKategorialContext(
+            kategori,
+            pengurus: manager.isPengurus,
+          );
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Verifikasi Berhasil! Akun Anda kini berstatus Sultan! 🎉")));
-            Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const MainActivity()), (route) => false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  "Verifikasi berhasil. Kategorial akun disinkronkan ke $kategori.",
+                ),
+                backgroundColor: Colors.green,
+              ),
+            );
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainActivity()),
+              (route) => false,
+            );
           }
         } catch (e) {
           setState(() => _isLoading = false);

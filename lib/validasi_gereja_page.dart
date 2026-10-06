@@ -32,6 +32,8 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
 
   void _kembaliKeLogin() async {
     await _auth.signOut();
+    OneSignal.logout();
+    await UserManager().reset();
     // Ganti dengan route login Bos
     if (mounted) {
       Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);

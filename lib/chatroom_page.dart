@@ -431,6 +431,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         if (_recordingSamples.length > 600) {
           _recordingSamples.removeAt(0);
         }
+        if (mounted && _recordingSamples.length % 4 == 0) {
+          setState(() {});
+        }
       });
 
       await _audioRecorder.start(
@@ -1108,33 +1111,147 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   @override
   Widget build(BuildContext context) {
-    String title = widget.filterKategorial != null ? "Chat ${widget.filterKategorial}" : "Chat Jemaat";
+    final kategori = widget.filterKategorial?.trim();
+    final title =
+        kategori != null && kategori.isNotEmpty ? "Chat $kategori" : "Chat Jemaat";
+    final churchId = _churchId;
+
+    if (_auth.currentUser == null || churchId == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(title),
+          backgroundColor: const Color(0xFF075E54),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Text("Sesi chat tidak valid. Silakan login atau buka ulang aplikasi."),
+        ),
+      );
+    }
+
+    if (!_canAccessRoom) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(title),
+          backgroundColor: const Color(0xFF075E54),
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              kategori == null || kategori.isEmpty
+                  ? "Anda tidak memiliki akses ke ruang chat ini."
+                  : "Chat $kategori hanya dapat dibuka oleh anggota $kategori dan administrator.",
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFE5DDD5),
-      appBar: AppBar(title: Text(title), backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white, actions: [if (_isUploading) const Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))]),
-      body: Column(children: [
-        Expanded(child: StreamBuilder<QuerySnapshot>(
-          stream: _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).orderBy("timestamp", descending: true).snapshots(),
-          builder: (context, snap) {
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            var docs = snap.data!.docs;
-            return ListView.builder(reverse: true, padding: const EdgeInsets.all(10), itemCount: docs.length, itemBuilder: (context, i) {
-              var chat = docs[i].data() as Map<String, dynamic>;
-              return _buildChatBubble(chat, docs[i].id);
-            });
-          },
-        )),
-        _buildInputArea(),
-      ]),
+      appBar: AppBar(
+        title: Text(title),
+        backgroundColor: const Color(0xFF075E54),
+        foregroundColor: Colors.white,
+        actions: [
+          if (_isUploading || _isSending)
+            const Padding(
+              padding: EdgeInsets.all(15),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              ),
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _db
+                  .collection("churches")
+                  .doc(churchId)
+                  .collection(_collectionPath)
+                  .orderBy("timestamp", descending: true)
+                  .limit(_messageLimit)
+                  .snapshots(),
+              builder: (context, snap) {
+                if (snap.connectionState == ConnectionState.waiting &&
+                    !snap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError) {
+                  debugPrint("Gagal memuat chat: ${snap.error}");
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        "Ruang chat gagal dimuat. Periksa koneksi lalu coba lagi.",
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                final docs = snap.data?.docs ?? const [];
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      "Belum ada pesan. Mulai percakapan pertama.",
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  );
+                }
+
+                final canLoadOlder = docs.length >= _messageLimit;
+                return ListView.builder(
+                  reverse: true,
+                  padding: const EdgeInsets.all(10),
+                  itemCount: docs.length + (canLoadOlder ? 1 : 0),
+                  itemBuilder: (context, i) {
+                    if (i == docs.length) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Center(
+                          child: OutlinedButton.icon(
+                            onPressed: () =>
+                                setState(() => _messageLimit += 100),
+                            icon: const Icon(Icons.history),
+                            label: const Text("Muat pesan lebih lama"),
+                          ),
+                        ),
+                      );
+                    }
+                    final raw = docs[i].data();
+                    if (raw is! Map<String, dynamic>) {
+                      return const SizedBox.shrink();
+                    }
+                    return _buildChatBubble(raw, docs[i].id);
+                  },
+                );
+              },
+            ),
+          ),
+          _buildInputArea(),
+        ],
+      ),
     );
   }
 
   // 👇 RENDER KARTU LAMPIRAN SULTAN UNTUK INFO DAERAH 👇
   Widget _buildInfoDaerahUI(Map<String, dynamic> chat) {
-    String pesan = chat['pesan'] ?? "";
-    String? url = chat['lampiranUrl'] ?? chat['fileUrl'];
-    bool isImage = chat['isImage'] == true || chat['tipe'] == 'image';
-    String fileName = chat['namaFile'] ?? chat['fileName'] ?? "Dokumen Edaran Daerah";
+    final pesan = (chat['pesan'] ?? "").toString();
+    final url = (chat['lampiranUrl'] ?? chat['fileUrl'])?.toString();
+    final isImage = chat['isImage'] == true || chat['tipe'] == 'image';
+    final fileName =
+        (chat['namaFile'] ?? chat['fileName'] ?? "Dokumen Edaran Daerah").toString();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1179,13 +1296,18 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Widget _buildChatBubble(Map<String, dynamic> chat, String docId) {
-    DateTime? waktu = (chat['timestamp'] as Timestamp?)?.toDate();
-    
-    // PENYESUAIAN PINTAR KARENA PERBEDAAN LABEL DAERAH & LOKAL
-    bool isInfoDaerah = chat['isInfoDaerah'] == true;
-    String uidPesan = chat['pengirimId'] ?? chat['senderId'] ?? "";
-    bool isMe = uidPesan == _auth.currentUser?.uid;
-    String pengirimNama = chat['pengirimNama'] ?? chat['senderNama'] ?? "Jemaat";
+    final waktu = _readTimestamp(chat['timestamp']);
+    final isInfoDaerah = chat['isInfoDaerah'] == true;
+    final uidPesan =
+        (chat['pengirimId'] ?? chat['senderId'] ?? "").toString();
+    final isMe = uidPesan == _auth.currentUser?.uid;
+    final pengirimNama =
+        (chat['pengirimNama'] ?? chat['senderNama'] ?? "Jemaat").toString();
+    final senderPhoto = chat['pengirimFoto']?.toString().trim() ?? "";
+    final tipe = (chat['tipe'] ?? 'text').toString();
+    final pesan = (chat['pesan'] ?? '').toString();
+    final fileUrl = chat['fileUrl']?.toString().trim() ?? "";
+    final fileName = (chat['fileName'] ?? "dokumen").toString();
     
     return GestureDetector(
       onLongPress: () => _showChatMenu(chat, docId),
@@ -1201,8 +1323,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
                   onTap: () => _showModerationMenu(uidPesan, pengirimNama),
                   child: CircleAvatar(
                     radius: 16, 
-                    backgroundImage: chat['pengirimFoto'] != null ? CachedNetworkImageProvider(chat['pengirimFoto']) : null, 
-                    child: chat['pengirimFoto'] == null ? const Icon(Icons.person, size: 16) : null
+                    backgroundImage: senderPhoto.isNotEmpty
+                        ? CachedNetworkImageProvider(senderPhoto)
+                        : null,
+                    child: senderPhoto.isEmpty
+                        ? const Icon(Icons.person, size: 16)
+                        : null
                   ),
                 ),
               
@@ -1233,26 +1359,86 @@ class _ChatroomPageState extends State<ChatroomPage> {
                     if (isInfoDaerah)
                       _buildInfoDaerahUI(chat)
                     // RENDER GAMBAR
-                    else if (chat['tipe'] == 'image') 
+                    else if (tipe == 'image')
                       Column(
-                        crossAxisAlignment: CrossAxisAlignment.start, 
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          InkWell(onTap: () => _showFullImage(chat['fileUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(8), child: CachedNetworkImage(imageUrl: chat['fileUrl'], fit: BoxFit.cover))),
-                          if (chat['pesan'] != "[Gambar]") Padding(padding: const EdgeInsets.only(top: 5), child: Text(chat['pesan'], style: const TextStyle(fontSize: 15))),
-                        ]
+                          if (fileUrl.isNotEmpty)
+                            InkWell(
+                              onTap: () => _showFullImage(fileUrl),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: CachedNetworkImage(
+                                  imageUrl: fileUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => const SizedBox(
+                                    height: 120,
+                                    child: Center(child: CircularProgressIndicator()),
+                                  ),
+                                  errorWidget: (_, __, ___) => const SizedBox(
+                                    height: 100,
+                                    child: Center(
+                                      child: Icon(Icons.broken_image, color: Colors.grey),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            const Text(
+                              "Gambar tidak tersedia.",
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                          if (pesan != "[Gambar]" && pesan.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: Text(
+                                pesan,
+                                style: const TextStyle(fontSize: 15),
+                              ),
+                            ),
+                        ],
                       )
-                    // RENDER FILE
-                    else if (chat['tipe'] == 'file') 
+                    else if (tipe == 'file')
                       InkWell(
-                        onTap: () => _bukaFile(chat['fileUrl'], chat['fileName'] ?? "dokumen"), 
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.insert_drive_file, color: Colors.orange, size: 30), const SizedBox(width: 8), Expanded(child: Text(chat['fileName'] ?? "File", style: const TextStyle(color: Colors.indigo, decoration: TextDecoration.underline)))])
+                        onTap: fileUrl.isEmpty
+                            ? null
+                            : () => _bukaFile(fileUrl, fileName),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.insert_drive_file,
+                              color: Colors.orange,
+                              size: 30,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                fileName,
+                                style: TextStyle(
+                                  color: fileUrl.isEmpty
+                                      ? Colors.grey
+                                      : Colors.indigo,
+                                  decoration: fileUrl.isEmpty
+                                      ? TextDecoration.none
+                                      : TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       )
-                    // RENDER AUDIO
-                    else if (chat['tipe'] == 'audio') 
+                    else if (tipe == 'audio')
                       _buildAudioUI(chat, docId, isMe)
-                    // RENDER TEXT BIASA
-                    else 
-                      Text(chat['pesan'] ?? "", style: const TextStyle(color: Colors.black87, fontSize: 15)),
+                    else
+                      Text(
+                        pesan,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 15,
+                        ),
+                      ),
                     
                     const SizedBox(height: 4),
                     Row(
@@ -1260,7 +1446,14 @@ class _ChatroomPageState extends State<ChatroomPage> {
                       children: [
                         const Spacer(), 
                         Text(formatTimeCustom(waktu), style: const TextStyle(fontSize: 10, color: Colors.grey)), 
-                        if (isMe) const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.done_all, size: 14, color: Colors.blue))
+                        if (isMe)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 4),
+                            child: Tooltip(
+                              message: "Pesan tersimpan",
+                              child: Icon(Icons.done, size: 14, color: Colors.grey),
+                            ),
+                          )
                       ]
                     )
                   ]
@@ -1284,111 +1477,276 @@ class _ChatroomPageState extends State<ChatroomPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, 
               children: [
-                Text(chat['replyToName'] ?? "Jemaat", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isMe ? Colors.green[800] : Colors.indigo)),
+                Text(
+                  (chat['replyToName'] ?? "Jemaat").toString(),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                    color: isMe ? Colors.green[800] : Colors.indigo,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text(chat['replyToText'] ?? "", style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.3)),
+                Text(
+                  (chat['replyToText'] ?? "").toString(),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black87,
+                    height: 1.3,
+                  ),
+                ),
               ]
             )
           ),
-          if (chat['replyToImage'] != null) Padding(padding: const EdgeInsets.only(left: 8), child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CachedNetworkImage(imageUrl: chat['replyToImage'], width: 45, height: 45, fit: BoxFit.cover))),
+          if ((chat['replyToImage']?.toString().trim() ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: CachedNetworkImage(
+                  imageUrl: chat['replyToImage'].toString(),
+                  width: 45,
+                  height: 45,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const SizedBox(
+                    width: 45,
+                    height: 45,
+                    child: Icon(Icons.broken_image, size: 18),
+                  ),
+                ),
+              ),
+            ),
         ]
       ),
     );
   }
 
-  Widget _buildAudioUI(Map<String, dynamic> chat, String id, bool isMe) {
-    bool isPlaying = _playingId == id;
-    List<double> samples = [];
-    if (chat['waveData'] != null) {
-      samples = List<double>.from((chat['waveData'] as List).map((e) => e.toDouble()));
-    }
-    
-    double currentProgress = 0.0;
-    if (isPlaying && _totalDuration.inMilliseconds > 0) {
-      currentProgress = _currentPosition.inMilliseconds / _totalDuration.inMilliseconds;
+  Widget _buildAudioUI(
+    Map<String, dynamic> chat,
+    String id,
+    bool isMe,
+  ) {
+    final isPlaying = _playingId == id;
+    final samples = <double>[];
+    final rawWave = chat['waveData'];
+    if (rawWave is Iterable) {
+      for (final value in rawWave) {
+        if (value is num) samples.add(value.toDouble());
+      }
     }
 
+    var currentProgress = 0.0;
+    if (isPlaying && _totalDuration.inMilliseconds > 0) {
+      currentProgress =
+          (_currentPosition.inMilliseconds / _totalDuration.inMilliseconds)
+              .clamp(0.0, 1.0);
+    }
+
+    final url = chat['fileUrl']?.toString().trim() ?? "";
     return Row(
-      mainAxisSize: MainAxisSize.min, 
+      mainAxisSize: MainAxisSize.min,
       children: [
         IconButton(
-          icon: Icon(isPlaying ? Icons.pause_circle : Icons.play_circle, color: const Color(0xFF075E54), size: 35), 
-          onPressed: () => _playAudio(chat['fileUrl'], id)
+          icon: Icon(
+            isPlaying ? Icons.pause_circle : Icons.play_circle,
+            color: url.isEmpty ? Colors.grey : const Color(0xFF075E54),
+            size: 35,
+          ),
+          onPressed: url.isEmpty ? null : () => _playAudio(url, id),
         ),
         const SizedBox(width: 5),
-        if (samples.isNotEmpty) 
-          ChatWaveform(samples: samples, isMe: isMe, progress: currentProgress) 
-        else 
-          const Text("Voice Note", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.black54))
-      ]
+        ChatWaveform(
+          samples: samples,
+          isMe: isMe,
+          progress: currentProgress,
+        ),
+      ],
     );
   }
 
   Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.all(8), color: Colors.transparent, 
-      child: Column(
-        children: [
-          if (_isRecording) 
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12), 
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8), 
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 5)]), 
-                child: Row(
-                  mainAxisSize: MainAxisSize.min, 
-                  children: [
-                    const Icon(Icons.mic, color: Colors.red, size: 18), 
-                    const SizedBox(width: 15), 
-                    RecorderVisualizer(controller: _recorderController), 
-                    const SizedBox(width: 15), 
-                    const Text("Recording", style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold))
-                  ]
-                )
-              )
-            ),
-            
-          if (_replyMessage != null || _editingMessageId != null) 
-            Container(
-              margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10), 
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), 
-              child: Row(
-                children: [
-                  Icon(_editingMessageId != null ? Icons.edit : Icons.reply, color: const Color(0xFF075E54)), 
-                  const SizedBox(width: 10), 
-                  Expanded(child: Text(_editingMessageId != null ? "Edit Pesan..." : (_replyMessage?['pesan'] ?? ""), maxLines: 1, overflow: TextOverflow.ellipsis)), 
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _replyMessage = null; _editingMessageId = null; _etPesan.clear(); }))
-                ]
-              )
-            ),
-            
-          Row(
-            children: [
-              Expanded(
+    final busy = _isUploading || _isSending;
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        color: Colors.transparent,
+        child: Column(
+          children: [
+            if (_isRecording)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
                 child: Container(
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)), 
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 5,
+                      ),
+                    ],
+                  ),
                   child: Row(
                     children: [
-                      IconButton(icon: const Icon(Icons.add, color: Colors.grey), onPressed: _showPickerOptions), 
-                      Expanded(child: TextField(controller: _etPesan, maxLines: null, decoration: const InputDecoration(hintText: "Ketik pesan...", border: InputBorder.none, contentPadding: EdgeInsets.symmetric(horizontal: 10)))), 
-                      IconButton(icon: const Icon(Icons.camera_alt, color: Colors.grey), onPressed: _uploadImage)
-                    ]
-                  )
-                )
+                      const Icon(Icons.mic, color: Colors.red, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ChatWaveform(
+                          samples: _compressWaveData(_recordingSamples),
+                          isMe: false,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      const Text(
+                        "Merekam...",
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: 5),
-              GestureDetector(
-                onLongPressStart: (_) => _startRecording(), 
-                onLongPressEnd: (_) => _stopRecording(), 
-                child: CircleAvatar(
-                  radius: 24, backgroundColor: _isRecording ? Colors.red : const Color(0xFF075E54), 
-                  child: IconButton(icon: Icon(_isTyping ? Icons.send : Icons.mic, color: Colors.white), onPressed: () { if (_isTyping) _sendToFirestore(isi: _etPesan.text.trim(), tipe: "text"); })
-                )
-              )
-            ]
-          )
-        ]
-      )
+            if (_replyMessage != null || _editingMessageId != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _editingMessageId != null ? Icons.edit : Icons.reply,
+                      color: const Color(0xFF075E54),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _editingMessageId != null
+                            ? "Mengedit pesan..."
+                            : (_replyMessage?['pesan'] ?? "").toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: busy
+                          ? null
+                          : () => setState(() {
+                                _replyMessage = null;
+                                _editingMessageId = null;
+                                _etPesan.clear();
+                              }),
+                    ),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    child: Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.add, color: Colors.grey),
+                          onPressed: busy || _isRecording
+                              ? null
+                              : _showPickerOptions,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _etPesan,
+                            enabled: !busy && !_isRecording,
+                            maxLines: 5,
+                            minLines: 1,
+                            maxLength: 2000,
+                            buildCounter: (
+                              context, {
+                              required currentLength,
+                              required isFocused,
+                              maxLength,
+                            }) =>
+                                null,
+                            decoration: const InputDecoration(
+                              hintText: "Ketik pesan...",
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.camera_alt,
+                            color: Colors.grey,
+                          ),
+                          onPressed: busy ||
+                                  _isRecording ||
+                                  _editingMessageId != null
+                              ? null
+                              : _uploadImage,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 5),
+                GestureDetector(
+                  onLongPressStart: !_isTyping && !busy && !_isRecording
+                      ? (_) => _startRecording()
+                      : null,
+                  onLongPressEnd: _isRecording
+                      ? (_) => _stopRecording()
+                      : null,
+                  child: CircleAvatar(
+                    radius: 24,
+                    backgroundColor: _isRecording
+                        ? Colors.red
+                        : const Color(0xFF075E54),
+                    child: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : IconButton(
+                            icon: Icon(
+                              _isTyping ? Icons.send : Icons.mic,
+                              color: Colors.white,
+                            ),
+                            onPressed: _isTyping
+                                ? () => _sendToFirestore(
+                                      isi: _etPesan.text.trim(),
+                                      tipe: "text",
+                                    )
+                                : null,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 

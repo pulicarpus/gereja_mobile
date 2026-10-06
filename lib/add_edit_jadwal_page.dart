@@ -270,6 +270,18 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   Future<void> _saveJadwal() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (!_canManageCurrent) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Anda tidak memiliki izin menyimpan jadwal ini."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
     String? churchId = _userManager.getChurchIdForCurrentView();
     if (churchId == null || churchId.isEmpty) {
@@ -341,6 +353,25 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isEdit && !_canManageCurrent) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text("Jadwal"),
+          backgroundColor: Colors.indigo[900],
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              "Anda tidak memiliki izin menambah jadwal pada kategori ini.",
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA), 
       appBar: AppBar(

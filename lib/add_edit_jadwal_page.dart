@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert'; 
 
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 import 'secrets.dart'; 
 import 'loading_sultan.dart';
 
@@ -41,6 +42,21 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   bool _isEdit = false;
   bool _isLoading = false;
   String? _originalKategori;
+
+  bool _canManageCategory(String? category) {
+    final user = _userManager;
+    if (user.isAdmin()) return true;
+    final kategori = category?.trim();
+    return kategori != null &&
+        kategori.isNotEmpty &&
+        user.isPengurus &&
+        KategorialConfig.same(user.userKomisi, kategori);
+  }
+
+  bool get _canManageCurrent {
+    final category = _isEdit ? _originalKategori : widget.filterKategorial;
+    return _canManageCategory(category);
+  }
 
   @override
   void initState() {

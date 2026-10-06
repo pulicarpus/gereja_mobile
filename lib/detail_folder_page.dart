@@ -12,6 +12,7 @@ import 'loading_sultan.dart';
 import 'secrets.dart';
 import 'telegram_gallery_cache.dart';
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 
 class GalleryImage {
   final String docId;
@@ -83,7 +84,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
     final kategori = _kategori;
     return kategori != null &&
         user.isPengurus &&
-        user.userKomisi?.trim() == kategori;
+        KategorialConfig.same(user.userKomisi, kategori);
   }
 
   @override

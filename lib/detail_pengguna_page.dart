@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 
 class DetailPenggunaPage extends StatefulWidget {
   final String userId;
@@ -37,8 +38,11 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
       var doc = await _db.collection("users").doc(widget.userId).get();
       if (doc.exists) {
         _targetUserData = doc.data();
-        _kategorial = _targetUserData?['kelompok'] ?? "Umum / Belum diatur";
-        _isPengurus = _targetUserData?['isPengurus'] ?? false;
+        final kelompokRaw =
+            _targetUserData?['kelompok']?.toString().trim() ?? "";
+        _kategorial =
+            kelompokRaw.isEmpty ? "Umum / Belum diatur" : kelompokRaw;
+        _isPengurus = _targetUserData?['isPengurus'] == true;
         
         // 👇 BACA JABATAN DAERAH DARI FIREBASE 👇
         _adminDaerahArea = _targetUserData?['adminDaerahArea'];
@@ -99,18 +103,73 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     }
   }
 
-  Future<void> _assignUserToKategorial(String kategorialPilihan) async {
+  Future<void> _assignUserToKategorial(
+    String kategorialPilihan,
+  ) async {
+    final kategori = KategorialConfig.canonicalJemaat(kategorialPilihan);
     setState(() => _isLoading = true);
+
     try {
-      await _db.collection("users").doc(widget.userId).update({
-        "kelompok": kategorialPilihan,
-        "isPengurus": false 
+      final userRef = _db.collection("users").doc(widget.userId);
+      final targetChurchId =
+          _targetUserData?['churchId']?.toString().trim() ?? "";
+      final jemaatId =
+          _targetUserData?['jemaatId']?.toString().trim() ?? "";
+
+      final batch = _db.batch();
+      batch.update(userRef, {
+        "kelompok": kategori,
+        "isPengurus": false,
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Jemaat dipindah ke $kategorialPilihan. Status pengurus di-reset.")));
+
+      var linkedJemaatFound = false;
+      if (targetChurchId.isNotEmpty && jemaatId.isNotEmpty) {
+        final jemaatRef = _db
+            .collection("churches")
+            .doc(targetChurchId)
+            .collection("jemaat")
+            .doc(jemaatId);
+        final jemaatDoc = await jemaatRef.get();
+        if (jemaatDoc.exists) {
+          batch.update(jemaatRef, {"kelompok": kategori});
+          linkedJemaatFound = true;
+        }
+      }
+
+      await batch.commit();
+
+      if (_userManager.userId == widget.userId) {
+        await _userManager.updateKategorialContext(
+          kategori,
+          pengurus: false,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              linkedJemaatFound
+                  ? "Kategorial di akun dan buku induk dipindah ke $kategori. Status pengurus di-reset."
+                  : "Kategorial akun dipindah ke $kategori. Data buku induk tertaut tidak ditemukan.",
+            ),
+            backgroundColor:
+                linkedJemaatFound ? Colors.green : Colors.orange,
+          ),
+        );
+      }
       await _loadUserData();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menetapkan kategorial: $e")));
-      setState(() => _isLoading = false);
+      debugPrint("Gagal menetapkan kategorial: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Gagal menetapkan kategorial."),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -244,7 +303,8 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
   }
 
   void _showKategorialSelectionDialog() {
-    final List<String> daftarKategorial = ["Sekolah Minggu", "AMKI", "Perkawan", "Perkaria", "Lainnya"];
+    final List<String> daftarKategorial =
+        KategorialConfig.pilihanJemaat;
 
     showModalBottomSheet(
       context: context,
@@ -377,7 +437,9 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
 
               _buildActionButton("Atur Kategorial", Icons.category, Colors.indigo, _showKategorialSelectionDialog),
 
-              if (_kategorial != "Umum / Belum diatur" && role != "admin" && role != "superadmin")
+              if (KategorialConfig.isPelayanan(_kategorial) &&
+                  role != "admin" &&
+                  role != "superadmin")
                 _buildActionButton(
                   _isPengurus ? "Cabut Pengurus Lokal" : "Jadikan Pengurus $_kategorial", 
                   _isPengurus ? Icons.person_remove : Icons.person_add_alt_1, 

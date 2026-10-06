@@ -801,70 +801,309 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
   }
 
-  void _showChatMenu(Map<String, dynamic> chat, String docId) {
-    String uidPesan = chat['pengirimId'] ?? chat['senderId'] ?? "";
-    bool isMe = uidPesan == _auth.currentUser?.uid;
-    showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.reply), title: const Text("Balas"), onTap: () { Navigator.pop(context); setState(() { _replyMessage = chat; _editingMessageId = null; }); }),
-      if (isMe && chat['tipe'] == 'text') ListTile(leading: const Icon(Icons.edit), title: const Text("Edit Pesan"), onTap: () { Navigator.pop(context); setState(() { _editingMessageId = docId; _replyMessage = null; _etPesan.text = chat['pesan'].replaceAll(" (diedit)", ""); }); }),
-      if (isMe || _isModerator) ListTile(leading: const Icon(Icons.delete, color: Colors.red), title: const Text("Hapus", style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); _db.collection("churches").doc(UserManager().activeChurchId).collection(_collectionPath).doc(docId).delete(); }),
-    ])));
-  }
+  Future<void> _deleteMessage(
+    String docId,
+    String ownerUid,
+  ) async {
+    final currentUid = _auth.currentUser?.uid ?? "";
+    if (currentUid.isEmpty || (ownerUid != currentUid && !_canModerate)) {
+      _showSnack("Anda tidak memiliki izin untuk menghapus pesan ini.");
+      return;
+    }
 
-  void _showModerationMenu(String targetUid, String targetName) async {
-    if (!_isModerator || targetUid == _auth.currentUser?.uid || targetUid.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Hapus Pesan"),
+        content: const Text(
+          "Pesan akan dihapus dari ruang chat. Lampiran eksternal yang pernah diunggah mungkin tetap tersimpan sampai backend dibersihkan.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Batal"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Hapus"),
+          ),
+        ],
+      ),
+    ) ?? false;
+    if (!confirmed) return;
 
-    String? churchId = UserManager().activeChurchId;
+    final churchId = _churchId;
     if (churchId == null) return;
 
-    showDialog(context: context, barrierDismissible: false, builder: (c) => const Center(child: CircularProgressIndicator()));
-    var doc = await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).get();
-    Navigator.pop(context);
+    try {
+      final ref = _db
+          .collection("churches")
+          .doc(churchId)
+          .collection(_collectionPath)
+          .doc(docId);
+      final latest = await ref.get();
+      if (!latest.exists) {
+        _showSnack("Pesan sudah tidak tersedia.");
+        return;
+      }
+      final data = latest.data() as Map<String, dynamic>;
+      final latestOwner =
+          (data['pengirimId'] ?? data['senderId'] ?? '').toString();
+      if (latestOwner != currentUid && !_canModerate) {
+        _showSnack("Izin menghapus pesan berubah.");
+        return;
+      }
+      await ref.delete();
+      _showSnack("Pesan dihapus.");
+    } catch (e) {
+      debugPrint("Gagal menghapus pesan: $e");
+      _showSnack("Gagal menghapus pesan.");
+    }
+  }
 
-    bool isMuted = doc.exists;
+  void _showChatMenu(Map<String, dynamic> chat, String docId) {
+    final uidPesan =
+        (chat['pengirimId'] ?? chat['senderId'] ?? "").toString();
+    final isMe = uidPesan == _auth.currentUser?.uid;
+    final tipe = (chat['tipe'] ?? 'text').toString();
+    final pesan = (chat['pesan'] ?? '').toString();
 
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text("Moderasi: $targetName", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
-            const Divider(height: 1),
             ListTile(
-              leading: Icon(isMuted ? Icons.volume_up : Icons.volume_off, color: isMuted ? Colors.green : Colors.red),
-              title: Text(isMuted ? "Unmute (Buka Suara)" : "Mute (Bungkam)"),
-              subtitle: Text(isMuted ? "Izinkan $targetName mengirim pesan lagi." : "Cegah $targetName mengirim pesan di grup ini."),
-              onTap: () async {
-                Navigator.pop(context);
-                if (isMuted) {
-                  await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).delete();
-                  _showSnack("$targetName berhasil di-unmute.");
-                } else {
-                  await _db.collection("churches").doc(churchId).collection("muted_$_collectionPath").doc(targetUid).set({"muted": true, "timestamp": FieldValue.serverTimestamp()});
-                  _showSnack("$targetName berhasil dibungkam (mute).");
-                }
-              }
-            )
-          ]
-        )
-      )
+              leading: const Icon(Icons.reply),
+              title: const Text("Balas"),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                setState(() {
+                  _replyMessage = Map<String, dynamic>.from(chat);
+                  _editingMessageId = null;
+                  _etPesan.clear();
+                });
+              },
+            ),
+            if (isMe && tipe == 'text')
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text("Edit Pesan"),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() {
+                    _editingMessageId = docId;
+                    _replyMessage = null;
+                    _etPesan.text =
+                        pesan.replaceFirst(RegExp(r' \(diedit\)$'), "");
+                  });
+                },
+              ),
+            if (isMe || _canModerate)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text(
+                  "Hapus",
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _deleteMessage(docId, uidPesan);
+                },
+              ),
+          ],
+        ),
+      ),
     );
   }
 
+  Future<void> _showModerationMenu(
+    String targetUid,
+    String targetName,
+  ) async {
+    if (!_canModerate ||
+        targetUid == _auth.currentUser?.uid ||
+        targetUid.isEmpty) {
+      return;
+    }
+
+    final churchId = _churchId;
+    if (churchId == null) return;
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    try {
+      final ref = _db
+          .collection("churches")
+          .doc(churchId)
+          .collection("muted_$_collectionPath")
+          .doc(targetUid);
+      final doc = await ref.get();
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      final isMuted = doc.exists;
+      await showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  "Moderasi: $targetName",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(
+                  isMuted ? Icons.volume_up : Icons.volume_off,
+                  color: isMuted ? Colors.green : Colors.red,
+                ),
+                title: Text(
+                  isMuted
+                      ? "Unmute (Buka Suara)"
+                      : "Mute (Bungkam)",
+                ),
+                subtitle: Text(
+                  isMuted
+                      ? "Izinkan $targetName mengirim pesan lagi."
+                      : "Cegah $targetName mengirim pesan di grup ini.",
+                ),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  if (!_canModerate) {
+                    _showSnack("Izin moderasi sudah berubah.");
+                    return;
+                  }
+                  try {
+                    if (isMuted) {
+                      await ref.delete();
+                      _showSnack("$targetName berhasil di-unmute.");
+                    } else {
+                      await ref.set({
+                        "muted": true,
+                        "timestamp": FieldValue.serverTimestamp(),
+                      });
+                      _showSnack("$targetName berhasil dibungkam (mute).");
+                    }
+                  } catch (e) {
+                    debugPrint("Gagal mengubah mute: $e");
+                    _showSnack("Gagal mengubah status mute.");
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Gagal memuat status moderasi: $e");
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+        _showSnack("Gagal memuat status moderasi.");
+      }
+    }
+  }
+
   void _showFullImage(String url) {
-    showDialog(context: context, builder: (c) => Dialog(backgroundColor: Colors.transparent, insetPadding: EdgeInsets.zero, child: Stack(fit: StackFit.expand, children: [InteractiveViewer(child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain)), Positioned(top: 40, right: 20, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 30), onPressed: () => Navigator.pop(c)))])));
+    if (url.trim().isEmpty) {
+      _showSnack("Gambar tidak tersedia.");
+      return;
+    }
+    showDialog(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            InteractiveViewer(
+              child: CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.contain,
+                placeholder: (_, __) =>
+                    const Center(child: CircularProgressIndicator()),
+                errorWidget: (_, __, ___) => const Center(
+                  child: Text(
+                    "Gambar tidak dapat dimuat.",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 40,
+              right: 20,
+              child: IconButton(
+                icon: const Icon(
+                  Icons.close,
+                  color: Colors.white,
+                  size: 30,
+                ),
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   void _showPickerOptions() {
-    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.image, color: Colors.blue), title: const Text("Kirim Gambar"), onTap: () { Navigator.pop(context); _uploadImage(); }),
-      ListTile(leading: const Icon(Icons.file_present, color: Colors.orange), title: const Text("Kirim Dokumen"), onTap: () { Navigator.pop(context); _uploadFile(); }),
-    ])));
+    if (_isUploading || _isSending || _editingMessageId != null) {
+      if (_editingMessageId != null) {
+        _showSnack("Selesaikan atau batalkan edit pesan terlebih dahulu.");
+      }
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image, color: Colors.blue),
+              title: const Text("Kirim Gambar"),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _uploadImage();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.file_present, color: Colors.orange),
+              title: const Text("Kirim Dokumen"),
+              subtitle: const Text("Maksimal 20 MB"),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _uploadFile();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override

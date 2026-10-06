@@ -113,8 +113,15 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   }
 
   Future<void> _shareToLocalChat(Map<String, dynamic> data) async {
-    String? churchId = _user.activeChurchId;
-    if (churchId == null) return;
+    final churchId = _user.getChurchIdForCurrentView();
+    if (churchId == null || churchId.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Data gereja aktif tidak valid."), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
 
     setState(() => _isLoading = true);
     try {

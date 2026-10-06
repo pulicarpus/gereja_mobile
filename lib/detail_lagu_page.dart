@@ -33,7 +33,7 @@ class _DetailLaguPageState extends State<DetailLaguPage> {
   void initState() {
     super.initState();
     final maxIndex = widget.songList.isEmpty ? 0 : widget.songList.length - 1;
-    _currentIndex = widget.initialIndex.clamp(0, maxIndex);
+    _currentIndex = widget.initialIndex.clamp(0, maxIndex).toInt();
     _pageController = PageController(initialPage: _currentIndex);
     _loadFontPreference();
     _setupAudio();

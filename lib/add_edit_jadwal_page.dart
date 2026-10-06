@@ -222,7 +222,19 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       // 4. Bungkus payload JSON
       Map<String, dynamic> payload = {
         "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
-        "filters": [{"field": "tag", "key": "active_church", "relation": "=", "value": churchId}],
+        "filters": [
+          {"field": "tag", "key": "active_church", "relation": "=", "value": churchId},
+          if (widget.filterKategorial != null &&
+              widget.filterKategorial!.trim().isNotEmpty) ...[
+            {"operator": "AND"},
+            {
+              "field": "tag",
+              "key": "kelompok",
+              "relation": "=",
+              "value": widget.filterKategorial!.trim(),
+            }
+          ]
+        ],
         "headings": {"en": "⏰ 30 Menit Lagi!"},
         "contents": {"en": "$namaKeg akan dimulai 30 menit lagi di $tempat. Mari bersiap-siap!"},
         "send_after": sendAfter, // OneSignal akan memproses ini persis sesuai WIB

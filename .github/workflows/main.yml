@@ -75,6 +75,12 @@ jobs:
           flutter test test/bible_regression_test.dart
           dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
 
+      - name: Analyze Pengurus changes
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/pengurus_page.dart lib/detail_seksi_page.dart lib/pengurus_support.dart lib/pengurus_repository.dart lib/pengurus_widgets.dart lib/menu_daerah_page.dart
+
+      - name: Test Pengurus regressions
+        run: flutter test test/pengurus_regression_test.dart
+
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
         working-directory: .

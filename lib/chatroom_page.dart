@@ -408,8 +408,11 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
 
       final jsonRes = jsonDecode(body);
-      final fileId = jsonRes is Map
-          ? jsonRes['result']?['document']?['file_id']?.toString()
+      final resultData = jsonRes is Map ? jsonRes['result'] : null;
+      final documentData =
+          resultData is Map ? resultData['document'] : null;
+      final fileId = documentData is Map
+          ? documentData['file_id']?.toString()
           : null;
       if (fileId == null || fileId.isEmpty) {
         _showSnack("Respons upload dokumen tidak valid.");
@@ -429,8 +432,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
 
       final getFileJson = jsonDecode(getFile.body);
-      final filePath = getFileJson is Map
-          ? getFileJson['result']?['file_path']?.toString()
+      final getFileResult =
+          getFileJson is Map ? getFileJson['result'] : null;
+      final filePath = getFileResult is Map
+          ? getFileResult['file_path']?.toString()
           : null;
       if (filePath == null || filePath.isEmpty) {
         _showSnack("Tautan dokumen tidak tersedia.");
@@ -567,11 +572,15 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
 
       final jsonRes = jsonDecode(body);
-      final fileId = jsonRes is Map
-          ? (jsonRes['result']?['audio']?['file_id'] ??
-                  jsonRes['result']?['voice']?['file_id'])
-              ?.toString()
-          : null;
+      final resultData = jsonRes is Map ? jsonRes['result'] : null;
+      final audioData = resultData is Map ? resultData['audio'] : null;
+      final voiceData = resultData is Map ? resultData['voice'] : null;
+      final rawFileId = audioData is Map
+          ? audioData['file_id']
+          : voiceData is Map
+              ? voiceData['file_id']
+              : null;
+      final fileId = rawFileId?.toString();
       if (fileId == null || fileId.isEmpty) {
         _showSnack("Respons voice note tidak valid.");
         return;
@@ -590,8 +599,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
 
       final fileInfo = jsonDecode(getFile.body);
-      final filePath = fileInfo is Map
-          ? fileInfo['result']?['file_path']?.toString()
+      final fileInfoResult =
+          fileInfo is Map ? fileInfo['result'] : null;
+      final filePath = fileInfoResult is Map
+          ? fileInfoResult['file_path']?.toString()
           : null;
       if (filePath == null || filePath.isEmpty) {
         _showSnack("Tautan voice note tidak tersedia.");

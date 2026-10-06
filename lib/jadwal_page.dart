@@ -598,7 +598,37 @@ class _JadwalPageState extends State<JadwalPage> {
                            return;
                          }
                          try {
-                           await _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
+                           final ref = _db
+                               .collection('churches')
+                               .doc(churchId)
+                               .collection('jadwal')
+                               .doc(id);
+                           final latest = await ref.get();
+                           if (!latest.exists) {
+                             throw StateError("Jadwal sudah tidak tersedia");
+                           }
+                           final latestData = latest.data()!;
+                           final latestCategory =
+                               latestData['kategoriKegiatan']?.toString();
+                           if (!_sameCategory(
+                             latestCategory,
+                             widget.filterKategorial,
+                           ) ||
+                               !_canManageCategory(latestCategory)) {
+                             if (c.mounted) Navigator.pop(c);
+                             if (mounted) {
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 const SnackBar(
+                                   content: Text(
+                                     "Kategori atau izin jadwal sudah berubah.",
+                                   ),
+                                   backgroundColor: Colors.red,
+                                 ),
+                               );
+                             }
+                             return;
+                           }
+                           await ref.delete();
                            if (c.mounted) Navigator.pop(c);
                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal dihapus.")));
                          } catch (_) {

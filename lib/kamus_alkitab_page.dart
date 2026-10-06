@@ -12,14 +12,14 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
   late final WebViewController _controller;
   bool _isLoading = true;
   final TextEditingController _searchController = TextEditingController();
-  
+
   // URL default: Kamus SABDA
   String _currentUrl = "https://alkitab.sabda.org/dictionary.php";
 
   @override
   void initState() {
     super.initState();
-    
+
     // Inisialisasi WebView Controller
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -27,12 +27,25 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (String url) {
-            setState(() { _isLoading = true; });
+            if (!mounted) return;
+            setState(() {
+              _isLoading = true;
+            });
           },
           onPageFinished: (String url) {
-            setState(() { _isLoading = false; });
+            if (!mounted) return;
+            setState(() {
+              _isLoading = false;
+            });
           },
           onWebResourceError: (WebResourceError error) {
+            if (!mounted || error.isForMainFrame != true) return;
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Kamus belum dapat dimuat. Ketuk muat ulang.'),
+              ),
+            );
             debugPrint('''
               Page resource error:
               code: ${error.errorCode}
@@ -51,9 +64,11 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
     String kata = _searchController.text.trim();
     if (kata.isNotEmpty) {
       // Kita langsung memanipulasi URL SABDA untuk melakukan pencarian
-      String searchUrl = "https://alkitab.sabda.org/dictionary.php?word=$kata";
+      String searchUrl = Uri.https("alkitab.sabda.org", "/dictionary.php", {
+        "word": kata,
+      }).toString();
       _controller.loadRequest(Uri.parse(searchUrl));
-      
+
       // Sembunyikan keyboard setelah pencarian
       FocusScope.of(context).unfocus();
     }
@@ -70,7 +85,10 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Kamus Alkitab", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          "Kamus Alkitab",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -81,7 +99,7 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
               _controller.reload();
             },
             tooltip: "Muat Ulang",
-          )
+          ),
         ],
       ),
       body: Column(
@@ -95,22 +113,38 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    onSubmitted: (_) => _cariKata(), // Tekan enter di keyboard langsung cari
+                    onSubmitted: (_) =>
+                        _cariKata(), // Tekan enter di keyboard langsung cari
                     decoration: InputDecoration(
                       hintText: "Cari arti kata (misal: Kasih, Sabat)...",
-                      hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                      prefixIcon: const Icon(Icons.menu_book, color: Colors.indigo),
+                      hintStyle: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 14,
+                      ),
+                      prefixIcon: const Icon(
+                        Icons.menu_book,
+                        color: Colors.indigo,
+                      ),
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.grey, size: 20),
+                        icon: const Icon(
+                          Icons.clear,
+                          color: Colors.grey,
+                          size: 20,
+                        ),
                         onPressed: () {
                           _searchController.clear();
                         },
                       ),
                       filled: true,
                       fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 15),
+                      contentPadding: const EdgeInsets.symmetric(
+                        vertical: 0,
+                        horizontal: 15,
+                      ),
                       border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30), // Bentuk pil elegan
+                        borderRadius: BorderRadius.circular(
+                          30,
+                        ), // Bentuk pil elegan
                         borderSide: BorderSide.none,
                       ),
                     ),
@@ -127,14 +161,17 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
                     icon: const Icon(Icons.search, color: Colors.white),
                     onPressed: _cariKata,
                   ),
-                )
+                ),
               ],
             ),
           ),
-          
+
           // 👇 LOADING INDICATOR 👇
-          if (_isLoading) 
-            const LinearProgressIndicator(color: Colors.orange, backgroundColor: Colors.indigo),
+          if (_isLoading)
+            const LinearProgressIndicator(
+              color: Colors.orange,
+              backgroundColor: Colors.indigo,
+            ),
 
           // 👇 AREA BROWSER INTERNAL (Menampilkan Web SABDA) 👇
           Expanded(

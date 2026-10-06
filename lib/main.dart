@@ -103,7 +103,7 @@ class MainActivity extends StatefulWidget {
   State<MainActivity> createState() => _MainActivityState();
 }
 
-class _MainActivityState extends State<MainActivity> {
+class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver {
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
@@ -130,6 +130,7 @@ class _MainActivityState extends State<MainActivity> {
   
   late Map<String, String> _ayatEmas;
   DateTime? _ayatTanggal;
+  Timer? _ayatTimer;
   bool _isLoadingUpload = false;
   bool _isRefreshingSession = false;
   String? _sessionError;
@@ -140,7 +141,9 @@ class _MainActivityState extends State<MainActivity> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _setAyatHariIni();
+    _scheduleAyatRefresh();
     _initSession();
   }
 
@@ -154,8 +157,27 @@ class _MainActivityState extends State<MainActivity> {
     }
 
     // Ayat tetap selama satu sesi/hari dan tidak berubah karena salah ketuk.
-    _ayatEmas = AyatData.getAyatAcak();
+    _ayatEmas = AyatData.getAyatHariIni(now);
     _ayatTanggal = DateTime(now.year, now.month, now.day);
+  }
+
+  void _scheduleAyatRefresh() {
+    _ayatTimer?.cancel();
+    final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day + 1);
+    _ayatTimer = Timer(midnight.difference(now), () {
+      if (!mounted) return;
+      setState(_setAyatHariIni);
+      _scheduleAyatRefresh();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      setState(_setAyatHariIni);
+      _scheduleAyatRefresh();
+    }
   }
 
   DateTime? _parseTanggalLahir(dynamic raw) {
@@ -358,6 +380,8 @@ class _MainActivityState extends State<MainActivity> {
 
   @override
   void dispose() {
+    _ayatTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _churchSubscription?.cancel();
     _pageController.dispose();
     super.dispose();

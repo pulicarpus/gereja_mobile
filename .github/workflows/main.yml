@@ -2,6 +2,12 @@ name: Flutter Build APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [perbaikan-fitur-daerah]
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - '.github/workflows/main.yml'
 
 jobs:
   build:
@@ -61,6 +67,14 @@ jobs:
           echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
           echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
         
+      - name: Analyze Bible changes
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/alkitab_page.dart lib/bible_support.dart lib/bible_local_store.dart lib/bible_models.dart lib/search_page.dart lib/notes_pages.dart lib/offline_audio_page.dart lib/buat_gambar_page.dart lib/kamus_page.dart lib/kamus_alkitab_page.dart lib/ayat_data.dart
+
+      - name: Test Bible regressions
+        run: |
+          flutter test test/bible_regression_test.dart
+          dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
+
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
         working-directory: .
@@ -85,6 +99,7 @@ jobs:
       # 🚀 4. KIRIM FILE ZIP LANGSUNG KE TELEGRAM
       # =========================================================
       - name: Kirim ZIP ke Telegram
+        if: github.event_name == 'workflow_dispatch'
         continue-on-error: true
         uses: appleboy/telegram-action@master
         with:

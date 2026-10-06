@@ -127,6 +127,28 @@ class _ChatroomPageState extends State<ChatroomPage> {
     return cleaned.isEmpty ? 'dokumen' : cleaned;
   }
 
+  bool _isDangerousFileName(String fileName) {
+    final name = fileName.toLowerCase().trim();
+    const blocked = [
+      '.apk',
+      '.exe',
+      '.msi',
+      '.bat',
+      '.cmd',
+      '.sh',
+      '.js',
+      '.jar',
+      '.com',
+      '.scr',
+    ];
+    return blocked.any(name.endsWith);
+  }
+
+  bool _isHttpUrl(String raw) {
+    final uri = Uri.tryParse(raw);
+    return uri != null && (uri.scheme == 'https' || uri.scheme == 'http');
+  }
+
   String formatTimeCustom(DateTime? date) {
     if (date == null) return "";
     return DateFormat('HH:mm').format(date);
@@ -186,7 +208,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---
-  Future<void> _uploadImage() async {
+  Future<void> _uploadImage({
+    ImageSource source = ImageSource.gallery,
+  }) async {
     if (_isUploading || _isSending || _editingMessageId != null) {
       if (_editingMessageId != null) {
         _showSnack("Selesaikan atau batalkan edit pesan sebelum mengirim lampiran.");
@@ -196,7 +220,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     if (await _checkIfMuted()) return;
 
     final image = await _picker.pickImage(
-      source: ImageSource.gallery,
+      source: source,
       imageQuality: 60,
       maxWidth: 1800,
     );
@@ -279,7 +303,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
       request.fields['upload_preset'] = 'preset_gereja';
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      final res = await request.send();
+      final res = await request
+          .send()
+          .timeout(const Duration(seconds: 90));
       final body = await res.stream.bytesToString();
       if (res.statusCode < 200 || res.statusCode >= 300) {
         _showSnack("Upload gambar gagal. Coba lagi.");
@@ -319,7 +345,21 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
     if (await _checkIfMuted()) return;
 
-    final result = await FilePicker.platform.pickFiles();
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [
+        'pdf',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'ppt',
+        'pptx',
+        'txt',
+        'csv',
+        'zip',
+      ],
+    );
     if (result == null || result.files.isEmpty) return;
 
     final picked = result.files.single;
@@ -336,6 +376,11 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
     final file = File(path);
     final fileName = _safeFileName(picked.name);
+    if (_isDangerousFileName(fileName)) {
+      _showSnack("Jenis file ini tidak diizinkan di ruang chat.");
+      return;
+    }
+    if (await _checkIfMuted()) return;
     if (mounted) setState(() => _isUploading = true);
 
     try {
@@ -353,7 +398,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         await http.MultipartFile.fromPath('document', file.path),
       );
 
-      final res = await request.send();
+      final res = await request
+          .send()
+          .timeout(const Duration(seconds: 90));
       final body = await res.stream.bytesToString();
       if (res.statusCode < 200 || res.statusCode >= 300) {
         _showSnack("Upload dokumen gagal.");
@@ -369,11 +416,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
         return;
       }
 
-      final getFile = await http.get(
-        Uri.parse(
-          'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
-        ),
-      );
+      final getFile = await http
+          .get(
+            Uri.parse(
+              'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
+            ),
+          )
+          .timeout(const Duration(seconds: 30));
       if (getFile.statusCode < 200 || getFile.statusCode >= 300) {
         _showSnack("Dokumen terunggah tetapi tautannya gagal dibuat.");
         return;
@@ -508,7 +557,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         await http.MultipartFile.fromPath('audio', file.path),
       );
 
-      final res = await request.send();
+      final res = await request
+          .send()
+          .timeout(const Duration(seconds: 90));
       final body = await res.stream.bytesToString();
       if (res.statusCode < 200 || res.statusCode >= 300) {
         _showSnack("Upload voice note gagal.");
@@ -526,11 +577,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
         return;
       }
 
-      final getFile = await http.get(
-        Uri.parse(
-          'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
-        ),
-      );
+      final getFile = await http
+          .get(
+            Uri.parse(
+              'https://api.telegram.org/bot$teleBotToken/getFile?file_id=$fileId',
+            ),
+          )
+          .timeout(const Duration(seconds: 30));
       if (getFile.statusCode < 200 || getFile.statusCode >= 300) {
         _showSnack("Voice note terunggah tetapi tautannya gagal dibuat.");
         return;
@@ -563,7 +616,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<void> _playAudio(String url, String id) async {
-    if (url.trim().isEmpty) {
+    if (url.trim().isEmpty || !_isHttpUrl(url)) {
       _showSnack("Voice note tidak tersedia.");
       return;
     }
@@ -768,8 +821,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
 
   // --- 5. UI BUILDING ---
   Future<void> _bukaFile(String url, String fileName) async {
-    if (url.trim().isEmpty) {
+    if (url.trim().isEmpty || !_isHttpUrl(url)) {
       _showSnack("Dokumen tidak tersedia.");
+      return;
+    }
+    if (_isDangerousFileName(fileName)) {
+      _showSnack("Jenis file ini diblokir demi keamanan.");
       return;
     }
     _showSnack("Mengunduh dokumen...");
@@ -781,7 +838,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
       final file = File(savePath);
 
       if (!await file.exists()) {
-        final response = await http.get(Uri.parse(url));
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 60));
         if (response.statusCode < 200 || response.statusCode >= 300) {
           _showSnack("Dokumen gagal diunduh.");
           return;
@@ -1029,7 +1088,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   void _showFullImage(String url) {
-    if (url.trim().isEmpty) {
+    if (url.trim().isEmpty || !_isHttpUrl(url)) {
       _showSnack("Gambar tidak tersedia.");
       return;
     }
@@ -1701,7 +1760,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
                                   _isRecording ||
                                   _editingMessageId != null
                               ? null
-                              : _uploadImage,
+                              : () => _uploadImage(source: ImageSource.camera),
                         ),
                       ],
                     ),

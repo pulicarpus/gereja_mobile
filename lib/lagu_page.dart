@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// ==== IMPORT SEMUA HALAMAN TERKAIT ====
 import 'user_manager.dart';
-import 'detail_lagu_page.dart';    // Halaman baca lirik
-import 'add_edit_lagu_page.dart';  // Halaman asisten Gemini
+import 'detail_lagu_page.dart';
+import 'add_edit_lagu_page.dart';
 
 class LaguPage extends StatefulWidget {
   const LaguPage({super.key});
@@ -13,32 +12,33 @@ class LaguPage extends StatefulWidget {
   State<LaguPage> createState() => _LaguPageState();
 }
 
-class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin {
+class _LaguPageState extends State<LaguPage>
+    with SingleTickerProviderStateMixin {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
-  
-  bool _isAdmin = false;
+
   List<Map<String, dynamic>> _fullSongList = [];
   List<Map<String, dynamic>> _filteredList = [];
   bool _isLoading = true;
+  String? _loadError;
   String _currentCategory = "NKI";
+  int _loadGeneration = 0;
+
+  bool get _canManageSongs => UserManager().isAdmin();
 
   @override
   void initState() {
     super.initState();
-    _isAdmin = UserManager().isAdmin();
     _tabController = TabController(length: 2, vsync: this);
-    
-    // Dengarkan perubahan Tab (NKI atau KONTEMPORER)
     _tabController.addListener(() {
-      if (_tabController.indexIsChanging) return;
+      if (_tabController.indexIsChanging || !mounted) return;
       setState(() {
-        _currentCategory = _tabController.index == 0 ? "NKI" : "KONTEMPORER";
-        _applyFilterAndSearch();
+        _currentCategory =
+            _tabController.index == 0 ? "NKI" : "KONTEMPORER";
       });
+      _applyFilterAndSearch();
     });
-
     _loadSongsFromFirestore();
   }
 
@@ -49,151 +49,259 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
     super.dispose();
   }
 
-  // --- AMBIL DATA DARI FIREBASE ---
+  String _categoryGroup(dynamic raw) {
+    final value = raw?.toString().trim().toUpperCase() ?? "";
+    if (value == "KONTEMPORER") return "KONTEMPORER";
+    // Data lama kosong/HYMNE tetap dibaca sebagai kelompok buku NKI tanpa
+    // menulis ulang dokumen Firestore.
+    return "NKI";
+  }
+
+  String _text(dynamic raw, [String fallback = ""]) {
+    final value = raw?.toString().trim();
+    return (value == null || value.isEmpty) ? fallback : value;
+  }
+
+  int? _extractNumber(String value) {
+    final match = RegExp(r'\d+').firstMatch(value);
+    return match == null ? null : int.tryParse(match.group(0)!);
+  }
+
+  int _compareSongs(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final groupA = _categoryGroup(a['kategori']);
+    final groupB = _categoryGroup(b['kategori']);
+
+    if (groupA != groupB) return groupA.compareTo(groupB);
+
+    final titleA = _text(a['judul'], "Tanpa Judul").toLowerCase();
+    final titleB = _text(b['judul'], "Tanpa Judul").toLowerCase();
+
+    if (groupA == "KONTEMPORER") {
+      return titleA.compareTo(titleB);
+    }
+
+    final nomorA = _text(a['nomor']);
+    final nomorB = _text(b['nomor']);
+    final numA = _extractNumber(nomorA);
+    final numB = _extractNumber(nomorB);
+
+    if (numA != null && numB != null) {
+      final compareNum = numA.compareTo(numB);
+      if (compareNum != 0) return compareNum;
+      final compareRaw = nomorA.compareTo(nomorB);
+      if (compareRaw != 0) return compareRaw;
+      return titleA.compareTo(titleB);
+    }
+    if (numA != null) return -1;
+    if (numB != null) return 1;
+    return titleA.compareTo(titleB);
+  }
+
   Future<void> _loadSongsFromFirestore() async {
-    setState(() => _isLoading = true);
+    final generation = ++_loadGeneration;
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
 
     try {
       final snapshot = await _db.collection("songs").get();
-      
-      List<Map<String, dynamic>> tempList = [];
-      WriteBatch batch = _db.batch();
-      bool hasUpdates = false;
 
-      for (var doc in snapshot.docs) {
-        Map<String, dynamic> data = doc.data();
-        data['id'] = doc.id; 
-        
-        // Standarisasi kategori jika ada data kosong
-        if (!data.containsKey('kategori') || data['kategori'] == null) {
-          batch.update(doc.reference, {'kategori': 'NKI'});
-          data['kategori'] = 'NKI';
-          hasUpdates = true;
-        }
-        tempList.add(data);
-      }
+      final tempList = snapshot.docs.map((doc) {
+        final data = <String, dynamic>{...doc.data()};
+        data['id'] = doc.id;
+        return data;
+      }).toList()
+        ..sort(_compareSongs);
 
-      if (hasUpdates) await batch.commit();
+      if (!mounted || generation != _loadGeneration) return;
 
-      // --- ALGORITMA SORTING ANGKA CERDAS (1, 2, 10) ---
-      tempList.sort((a, b) {
-        String numA = a['nomor']?.toString() ?? "";
-        String numB = b['nomor']?.toString() ?? "";
-        
-        int extractNum(String s) {
-          final RegExp regExp = RegExp(r'\d+');
-          final match = regExp.firstMatch(s);
-          return match != null ? int.parse(match.group(0)!) : 0;
-        }
-
-        int c = extractNum(numA).compareTo(extractNum(numB));
-        if (c != 0) return c;
-        return numA.compareTo(numB);
-      });
-
-      setState(() {
-        _fullSongList = tempList;
-        _isLoading = false;
-        _applyFilterAndSearch();
-      });
+      _fullSongList = tempList;
+      _isLoading = false;
+      _loadError = null;
+      _applyFilterAndSearch();
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memuat daftar lagu")));
+      debugPrint("Gagal memuat lagu: $e");
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _isLoading = false;
+          _loadError = "Daftar lagu gagal dimuat.";
+          _fullSongList = [];
+          _filteredList = [];
+        });
       }
     }
   }
 
-  // --- LOGIKA FILTER KATEGORI & PENCARIAN REAL-TIME ---
   void _applyFilterAndSearch() {
-    String query = _searchController.text.toLowerCase();
-    
-    setState(() {
-      _filteredList = _fullSongList.where((song) {
-        String kategori = song['kategori']?.toString() ?? "NKI";
-        bool matchCategory = kategori.toUpperCase() == _currentCategory;
-        
-        // Pencarian maut: Cek Judul, Nomor, atau bahkan potongan Lirik!
-        bool matchSearch = query.isEmpty || 
-            (song['judul']?.toString().toLowerCase().contains(query) ?? false) ||
-            (song['nomor']?.toString().toLowerCase().contains(query) ?? false) ||
-            (song['lirik']?.toString().toLowerCase().contains(query) ?? false); 
-            
-        return matchCategory && matchSearch;
-      }).toList();
-    });
+    if (!mounted) return;
+
+    final query = _searchController.text.trim().toLowerCase();
+    final filtered = _fullSongList.where((song) {
+      final matchCategory =
+          _categoryGroup(song['kategori']) == _currentCategory;
+      if (!matchCategory) return false;
+      if (query.isEmpty) return true;
+
+      final judul = _text(song['judul']).toLowerCase();
+      final nomor = _text(song['nomor']).toLowerCase();
+      final lirik = _text(song['lirik']).toLowerCase();
+      final pencipta = _text(song['pencipta']).toLowerCase();
+
+      return judul.contains(query) ||
+          nomor.contains(query) ||
+          lirik.contains(query) ||
+          pencipta.contains(query);
+    }).toList();
+
+    setState(() => _filteredList = filtered);
   }
 
-  // --- MENU RAHASIA ADMIN (DI TEKAN LAMA / LONG PRESS) ---
+  void _showSnack(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
   void _showAdminDialog(Map<String, dynamic> song) {
+    if (!_canManageSongs) return;
+
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Center(child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Text(song['judul'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.indigo), textAlign: TextAlign.center),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.edit, color: Colors.orange), 
-            title: const Text("Edit Lagu"), 
-            onTap: () { 
-              Navigator.pop(context); 
-              Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
-                songId: song['id'], 
-                defaultCategory: _currentCategory
-              ))).then((_) => _loadSongsFromFirestore()); // Refresh data saat kembali
-            }
-          ),
-          ListTile(
-            leading: const Icon(Icons.delete, color: Colors.red), 
-            title: const Text("Hapus Lagu", style: TextStyle(color: Colors.red)), 
-            onTap: () {
-               Navigator.pop(context);
-               _confirmDelete(song);
-            }
-          ),
-          const SizedBox(height: 20),
-        ],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                _text(song['judul'], "Tanpa Judul"),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: Colors.indigo,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.edit, color: Colors.orange),
+              title: const Text("Edit Lagu"),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                final id = _text(song['id']);
+                if (id.isEmpty) {
+                  _showSnack("ID lagu tidak valid.", color: Colors.red);
+                  return;
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddEditLaguPage(
+                      songId: id,
+                      defaultCategory: _currentCategory,
+                    ),
+                  ),
+                ).then((_) => _loadSongsFromFirestore());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text(
+                "Hapus Lagu",
+                style: TextStyle(color: Colors.red),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _confirmDelete(song);
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
       ),
     );
   }
 
-  void _confirmDelete(Map<String, dynamic> song) {
-    showDialog(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text("Hapus Lagu?"),
-        content: Text("Lagu '${song['judul']}' akan dihapus permanen dari database."),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(c);
-              await _db.collection('songs').doc(song['id']).delete();
-              _loadSongsFromFirestore(); 
-            }, 
-            child: const Text("Hapus", style: TextStyle(color: Colors.white))
-          )
-        ]
-      )
-    );
+  Future<void> _confirmDelete(Map<String, dynamic> song) async {
+    if (!_canManageSongs) {
+      _showSnack("Anda tidak memiliki izin untuk menghapus lagu.",
+          color: Colors.red);
+      return;
+    }
+
+    final id = _text(song['id']);
+    final title = _text(song['judul'], "Tanpa Judul");
+    if (id.isEmpty) {
+      _showSnack("ID lagu tidak valid.", color: Colors.red);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text("Hapus Lagu?"),
+            content:
+                Text("Lagu '$title' akan dihapus permanen dari database."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Batal"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text("Hapus"),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+
+    if (!confirmed) return;
+
+    try {
+      await _db.collection('songs').doc(id).delete();
+      _showSnack("Lagu berhasil dihapus.");
+      await _loadSongsFromFirestore();
+    } catch (e) {
+      debugPrint("Gagal menghapus lagu: $e");
+      _showSnack("Gagal menghapus lagu.", color: Colors.red);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA), 
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text("Buku Nyanyian", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.indigo[900], 
+        title: const Text(
+          "Buku Nyanyian",
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
         bottom: TabBar(
@@ -210,93 +318,175 @@ class _LaguPageState extends State<LaguPage> with SingleTickerProviderStateMixin
       ),
       body: Column(
         children: [
-          // ==== SEARCH BAR MODERN ====
           Container(
             color: Colors.indigo[900],
             padding: const EdgeInsets.fromLTRB(16, 5, 16, 20),
             child: TextField(
               controller: _searchController,
-              onChanged: (value) => _applyFilterAndSearch(), 
+              onChanged: (_) => _applyFilterAndSearch(),
               style: const TextStyle(color: Colors.black87),
               decoration: InputDecoration(
-                hintText: "Cari judul, nomor, atau lirik...",
-                hintStyle: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+                hintText: "Cari judul, nomor, pencipta, atau lirik...",
+                hintStyle: TextStyle(
+                  color: Colors.grey.shade500,
+                  fontSize: 14,
+                ),
                 prefixIcon: const Icon(Icons.search, color: Colors.indigo),
-                suffixIcon: _searchController.text.isNotEmpty 
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, color: Colors.grey),
-                      onPressed: () {
-                        _searchController.clear();
-                        _applyFilterAndSearch();
-                      },
-                    )
-                  : null,
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          _searchController.clear();
+                          _applyFilterAndSearch();
+                        },
+                      )
+                    : null,
                 filled: true,
                 fillColor: Colors.white,
                 contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
           ),
-
-          // ==== DAFTAR LAGU ====
           Expanded(
-            child: _isLoading 
-              ? const Center(child: CircularProgressIndicator())
-              : _filteredList.isEmpty
-                  ? Center(child: Text("Lagu tidak ditemukan.", style: TextStyle(color: Colors.grey.shade600)))
-                  : ListView.builder(
-                      padding: const EdgeInsets.all(12),
-                      itemCount: _filteredList.length,
-                      itemBuilder: (context, index) {
-                        final song = _filteredList[index];
-                        String nomor = song['nomor'] ?? "";
-                        String displayTitle = (nomor.isNotEmpty) ? "$nomor. ${song['judul']}" : song['judul'];
-
-                        return Card(
-                          elevation: 1,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.indigo.shade50,
-                              child: const Icon(Icons.music_note, color: Colors.indigo),
-                            ),
-                            title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                            subtitle: Text(song['pencipta'] ?? "Pelayan Tuhan", style: const TextStyle(fontSize: 12)),
-                            trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-                            
-                            // MASUK KE DETAIL LIRIK (JEMAAT)
-                            onTap: () {
-                             Navigator.push(context, MaterialPageRoute(builder: (context) => DetailLaguPage(
-                             songList: _filteredList, 
-                               initialIndex: index
-                                )));
-                               },
-                            
-                            // MENU EDIT/HAPUS (ADMIN)
-                            onLongPress: _isAdmin ? () => _showAdminDialog(song) : null,
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _loadError != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.cloud_off,
+                                size: 52,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                _loadError!,
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton(
+                                onPressed: _loadSongsFromFirestore,
+                                child: const Text("COBA LAGI"),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      )
+                    : _filteredList.isEmpty
+                        ? Center(
+                            child: Text(
+                              "Lagu tidak ditemukan.",
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _loadSongsFromFirestore,
+                            child: ListView.builder(
+                              physics:
+                                  const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.all(12),
+                              itemCount: _filteredList.length,
+                              itemBuilder: (context, index) {
+                                final song = _filteredList[index];
+                                final nomor = _text(song['nomor']);
+                                final judul =
+                                    _text(song['judul'], "Tanpa Judul");
+                                final pencipta = _text(
+                                  song['pencipta'],
+                                  "Pelayan Tuhan",
+                                );
+                                final displayTitle = nomor.isNotEmpty
+                                    ? "$nomor. $judul"
+                                    : judul;
+
+                                return Card(
+                                  elevation: 1,
+                                  margin:
+                                      const EdgeInsets.only(bottom: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius:
+                                        BorderRadius.circular(12),
+                                  ),
+                                  child: ListTile(
+                                    contentPadding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 4,
+                                    ),
+                                    leading: CircleAvatar(
+                                      backgroundColor:
+                                          Colors.indigo.shade50,
+                                      child: const Icon(
+                                        Icons.music_note,
+                                        color: Colors.indigo,
+                                      ),
+                                    ),
+                                    title: Text(
+                                      displayTitle,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      pencipta,
+                                      style:
+                                          const TextStyle(fontSize: 12),
+                                    ),
+                                    trailing: const Icon(
+                                      Icons.chevron_right,
+                                      color: Colors.grey,
+                                    ),
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              DetailLaguPage(
+                                            songList:
+                                                List<Map<String, dynamic>>.from(
+                                              _filteredList,
+                                            ),
+                                            initialIndex: index,
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    onLongPress: _canManageSongs
+                                        ? () => _showAdminDialog(song)
+                                        : null,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
           ),
         ],
       ),
-      
-      // ==== TOMBOL TAMBAH LAGU + GEMINI (KHUSUS ADMIN) ====
-      floatingActionButton: _isAdmin 
-        ? FloatingActionButton(
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditLaguPage(
-                defaultCategory: _currentCategory 
-              ))).then((_) => _loadSongsFromFirestore()); 
-            },
-            backgroundColor: Colors.indigo,
-            child: const Icon(Icons.add, color: Colors.white),
-          ) 
-        : null,
+      floatingActionButton: _canManageSongs
+          ? FloatingActionButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddEditLaguPage(
+                      defaultCategory: _currentCategory,
+                    ),
+                  ),
+                ).then((_) => _loadSongsFromFirestore());
+              },
+              backgroundColor: Colors.indigo,
+              child: const Icon(Icons.add, color: Colors.white),
+            )
+          : null,
     );
   }
 }

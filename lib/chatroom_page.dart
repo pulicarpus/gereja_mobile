@@ -11,13 +11,12 @@ import 'package:open_filex/open_filex.dart';
 import 'package:intl/intl.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:audio_waveforms/audio_waveforms.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'secrets.dart'; 
 import 'user_manager.dart';
-import 'recorder_visualizer.dart';
 import 'chat_waveform.dart';
 
 class ChatroomPage extends StatefulWidget {
@@ -34,10 +33,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
   final _etPesan = TextEditingController();
   final _picker = ImagePicker();
   
-  // Mesin Audio & Visualizer
+  // Audio direkam hanya oleh package record agar mikrofon tidak dibuka
+  // oleh dua recorder sekaligus.
   final _audioRecorder = AudioRecorder();
   final _audioPlayer = AudioPlayer();
-  late final RecorderController _recorderController; 
+  StreamSubscription<Amplitude>? _amplitudeSubscription;
+  final List<double> _recordingSamples = [];
   
   bool _isRecording = false;
   String? _playingId;
@@ -47,8 +48,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
   late String _collectionPath;
   bool _isTyping = false;
   bool _isUploading = false;
-  
-  bool _isModerator = false;
+  bool _isSending = false;
+  int _messageLimit = 100;
+  DateTime? _lastSendAt;
 
   Map<String, dynamic>? _replyMessage;
   String? _editingMessageId;
@@ -61,18 +63,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
   @override
   void initState() {
     super.initState();
-    _recorderController = RecorderController(); 
     _collectionPath = widget.filterKategorial == null ? "chats" : "chats_${widget.filterKategorial}";
     
-    final userManager = UserManager();
-    bool isGlobalAdmin = userManager.isAdmin();
-    bool isPengurusKomisiIni = false;
-    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
-      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
-    }
-    _isModerator = isGlobalAdmin || isPengurusKomisiIni;
-    
-    _etPesan.addListener(() => setState(() => _isTyping = _etPesan.text.trim().isNotEmpty));
+    _etPesan.addListener(() {
+      if (mounted) {
+        setState(() => _isTyping = _etPesan.text.trim().isNotEmpty);
+      }
+    });
     
     _audioPlayer.onPositionChanged.listen((pos) {
       if (mounted) setState(() => _currentPosition = pos);
@@ -88,10 +85,46 @@ class _ChatroomPageState extends State<ChatroomPage> {
   @override
   void dispose() {
     _etPesan.dispose();
+    _amplitudeSubscription?.cancel();
     _audioRecorder.dispose();
     _audioPlayer.dispose();
-    _recorderController.dispose();
     super.dispose();
+  }
+
+  String? get _churchId {
+    final id = UserManager().getChurchIdForCurrentView();
+    return (id == null || id.trim().isEmpty) ? null : id.trim();
+  }
+
+  bool get _canAccessRoom {
+    final user = UserManager();
+    final kategori = widget.filterKategorial?.trim();
+    if (kategori == null || kategori.isEmpty) return _auth.currentUser != null;
+    return user.isAdmin() || user.userKomisi?.trim() == kategori;
+  }
+
+  bool get _canModerate {
+    final user = UserManager();
+    final kategori = widget.filterKategorial?.trim();
+    if (user.isAdmin()) return true;
+    return kategori != null &&
+        kategori.isNotEmpty &&
+        user.isPengurus &&
+        user.userKomisi?.trim() == kategori;
+  }
+
+  DateTime? _readTimestamp(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
+    return null;
+  }
+
+  String _safeFileName(String raw) {
+    final cleaned = raw
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .replaceAll('..', '_')
+        .trim();
+    return cleaned.isEmpty ? 'dokumen' : cleaned;
   }
 
   String formatTimeCustom(DateTime? date) {
@@ -100,25 +133,56 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   Future<bool> _checkIfMuted() async {
-    String? churchId = UserManager().activeChurchId;
-    if (churchId == null) return true;
-    
-    var muteDoc = await _db.collection("churches").doc(churchId)
-        .collection("muted_$_collectionPath").doc(_auth.currentUser?.uid).get();
-        
-    if (muteDoc.exists) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: const Row(children: [Icon(Icons.gavel, color: Colors.red), SizedBox(width: 8), Text("Akses Dibatasi")]),
-          content: const Text("Mohon maaf, Anda telah di-Mute (dibisukan) oleh Pengurus. Anda tetap bisa membaca pesan, tapi tidak bisa mengirim pesan saat ini."),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Mengerti"))],
-        )
-      );
-      return true; 
+    final churchId = _churchId;
+    final uid = _auth.currentUser?.uid;
+    if (churchId == null || uid == null || uid.isEmpty) {
+      _showSnack("Sesi chat tidak valid. Silakan buka ulang halaman.");
+      return true;
     }
-    return false; 
+
+    try {
+      final muteDoc = await _db
+          .collection("churches")
+          .doc(churchId)
+          .collection("muted_$_collectionPath")
+          .doc(uid)
+          .get();
+
+      if (muteDoc.exists) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(15),
+              ),
+              title: const Row(
+                children: [
+                  Icon(Icons.gavel, color: Colors.red),
+                  SizedBox(width: 8),
+                  Text("Akses Dibatasi"),
+                ],
+              ),
+              content: const Text(
+                "Anda sedang di-Mute oleh Pengurus. Pesan tetap bisa dibaca, tetapi pengiriman pesan dan lampiran dinonaktifkan.",
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text("Mengerti"),
+                ),
+              ],
+            ),
+          );
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint("Gagal memeriksa status mute: $e");
+      _showSnack("Status chat tidak dapat diverifikasi. Coba lagi.");
+      return true;
+    }
   }
 
   // --- 1. UPLOAD GAMBAR DENGAN CAPTION DIALOG ---

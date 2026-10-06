@@ -60,6 +60,7 @@ class _LoginPageState extends State<LoginPage> {
         final data = doc.data() as Map<String, dynamic>;
         if (data['isBlocked'] == true) {
           await _auth.signOut();
+          OneSignal.logout();
           await UserManager().reset();
           if (!mounted) return;
           _showToast("Akun Anda sedang dinonaktifkan. Hubungi administrator gereja.");

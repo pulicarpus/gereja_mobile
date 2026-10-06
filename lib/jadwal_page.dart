@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'dart:convert'; 
 
-import 'user_manager.dart'; 
+import 'user_manager.dart';
+import 'kategorial_config.dart'; 
 import 'add_edit_jadwal_page.dart';
 import 'susunan_acara_page.dart';
 import 'secrets.dart'; 
@@ -22,9 +23,34 @@ class _JadwalPageState extends State<JadwalPage> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   String? churchId;
   
-  // 👇 INI DIA SATPAM SAKTINYA BOS 👇
-  bool canEdit = false;
   bool _showRiwayat = false;
+
+  bool _canManageCategory(String? category) {
+    final user = UserManager();
+    if (user.isAdmin()) return true;
+    final kategori = category?.trim();
+    return kategori != null &&
+        kategori.isNotEmpty &&
+        user.isPengurus &&
+        KategorialConfig.same(user.userKomisi, kategori);
+  }
+
+  bool get canEdit {
+    final currentChurch = UserManager().getChurchIdForCurrentView();
+    return currentChurch != null &&
+        currentChurch == churchId &&
+        _canManageCategory(widget.filterKategorial);
+  }
+
+  bool _sameCategory(dynamic raw, String? expected) {
+    final exp = expected?.trim();
+    if (exp == null || exp.isEmpty) {
+      final value = raw?.toString().trim() ?? "";
+      return value.isEmpty ||
+          KategorialConfig.same(value, "Umum");
+    }
+    return KategorialConfig.same(raw, exp);
+  }
 
   @override
   void initState() {
@@ -32,17 +58,7 @@ class _JadwalPageState extends State<JadwalPage> {
     final userManager = UserManager();
     churchId = userManager.getChurchIdForCurrentView();
     
-    // Cek apakah dia Admin/Superadmin Global
-    bool isGlobalAdmin = userManager.isAdmin();
-    
-    // Cek apakah dia Pengurus di Komisi yang sedang dibuka ini
-    bool isPengurusKomisiIni = false;
-    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
-      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
-    }
-    
-    // Jika salah satu true, maka tombol edit & tambah akan MUNCUL!
-    canEdit = isGlobalAdmin || isPengurusKomisiIni;
+
   }
 
   DateTime? _dateFromData(Map<String, dynamic> data) {
@@ -84,7 +100,17 @@ class _JadwalPageState extends State<JadwalPage> {
       Map<String, dynamic> payload = {
         "app_id": "a9ff250a-56ef-413d-b825-67288008d614", 
         "filters": [
-          {"field": "tag", "key": "active_church", "relation": "=", "value": churchId}
+          {"field": "tag", "key": "active_church", "relation": "=", "value": churchId},
+          if (widget.filterKategorial != null &&
+              widget.filterKategorial!.trim().isNotEmpty) ...[
+            {"operator": "AND"},
+            {
+              "field": "tag",
+              "key": "kelompok",
+              "relation": "=",
+              "value": widget.filterKategorial!.trim(),
+            }
+          ]
         ], 
         "headings": {"en": "📢 Pengumuman Gereja!"},
         "contents": {"en": isiPengumuman},
@@ -139,10 +165,7 @@ class _JadwalPageState extends State<JadwalPage> {
           final categoryDocs = docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
             final kat = data['kategoriKegiatan'];
-            if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
-              return kat == null || kat == "" || kat == "Umum";
-            }
-            return kat == widget.filterKategorial;
+            return _sameCategory(kat, widget.filterKategorial);
           }).toList();
 
           final now = DateTime.now();
@@ -449,6 +472,15 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   void _showEditPengumumanDialog(String docId, String currentText) {
+    if (!canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Anda tidak memiliki izin mengubah pengumuman ini."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     final controller = TextEditingController(text: currentText);
     showDialog(
       context: context,
@@ -468,6 +500,16 @@ class _JadwalPageState extends State<JadwalPage> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
             onPressed: () async {
+              if (!canEdit) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Izin pengurus sudah berubah."),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
               String teksBaru = controller.text.trim();
               
               Navigator.pop(context);
@@ -500,6 +542,15 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   void _showEditDeleteDialog(String id, String nama) {
+    if (!canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Anda tidak memiliki izin mengelola jadwal ini."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -534,6 +585,18 @@ class _JadwalPageState extends State<JadwalPage> {
                      ElevatedButton(
                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                        onPressed: () async {
+                         if (!canEdit) {
+                           if (c.mounted) Navigator.pop(c);
+                           if (mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                               const SnackBar(
+                                 content: Text("Izin pengurus sudah berubah."),
+                                 backgroundColor: Colors.red,
+                               ),
+                             );
+                           }
+                           return;
+                         }
                          try {
                            await _db.collection('churches').doc(churchId).collection('jadwal').doc(id).delete();
                            if (c.mounted) Navigator.pop(c);
@@ -573,7 +636,23 @@ class _JadwalPageState extends State<JadwalPage> {
   }
 
   void _navigasiTambahEdit(String? jadwalId) {
-    // Karena ini di dalam halaman Kategorial, saat menambah jadwal baru, kita passing filterKategorial-nya
-    Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditJadwalPage(jadwalId: jadwalId, filterKategorial: widget.filterKategorial)));
+    if (!canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Anda tidak memiliki izin mengelola jadwal ini."),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddEditJadwalPage(
+          jadwalId: jadwalId,
+          filterKategorial: widget.filterKategorial,
+        ),
+      ),
+    );
   }
 }

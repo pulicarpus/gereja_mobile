@@ -121,3 +121,20 @@ Branch kerja: `perbaikan-fitur-daerah`
 - URL file Telegram lama masih mengandung bot token karena format ini diperlukan aplikasi lama; menghilangkannya secara kompatibel membutuhkan endpoint/proxy backend.
 - Hapus pesan belum dapat menjamin penghapusan file eksternal Cloudinary/Telegram; cleanup media membutuhkan backend.
 - Mute, kepemilikan pesan, identitas pengirim, akses chat kategorial, dan hak moderator baru benar-benar aman setelah Firestore Rules diperketat.
+
+
+## Pematangan Renungan + Buku Lagu
+- Renungan menyimpan tanggal cache bersama judul/isi sehingga renungan lama tidak lagi tampil seolah-olah milik hari ini.
+- Cache lama tetap dipertahankan bila sinkronisasi gagal; hasil scraping baru hanya mengganti cache jika struktur artikel lolos validasi minimum.
+- Status HTTP, timeout, error sinkronisasi, sumber konten, dan status TERSIMPAN/TERBARU ditampilkan lebih jujur.
+- Ukuran font Renungan tersimpan lokal; tombol perbesar/perkecil ditambah tanpa mengubah data Firebase.
+- Share Renungan dinonaktifkan sampai konten layak dibagikan dan memakai sumber yang sesuai URL yang benar-benar diambil aplikasi.
+- Buku Lagu tidak lagi melakukan auto-write kategori saat halaman daftar dibuka. Data kategori kosong/HYMNE dibaca sebagai kelompok NKI secara lokal untuk kompatibilitas.
+- Daftar lagu tahan data legacy, error state punya retry, pencarian mencakup judul/nomor/pencipta/lirik, sorting NKI numerik dan Kontemporer alfabetis.
+- Hak tambah/edit/hapus dicek kembali pada action layer dengan perilaku admin yang sama seperti sebelumnya; Firestore Rules belum diubah.
+- Editor lagu memvalidasi data, memeriksa duplikat juga saat edit, membatalkan simpan bila pemeriksaan duplikat gagal, dan mempertahankan nomor NKI apa adanya tanpa normalisasi 1/01/001.
+- Respons Gemini diparsing defensif; hasil hanya mengisi form untuk ditinjau admin sebelum disimpan.
+- Audio hanya muncul untuk lagu kelompok NKI/HYMNE, bukan karena sekadar memiliki nomor. Pause sekarang dapat dilanjutkan dengan resume tanpa memulai ulang.
+- Ukuran font lirik lagu tersimpan lokal.
+- Susunan Acara mencari lirik dari cache katalog lagu yang sudah dimuat dan mencocokkan judul secara normalisasi lokal sehingga tidak bergantung pada query exact-title baru.
+- Tidak ada migrasi, rename field, atau perubahan Firestore Rules pada fase ini.

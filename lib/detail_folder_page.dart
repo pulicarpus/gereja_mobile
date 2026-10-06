@@ -331,13 +331,18 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
       throw StateError("Izin galeri berubah");
     }
 
-    await _db
+    final folderRef = _db
         .collection("churches")
         .doc(churchId)
         .collection(_collectionPath)
-        .doc(widget.folderId)
-        .collection("images")
-        .add({
+        .doc(widget.folderId);
+
+    final folderDoc = await folderRef.get();
+    if (!folderDoc.exists) {
+      throw StateError("Folder sudah dihapus");
+    }
+
+    await folderRef.collection("images").add({
       "imageUrl": fileId,
       "timestamp": DateTime.now().millisecondsSinceEpoch,
     });

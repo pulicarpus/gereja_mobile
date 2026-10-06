@@ -46,7 +46,7 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
   final ImagePicker _picker = ImagePicker();
 
   final String _botToken = teleBotTokenSecret;
-  final String _chatId = teleChatId;
+  final String _chatId = "-1003815632729";
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _imageSubscription;
 

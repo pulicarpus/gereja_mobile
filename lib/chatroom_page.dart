@@ -453,7 +453,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   List<double> _compressWaveData(List<double> raw) {
     if (raw.isEmpty) return const [];
     final result = <double>[];
-    final step = (raw.length / 30).ceil().clamp(1, raw.length);
+    final step = (raw.length / 30).ceil().clamp(1, raw.length).toInt();
     for (var i = 0; i < raw.length && result.length < 30; i += step) {
       result.add(raw[i]);
     }
@@ -1540,7 +1540,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
     if (isPlaying && _totalDuration.inMilliseconds > 0) {
       currentProgress =
           (_currentPosition.inMilliseconds / _totalDuration.inMilliseconds)
-              .clamp(0.0, 1.0);
+              .clamp(0.0, 1.0)
+              .toDouble();
     }
 
     final url = chat['fileUrl']?.toString().trim() ?? "";
@@ -1676,10 +1677,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
                             minLines: 1,
                             maxLength: 2000,
                             buildCounter: (
-                              context, {
-                              required currentLength,
-                              required isFocused,
-                              maxLength,
+                              BuildContext context, {
+                              required int currentLength,
+                              required bool isFocused,
+                              required int? maxLength,
                             }) =>
                                 null,
                             decoration: const InputDecoration(

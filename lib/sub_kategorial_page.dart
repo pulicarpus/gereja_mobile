@@ -101,8 +101,9 @@ class SubKategorialPage extends StatelessWidget {
                     bool isAdmin = userManager.isAdmin();
                     String komisiJemaat = userManager.userKomisi ?? "Umum";
 
-                    // Cek apakah dia Admin/Superadmin ATAU anggota komisi yang sesuai
-                    if (isAdmin || (komisiJemaat == namaKomisi && userManager.isPengurus)) {
+                    // Admin/Superadmin atau anggota komisi yang sesuai boleh masuk.
+                    // Hak moderasi tetap hanya admin/pengurus dan dicek lagi di ChatroomPage.
+                    if (isAdmin || komisiJemaat == namaKomisi) {
                       Navigator.push(
                         context,
                         MaterialPageRoute(

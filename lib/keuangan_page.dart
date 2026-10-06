@@ -7,6 +7,7 @@ import 'user_manager.dart';
 import 'laporan_transaksi_page.dart';
 import 'laporan_perpuluhan_page.dart';
 import 'loading_sultan.dart';
+import 'kategorial_config.dart';
 
 class KeuanganPage extends StatefulWidget {
   final String? filterKategorial;
@@ -49,6 +50,22 @@ class _KeuanganPageState extends State<KeuanganPage> {
   void _setupYears() {
     int currentYear = DateTime.now().year;
     _availableYears = List.generate(currentYear - 2020 + 1, (index) => currentYear - index);
+  }
+
+  bool _matchesKategori(dynamic raw) {
+    final filter = widget.filterKategorial?.trim();
+    final kategori = raw?.toString().trim() ?? "";
+    if (filter == null || filter.isEmpty) {
+      return kategori.isEmpty ||
+          kategori.toLowerCase() == "umum";
+    }
+    return KategorialConfig.same(kategori, filter);
+  }
+
+  DateTime? _readDate(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is DateTime) return raw;
+    return null;
   }
 
   Future<void> _loadDataForYear(int year) async {
@@ -96,16 +113,14 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
       for (var doc in trxQuery.docs) {
         var data = doc.data();
-        String? kategori = data['kategori'] as String?;
-        int jumlah = (data['jumlah'] is num) ? (data['jumlah'] as num).toInt() : 0;
-        DateTime? tgl = (data['tanggal'] as Timestamp?)?.toDate();
-        String jenis = data['jenis'] ?? "";
+        final kategori = data['kategori'];
+        int jumlah = (data['jumlah'] is num)
+            ? (data['jumlah'] as num).toInt()
+            : int.tryParse(data['jumlah']?.toString() ?? "") ?? 0;
+        DateTime? tgl = _readDate(data['tanggal']);
+        String jenis = data['jenis']?.toString().trim() ?? "";
 
-        if (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) {
-          if (kategori != null && kategori.isNotEmpty && kategori != "Umum") continue;
-        } else {
-          if (kategori != widget.filterKategorial) continue;
-        }
+        if (!_matchesKategori(kategori)) continue;
 
         if (tgl != null) {
           int monthIndex = tgl.month - 1; 
@@ -128,8 +143,10 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
         for (var doc in perpQuery.docs) {
           var data = doc.data();
-          int jumlah = (data['jumlah'] is num) ? (data['jumlah'] as num).toInt() : 0;
-          DateTime? tgl = (data['tanggal'] as Timestamp?)?.toDate();
+          int jumlah = (data['jumlah'] is num)
+              ? (data['jumlah'] as num).toInt()
+              : int.tryParse(data['jumlah']?.toString() ?? "") ?? 0;
+          DateTime? tgl = _readDate(data['tanggal']);
 
           if (tgl != null) {
             int monthIndex = tgl.month - 1;

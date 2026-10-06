@@ -436,90 +436,187 @@ class _SusunanAcaraPageState extends State<SusunanAcaraPage> {
   // =========================================================================
   // 6. FITUR FULL SCREEN LIRIK (RATA KIRI & CUBIT ZOOM)
   // =========================================================================
-  void _openFullScreenLyrics(String judulLaguTerketik) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) {
-      return Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
-        appBar: AppBar(
-          title: const Text("Lirik Pujian", style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.indigo[900],
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        body: FutureBuilder<QuerySnapshot>(
-          future: _db.collection("songs").where("judul", isEqualTo: judulLaguTerketik).limit(1).get(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Colors.indigo));
-            }
-            if (snapshot.hasError) {
-              return const Center(child: Text("Gagal memuat lirik."));
-            }
-            
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.search_off, size: 80, color: Colors.grey.shade300),
-                    const SizedBox(height: 16),
-                    Text("Lirik tidak ditemukan.", style: TextStyle(color: Colors.grey.shade600, fontSize: 18, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Text("Pastikan judul '$judulLaguTerketik'\nada di Buku Nyanyian.", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500)),
-                  ],
-                ),
-              );
-            }
-
-            var data = snapshot.data!.docs.first.data() as Map<String, dynamic>;
-            String lirikLagu = data['lirik'] ?? "Lirik belum tersedia."; 
-
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: InteractiveViewer(
-                clipBehavior: Clip.none,
-                minScale: 1.0,  
-                maxScale: 4.0,  
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center, // <-- Judul tetap di tengah
-                    children: [
-                      Text(judulLaguTerketik, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(10)),
-                        child: Text(data['kategori'] ?? "Pujian", style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 12)),
-                      ),
-                      const Divider(height: 40, thickness: 1.5, color: Color(0xFFE8EAF6)),
-                      
-                      // 👇 LIRIK RATA KIRI SULTAN 👇
-                      SizedBox(
-                        width: double.infinity, // Paksa melebar
-                        child: Text(
-                          lirikLagu, 
-                          textAlign: TextAlign.left, // <-- Ini yang bikin lirik rata kiri
-                          style: const TextStyle(fontSize: 18, height: 1.8, color: Colors.black87)
-                        ),
-                      ),
-                      // 👆 ---------------------- 👆
-                      
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }
-        ),
-      );
-    }));
+  String _normalizeSongTitle(String value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
+
+  Future<Map<String, dynamic>?> _findSongForLyrics(
+    String typedTitle,
+  ) async {
+    final snapshot = await _getSongs();
+    final target = _normalizeSongTitle(typedTitle);
+    if (target.isEmpty) return null;
+
+    Map<String, dynamic>? containsMatch;
+
+    for (final doc in snapshot.docs) {
+      final raw = doc.data();
+      if (raw is! Map<String, dynamic>) continue;
+      final title = (raw['judul'] ?? '').toString();
+      final normalized = _normalizeSongTitle(title);
+      if (normalized == target) {
+        return <String, dynamic>{...raw, 'id': doc.id};
+      }
+      if (containsMatch == null &&
+          normalized.isNotEmpty &&
+          (normalized.contains(target) || target.contains(normalized))) {
+        containsMatch = <String, dynamic>{...raw, 'id': doc.id};
+      }
+    }
+    return containsMatch;
+  }
+
+  void _openFullScreenLyrics(String judulLaguTerketik) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFF5F7FA),
+            appBar: AppBar(
+              title: const Text(
+                "Lirik Pujian",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: Colors.indigo[900],
+              foregroundColor: Colors.white,
+              elevation: 0,
+            ),
+            body: FutureBuilder<Map<String, dynamic>?>(
+              future: _findSongForLyrics(judulLaguTerketik),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.indigo),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text("Gagal memuat lirik."),
+                  );
+                }
+
+                final data = snapshot.data;
+                if (data == null) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 80,
+                          color: Colors.grey.shade300,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "Lirik tidak ditemukan.",
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "Pastikan judul '$judulLaguTerketik'\nada di Buku Nyanyian.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final lirikLagu =
+                    (data['lirik'] ?? "Lirik belum tersedia.").toString();
+                final actualTitle =
+                    (data['judul'] ?? judulLaguTerketik).toString();
+                final kategori =
+                    (data['kategori'] ?? "Pujian").toString();
+
+                return SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: InteractiveViewer(
+                    clipBehavior: Clip.none,
+                    minScale: 1.0,
+                    maxScale: 4.0,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          )
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            actualTitle,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.indigo,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              kategori,
+                              style: TextStyle(
+                                color: Colors.orange.shade800,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          const Divider(
+                            height: 40,
+                            thickness: 1.5,
+                            color: Color(0xFFE8EAF6),
+                          ),
+                          SizedBox(
+                            width: double.infinity,
+                            child: Text(
+                              lirikLagu,
+                              textAlign: TextAlign.left,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                height: 1.8,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
 }

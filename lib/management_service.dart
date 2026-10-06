@@ -79,7 +79,16 @@ class FirebaseManagementGateway implements ManagementGateway {
     if (actor.superAdmin && managementText(doc.data()!['churchId']) != _userScope(actor)) {
       throw StateError('Pengguna tidak berada di gereja yang sedang dibuka.');
     }
-    return ManagementRecord(id, doc.data()!);
+    final data = doc.data()!;
+    final churchId = managementText(data['churchId']);
+    String? displayName;
+    if (managementId(churchId)) {
+      final church = await _db.collection('churches').doc(churchId).get(_server).timeout(_deadline);
+      _guard();
+      displayName = church.exists ? managementChurchName(church.data()!) : 'Gereja tidak ditemukan';
+    }
+    // Display-only value: never included in the update patch or written to Firebase.
+    return ManagementRecord(id, {...data, if (displayName != null) '_churchDisplayName': displayName});
   }
   @override Future<ManagementRecord> loadChurch(String id) async {
     if (!managementId(id)) throw StateError('ID gereja tidak valid.');
@@ -190,10 +199,15 @@ class FirebaseManagementGateway implements ManagementGateway {
     _guard();
     if (!_manager.isSuperAdmin()) throw StateError('Sesi lokal berubah. Masuk ulang terlebih dahulu.');
     final oldId = _manager.activeChurchId, oldName = _manager.activeChurchName;
-    try { await _manager.enterChurchContext(latest.id, managementChurchName(latest.data)); }
+    try {
+      await _manager.enterChurchContext(latest.id, managementChurchName(latest.data));
+      if (signedInUid != _uid || _manager.userId != _uid) throw StateError('Sesi berubah. Silakan masuk ulang.');
+    }
     catch (_) {
-      _manager.activeChurchId = oldId; _manager.activeChurchName = oldName;
-      try { await _manager.saveToPrefs(); } catch (_) { /* Preserve the in-memory context. */ }
+      if (_manager.userId == _uid && signedInUid == _uid) {
+        _manager.activeChurchId = oldId; _manager.activeChurchName = oldName;
+        try { await _manager.saveToPrefs(); } catch (_) { /* Preserve the in-memory context. */ }
+      }
       rethrow;
     }
   }

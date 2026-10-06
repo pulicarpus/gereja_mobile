@@ -559,7 +559,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       },
       onError: (Object error) {
         debugPrint("Gagal memuat data gereja: $error");
-        if (mounted) {
+        if (mounted && _auth.currentUser?.uid == sessionUid && UserManager().activeChurchId == churchId) {
           setState(() => _alamatGereja = "Gagal memuat data gereja");
         }
       },

@@ -49,6 +49,7 @@ class FakeManagementGateway extends ManagementGateway {
     saves++; savedId = id; savedValues = values;
     if (pendingSave != null) await pendingSave!.future;
     if (saveError != null) throw saveError!;
+    church = ManagementRecord(id, {...church.data, ...values});
   }
   @override Future<void> enterChurch(ManagementRecord church) async {
     entries++;
@@ -154,6 +155,13 @@ void main() {
     await tester.tap(find.text('Muat ulang data')); await tester.pumpAndSettle();
     expect(find.text('Tanpa Nama'), findsOneWidget);
   });
+  testWidgets('Detail uses current church name rather than stale account name', (tester) async {
+    final fake = FakeManagementGateway();
+    fake.user = ManagementRecord('target', {...fake.user.data, 'churchName': 'Nama Lama', '_churchDisplayName': 'Nama Terbaru'});
+    await showPage(tester, DetailPenggunaPage(userId: 'target', gateway: fake));
+    expect(find.text('Gereja: Nama Terbaru'), findsOneWidget);
+    expect(find.text('Gereja: Nama Lama'), findsNothing);
+  });
   testWidgets('Failed user save disables stale actions until reload', (tester) async {
     final fake = FakeManagementGateway()..changeError = StateError('Data pengguna berubah.');
     await showPage(tester, DetailPenggunaPage(userId: 'target', gateway: fake));
@@ -232,5 +240,18 @@ void main() {
     fake.pendingEnter!.complete(); await tester.pumpAndSettle();
     expect(find.text('Gereja sudah tidak tersedia.'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+  testWidgets('Returning from church editor refreshes list and preserves invitation', (tester) async {
+    final fake = FakeManagementGateway();
+    await showPage(tester, KelolaGerejaPage(gateway: fake));
+    await tester.tap(find.byTooltip('Edit Info Gereja')); await tester.pumpAndSettle();
+    expect(tester.widget<TextFormField>(find.byType(TextFormField).at(0)).controller!.text, 'Gereja Lama');
+    await tester.enterText(find.byType(TextFormField).at(0), 'Gereja Terbaru');
+    await tester.scrollUntilVisible(find.text('SIMPAN GEREJA'), 200, scrollable: find.byType(Scrollable).last);
+    await tester.tap(find.text('SIMPAN GEREJA')); await tester.pumpAndSettle();
+    expect(find.text('Gereja Terbaru'), findsOneWidget);
+    expect(find.text('LAMA123'), findsOneWidget);
+    expect(fake.savedValues!.keys.toSet(), {'namaGereja', 'daerah', 'alamat'});
+    expect(tester.takeException(), isNull);
   });
 }

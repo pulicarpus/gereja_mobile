@@ -102,11 +102,11 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         SingleChildScrollView(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (_error != null) ...[Text(_error!, style: const TextStyle(color: Colors.red)), TextButton(onPressed: _load, child: const Text('Muat ulang data'))],
           if (user != null) ...[
-            CircleAvatar(radius: 36, child: Text(name.characters.first.toUpperCase())),
+            Center(child: CircleAvatar(radius: 36, child: Text(name.characters.first.toUpperCase()))),
             const SizedBox(height: 16), Text(name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             Text(managementText(data['email'], 'Tidak ada email'), textAlign: TextAlign.center),
             const SizedBox(height: 20),
-            Text('Gereja: ${managementText(data['churchName'], managementText(data['churchId'], 'Belum diatur'))}'),
+            Text('Gereja: ${managementText(data['_churchDisplayName'], managementText(data['churchName'], managementText(data['churchId'], 'Belum diatur')))}'),
             Text('Kategorial: ${managementText(data['kelompok'], 'Belum diatur')}'),
             Text('Hak akses: ${role.toUpperCase()}'),
             Text('Pengurus lokal: ${data['isPengurus'] == true ? 'Ya' : 'Tidak'}'),

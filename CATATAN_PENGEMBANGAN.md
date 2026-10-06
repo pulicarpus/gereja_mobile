@@ -155,3 +155,21 @@ Branch kerja: `perbaikan-fitur-daerah`
 - Fullscreen memvalidasi list/index, menangani permission simpan galeri yang ditolak, mencegah double-save, serta menyediakan retry saat gambar gagal dimuat.
 - Folder dengan nama sama dicegah di UI dan seluruh aksi tambah/hapus/upload memeriksa permission lagi pada action layer.
 - Firestore Rules dan backend media TIDAK diubah pada fase ini. Telegram bot token masih berada di APK dan akan ditangani pada tahap backend/security terakhir.
+
+
+## Pematangan Kategorial
+- Nama kategorial utama dipusatkan di `kategorial_config.dart` untuk Sekolah Minggu, AMKI, Perkawan, Perkaria, dan Lainnya.
+- Hub Kategorial me-refresh data `kelompok` + `isPengurus` dari dokumen user saat dibuka, memperbarui tag OneSignal `kelompok`, menempatkan kategori pengguna lebih dulu, dan memberi badge KATEGORI SAYA.
+- Untuk akun lama yang sudah tertaut ke buku induk, halaman Kategorial merekonsiliasi `users.kelompok` dari `jemaat.kelompok` jika berbeda agar akses Chat/notifikasi konsisten.
+- Sub Kategorial memperjelas status LIHAT/KELOLA/KHUSUS ANGGOTA; Chat tetap hanya untuk anggota kategori atau admin, sementara Jadwal/Keuangan/Galeri tetap dapat dibaca jemaat sesuai perilaku sebelumnya.
+- Sinkronisasi Jemaat kini menyalin kategori buku induk ke akun saat proses link berhasil, menolak data jemaat yang sudah tertaut ke UID lain, dan memperbarui UserManager lokal.
+- Perubahan kategori dari Detail Pengguna meng-update dokumen user + dokumen jemaat tertaut dalam satu batch jika link tersedia, sekaligus mereset status pengurus.
+- Edit Data Jemaat yang sudah punya UID juga menyinkronkan `users.kelompok`; Tambah Jemaat dari halaman kategorial otomatis memilih kelompok asal.
+- Data Anggota kategorial difilter lokal secara case/space-insensitive untuk kompatibilitas data legacy dan menu Daftar Keluarga disembunyikan dari konteks kategorial agar tidak membingungkan.
+- Permission tambah/edit Jadwal diperiksa lagi di action layer dan editor. Delete Jadwal memverifikasi kategori dokumen terbaru sebelum menghapus.
+- Notifikasi pengumuman dan reminder Jadwal kategorial ditargetkan dengan `active_church + kelompok`, mengikuti pola Chat kategorial.
+- Filter kategori Jadwal dan dashboard Keuangan dibuat toleran terhadap kapitalisasi/spasi legacy; parsing jumlah/tanggal Keuangan juga dibuat lebih defensif.
+- Akses pengurus pada Chat, Gallery, Detail Folder, Tambah Transaksi, dan Laporan Transaksi memakai perbandingan kategori ter-normalisasi.
+- `getChurchIdForCurrentView()` kini mengabaikan activeChurchId kosong dan fallback ke originalChurchId.
+- Firestore Rules TIDAK diubah/deploy pada fase ini.
+- Kebijakan akses Gembala/BPJ ke semua Chat kategorial belum diperluas karena itu keputusan organisasi, bukan bug teknis.

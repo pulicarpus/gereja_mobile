@@ -7,6 +7,7 @@ import 'dashboard_page.dart';
 import 'anggota_keluarga_page.dart'; 
 import 'daftar_keluarga_page.dart';
 import 'loading_sultan.dart';
+import 'kategorial_config.dart';
 
 class DataJemaatPage extends StatefulWidget {
   final String? filterKategorial;
@@ -41,15 +42,22 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     }
     if (mounted) setState(() { _isLoading = true; _loadError = null; });
     try {
-      Query query = _db.collection("churches").doc(churchId).collection("jemaat");
-      if (widget.filterKategorial != null) {
-        query = query.where("kelompok", isEqualTo: widget.filterKategorial);
-      }
-      final snapshot = await query.get();
+      final snapshot = await _db
+          .collection("churches")
+          .doc(churchId)
+          .collection("jemaat")
+          .get();
       var tempData = snapshot.docs.map((doc) {
         final source = doc.data() as Map<String, dynamic>;
         return <String, dynamic>{...source, 'id': doc.id};
       }).toList();
+
+      final kategori = widget.filterKategorial?.trim();
+      if (kategori != null && kategori.isNotEmpty) {
+        tempData = tempData
+            .where((j) => KategorialConfig.same(j['kelompok'], kategori))
+            .toList();
+      }
 
       // Urutkan berdasarkan nama secara default
       tempData.sort((a, b) => (a['namaLengkap'] ?? "").toString().toLowerCase().compareTo((b['namaLengkap'] ?? "").toString().toLowerCase()));
@@ -249,13 +257,20 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               });
             },
           ),
-          IconButton(
-            tooltip: "Daftar Keluarga",
-            icon: const Icon(Icons.family_restroom),
-            onPressed: () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const DaftarKeluargaPage()));
-            },
-          ),
+          if (widget.filterKategorial == null ||
+              widget.filterKategorial!.trim().isEmpty)
+            IconButton(
+              tooltip: "Daftar Keluarga",
+              icon: const Icon(Icons.family_restroom),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DaftarKeluargaPage(),
+                  ),
+                );
+              },
+            ),
           IconButton(
             tooltip: "Dashboard Statistik",
             onPressed: _goToDashboard, 
@@ -316,7 +331,14 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           ),
       floatingActionButton: _userManager.isAdmin() 
         ? FloatingActionButton.extended(
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AddEditJemaatPage())).then((v) => _loadJemaat()),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AddEditJemaatPage(
+                  initialKelompok: widget.filterKategorial,
+                ),
+              ),
+            ).then((v) => _loadJemaat()),
             label: const Text("Tambah Jemaat"), 
             icon: const Icon(Icons.person_add_alt_1_rounded),
             backgroundColor: Colors.indigo,

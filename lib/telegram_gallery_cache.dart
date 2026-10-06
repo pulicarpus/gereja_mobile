@@ -35,6 +35,16 @@ class TelegramGalleryCache {
       await file.delete();
     }
 
+    // Kompatibilitas cache versi lama yang pernah disimpan di Documents.
+    try {
+      final oldDir = await getApplicationDocumentsDirectory();
+      final oldFile = File('${oldDir.path}/IMG_$fileId.jpg');
+      if (await oldFile.exists() && await oldFile.length() > 0) {
+        await oldFile.copy(file.path);
+        return file;
+      }
+    } catch (_) {}
+
     final infoResponse = await http
         .get(
           Uri.parse(
@@ -99,22 +109,30 @@ class TelegramGalleryCache {
   }
 
   static Future<int> clearAll() async {
-    final dir = await getTemporaryDirectory();
     var deleted = 0;
+    final dirs = <Directory>[
+      await getTemporaryDirectory(),
+      await getApplicationDocumentsDirectory(),
+    ];
 
-    await for (final entity in dir.list()) {
-      if (entity is! File) continue;
-      final name = entity.uri.pathSegments.isEmpty
-          ? ""
-          : entity.uri.pathSegments.last;
-      final isGalleryCache =
-          name.startsWith(_prefix) || name.startsWith("IMG_");
-      if (!isGalleryCache) continue;
+    final seen = <String>{};
+    for (final dir in dirs) {
+      if (!seen.add(dir.path)) continue;
 
-      try {
-        await entity.delete();
-        deleted++;
-      } catch (_) {}
+      await for (final entity in dir.list()) {
+        if (entity is! File) continue;
+        final name = entity.uri.pathSegments.isEmpty
+            ? ""
+            : entity.uri.pathSegments.last;
+        final isGalleryCache =
+            name.startsWith(_prefix) || name.startsWith("IMG_");
+        if (!isGalleryCache) continue;
+
+        try {
+          await entity.delete();
+          deleted++;
+        } catch (_) {}
+      }
     }
     return deleted;
   }

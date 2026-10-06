@@ -245,6 +245,13 @@ class _GalleryPageState extends State<GalleryPage> {
                         _showSnack("Nama folder wajib diisi.");
                         return;
                       }
+                      final duplicate = _folderList.any(
+                        (folder) => folder.name.toLowerCase() == name.toLowerCase(),
+                      );
+                      if (duplicate) {
+                        _showSnack("Folder dengan nama yang sama sudah ada.");
+                        return;
+                      }
 
                       setDialogState(() => saving = true);
                       try {

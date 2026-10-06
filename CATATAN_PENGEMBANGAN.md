@@ -138,3 +138,20 @@ Branch kerja: `perbaikan-fitur-daerah`
 - Ukuran font lirik lagu tersimpan lokal.
 - Susunan Acara mencari lirik dari cache katalog lagu yang sudah dimuat dan mencocokkan judul secara normalisasi lokal sehingga tidak bergantung pada query exact-title baru.
 - Tidak ada migrasi, rename field, atau perubahan Firestore Rules pada fase ini.
+
+
+## Pematangan Gallery
+- Gallery dan Detail Folder memakai `getChurchIdForCurrentView()` sehingga konteks gereja konsisten dengan mode pantau.
+- Listener folder/foto disimpan dan dibatalkan di `dispose()`; error stream kini mempunyai state retry dan tidak lagi loading tanpa akhir.
+- Hapus folder membersihkan subcollection `images` secara bertahap sebelum menghapus dokumen folder, sehingga data foto tidak tertinggal sebagai subcollection yatim.
+- Seleksi foto memakai `docId`, bukan index grid, sehingga perubahan snapshot realtime tidak menyebabkan foto yang salah terhapus.
+- Upload multi-foto dibatasi 30 per proses, foto dikompresi sebelum upload, setiap tahap Telegram + Firestore di-await, serta progress berhasil/gagal ditampilkan.
+- Jika upload Telegram sukses tetapi penyimpanan Firestore gagal, aplikasi mencoba menghapus pesan Telegram yang baru dibuat untuk mengurangi file yatim.
+- Upload memverifikasi folder masih ada sebelum menulis foto sehingga halaman lama tidak dapat menghidupkan kembali subcollection pada folder yang sudah dihapus.
+- Hapus foto memakai batch bertahap dan membersihkan cache lokal; file media Telegram lama belum dapat dipastikan terhapus tanpa message_id/backend.
+- Cache foto dipindahkan ke temporary directory, memakai nama aman, download ditulis ke file .tmp lalu rename setelah selesai, dan cache versi lama di Documents tetap dikenali/dapat dibersihkan.
+- Cover folder menggunakan Future cache selama halaman hidup agar rebuild tidak mengulang query/download terus-menerus.
+- Data legacy timestamp dapat dibaca dari Timestamp, angka milidetik, string angka, atau ISO date dan disortir lokal.
+- Fullscreen memvalidasi list/index, menangani permission simpan galeri yang ditolak, mencegah double-save, serta menyediakan retry saat gambar gagal dimuat.
+- Folder dengan nama sama dicegah di UI dan seluruh aksi tambah/hapus/upload memeriksa permission lagi pada action layer.
+- Firestore Rules dan backend media TIDAK diubah pada fase ini. Telegram bot token masih berada di APK dan akan ditangani pada tahap backend/security terakhir.

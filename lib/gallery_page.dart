@@ -1,24 +1,25 @@
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
-import 'secrets.dart'; 
 
-import 'user_manager.dart';
-import 'detail_folder_page.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+
+import 'detail_folder_page.dart';
 import 'loading_sultan.dart';
+import 'secrets.dart';
+import 'telegram_gallery_cache.dart';
+import 'user_manager.dart';
 
 class GalleryFolder {
   final String id;
   final String name;
 
-  GalleryFolder({required this.id, required this.name});
+  const GalleryFolder({required this.id, required this.name});
 }
 
 class GalleryPage extends StatefulWidget {
   final String? filterKategorial;
+
   const GalleryPage({super.key, this.filterKategorial});
 
   @override
@@ -26,194 +27,420 @@ class GalleryPage extends StatefulWidget {
 }
 
 class _GalleryPageState extends State<GalleryPage> {
-  final _db = FirebaseFirestore.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
   final String _botToken = teleBotTokenSecret;
 
-  List<GalleryFolder> _folderList = [];
+  final List<GalleryFolder> _folderList = [];
+  final Map<String, Future<File?>> _coverFutures = {};
+
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _folderSubscription;
+
   bool _isLoading = false;
-  late String _collectionPath;
+  String? _loadError;
+  late final String _collectionPath;
   String? _churchId;
-  
-  // 👇 SATPAM SAKTI KITA 👇
-  bool canEdit = false;
+
+  String? get _kategori {
+    final value = widget.filterKategorial?.trim();
+    return (value == null || value.isEmpty) ? null : value;
+  }
+
+  bool get _canEditNow {
+    final user = UserManager();
+    final currentChurchId = user.getChurchIdForCurrentView();
+    if (_churchId == null ||
+        currentChurchId == null ||
+        currentChurchId.trim() != _churchId) {
+      return false;
+    }
+
+    if (user.isAdmin()) return true;
+    final kategori = _kategori;
+    return kategori != null &&
+        user.isPengurus &&
+        user.userKomisi?.trim() == kategori;
+  }
 
   @override
   void initState() {
     super.initState();
-    final userManager = UserManager();
-    _churchId = userManager.activeChurchId;
-    
-    // 👇 LOGIKA CEK HAK AKSES PENGURUS 👇
-    bool isGlobalAdmin = userManager.isAdmin();
-    bool isPengurusKomisiIni = false;
-    
-    if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
-      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
-    }
-    
-    // Izinkan edit jika Admin Global ATAU Pengurus Komisi ini
-    canEdit = isGlobalAdmin || isPengurusKomisiIni;
-    
-    _collectionPath = (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) 
-        ? "gallery_folders" 
-        : "gallery_folders_${widget.filterKategorial}";
-        
+    final user = UserManager();
+    _churchId = user.getChurchIdForCurrentView()?.trim();
+    _collectionPath =
+        _kategori == null ? "gallery_folders" : "gallery_folders_$_kategori";
     _loadFolders();
   }
 
-  void _loadFolders() {
-    if (_churchId == null) return;
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _folderSubscription?.cancel();
+    super.dispose();
+  }
 
-    _db.collection("churches").doc(_churchId!).collection(_collectionPath)
-       .snapshots().listen((snapshot) {
+  void _showSnack(String message, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
+  void _loadFolders() {
+    _folderSubscription?.cancel();
+
+    final churchId = _churchId;
+    if (churchId == null || churchId.isEmpty) {
       if (mounted) {
-        List<GalleryFolder> temp = [];
-        for (var doc in snapshot.docs) {
-          temp.add(GalleryFolder(id: doc.id, name: doc.data()['name'] ?? "Tanpa Nama"));
-        }
         setState(() {
-          _folderList = temp;
           _isLoading = false;
+          _loadError = "Data gereja tidak valid.";
         });
       }
-    });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _loadError = null;
+      });
+    }
+
+    _folderSubscription = _db
+        .collection("churches")
+        .doc(churchId)
+        .collection(_collectionPath)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        if (!mounted) return;
+
+        final temp = snapshot.docs.map((doc) {
+          final rawName = doc.data()['name']?.toString().trim() ?? "";
+          return GalleryFolder(
+            id: doc.id,
+            name: rawName.isEmpty ? "Tanpa Nama" : rawName,
+          );
+        }).toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+
+        final validIds = temp.map((e) => e.id).toSet();
+        _coverFutures.removeWhere((id, _) => !validIds.contains(id));
+
+        setState(() {
+          _folderList
+            ..clear()
+            ..addAll(temp);
+          _isLoading = false;
+          _loadError = null;
+        });
+      },
+      onError: (Object error) {
+        debugPrint("Gagal memuat folder galeri: $error");
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          _loadError = "Galeri gagal dimuat. Periksa koneksi lalu coba lagi.";
+        });
+      },
+    );
   }
 
   Future<File?> _getFolderCover(String folderId) async {
-    if (_churchId == null) return null;
+    final churchId = _churchId;
+    if (churchId == null || churchId.isEmpty || _botToken.isEmpty) return null;
 
     try {
-      var snap = await _db.collection("churches").doc(_churchId!)
-          .collection(_collectionPath).doc(folderId).collection("images")
-          .orderBy("timestamp", descending: true).limit(1).get();
+      final imagesRef = _db
+          .collection("churches")
+          .doc(churchId)
+          .collection(_collectionPath)
+          .doc(folderId)
+          .collection("images");
+
+      QuerySnapshot<Map<String, dynamic>> snap;
+      try {
+        snap = await imagesRef
+            .orderBy("timestamp", descending: true)
+            .limit(1)
+            .get();
+      } catch (_) {
+        snap = await imagesRef.limit(1).get();
+      }
 
       if (snap.docs.isEmpty) return null;
-      
-      String? fileId = snap.docs.first.data()['imageUrl'];
-      if (fileId == null || fileId.isEmpty) return null;
+      final fileId =
+          snap.docs.first.data()['imageUrl']?.toString().trim() ?? "";
+      if (fileId.isEmpty) return null;
 
-      final dir = await getApplicationDocumentsDirectory();
-      final File localFile = File('${dir.path}/IMG_$fileId.jpg');
-      
-      if (await localFile.exists()) return localFile;
-
-      final url = Uri.parse("https://api.telegram.org/bot$_botToken/getFile?file_id=$fileId");
-      final response = await http.get(url);
-      
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        if (json['ok'] == true) {
-          String path = json['result']['file_path'];
-          final downloadUrl = Uri.parse("https://api.telegram.org/file/bot$_botToken/$path");
-          
-          final imgResponse = await http.get(downloadUrl);
-          if (imgResponse.statusCode == 200) {
-            await localFile.writeAsBytes(imgResponse.bodyBytes); 
-            return localFile;
-          }
-        }
-      }
+      return await TelegramGalleryCache.getOrDownload(
+        fileId: fileId,
+        botToken: _botToken,
+      );
     } catch (e) {
-      debugPrint("Error fetching cover: $e");
+      debugPrint("Gagal memuat cover folder $folderId: $e");
+      return null;
     }
-    return null;
   }
 
-  void _showAddFolderDialog() {
-    final TextEditingController nameCtrl = TextEditingController();
-    showDialog(
+  Future<File?> _coverFuture(String folderId) {
+    return _coverFutures.putIfAbsent(
+      folderId,
+      () => _getFolderCover(folderId),
+    );
+  }
+
+  Future<void> _showAddFolderDialog() async {
+    if (!_canEditNow) {
+      _showSnack("Anda tidak memiliki izin menambah folder.", color: Colors.red);
+      return;
+    }
+
+    final churchId = _churchId;
+    if (churchId == null || churchId.isEmpty) return;
+
+    final nameCtrl = TextEditingController();
+    var saving = false;
+
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Tambah Folder"),
-        content: TextField(
-          controller: nameCtrl,
-          decoration: const InputDecoration(hintText: "Nama Folder", border: OutlineInputBorder()),
-          autofocus: true,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text("Tambah Folder"),
+          content: TextField(
+            controller: nameCtrl,
+            enabled: !saving,
+            maxLength: 80,
+            decoration: const InputDecoration(
+              hintText: "Nama Folder",
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(dialogContext),
+              child: const Text("Batal"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF075E54),
+                foregroundColor: Colors.white,
+              ),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (!_canEditNow) {
+                        _showSnack(
+                          "Izin galeri sudah berubah.",
+                          color: Colors.red,
+                        );
+                        return;
+                      }
+
+                      final name = nameCtrl.text.trim();
+                      if (name.isEmpty) {
+                        _showSnack("Nama folder wajib diisi.");
+                        return;
+                      }
+
+                      setDialogState(() => saving = true);
+                      try {
+                        await _db
+                            .collection("churches")
+                            .doc(churchId)
+                            .collection(_collectionPath)
+                            .add({"name": name});
+                        if (dialogContext.mounted) {
+                          Navigator.pop(dialogContext);
+                        }
+                        _showSnack("Folder berhasil ditambahkan.");
+                      } catch (e) {
+                        debugPrint("Gagal menambah folder: $e");
+                        _showSnack(
+                          "Gagal menambah folder.",
+                          color: Colors.red,
+                        );
+                        if (dialogContext.mounted) {
+                          setDialogState(() => saving = false);
+                        }
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text("Simpan"),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF075E54), foregroundColor: Colors.white),
-            onPressed: () {
-              String name = nameCtrl.text.trim();
-              if (name.isNotEmpty && _churchId != null) {
-                _db.collection("churches").doc(_churchId!).collection(_collectionPath).add({"name": name});
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("Simpan"),
-          ),
-        ],
       ),
     );
+
+    nameCtrl.dispose();
   }
 
-  void _showDeleteFolderDialog(GalleryFolder folder) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Hapus Folder?"),
-        content: Text("Semua foto di dalam '${folder.name}' akan hilang. Lanjutkan?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () {
-              _db.collection("churches").doc(_churchId!).collection(_collectionPath).doc(folder.id).delete();
-              Navigator.pop(context);
-            },
-            child: const Text("Hapus"),
+  Future<void> _showDeleteFolderDialog(GalleryFolder folder) async {
+    if (!_canEditNow) {
+      _showSnack("Anda tidak memiliki izin menghapus folder.", color: Colors.red);
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text("Hapus Folder?"),
+            content: Text(
+              "Semua data foto di dalam '${folder.name}' akan dihapus dari galeri aplikasi. Lanjutkan?",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Batal"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text("Hapus"),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
+        ) ??
+        false;
+
+    if (!confirmed) return;
+    await _deleteFolderRecursively(folder);
+  }
+
+  Future<void> _deleteFolderRecursively(GalleryFolder folder) async {
+    if (!_canEditNow) {
+      _showSnack("Izin galeri sudah berubah.", color: Colors.red);
+      return;
+    }
+
+    final churchId = _churchId;
+    if (churchId == null || churchId.isEmpty) return;
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    final cachedIds = <String>[];
+    try {
+      final folderRef = _db
+          .collection("churches")
+          .doc(churchId)
+          .collection(_collectionPath)
+          .doc(folder.id);
+      final imagesRef = folderRef.collection("images");
+
+      while (true) {
+        final page = await imagesRef.limit(400).get();
+        if (page.docs.isEmpty) break;
+
+        final batch = _db.batch();
+        for (final doc in page.docs) {
+          final fileId = doc.data()['imageUrl']?.toString().trim() ?? "";
+          if (fileId.isNotEmpty) cachedIds.add(fileId);
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+      }
+
+      await folderRef.delete();
+
+      for (final fileId in cachedIds) {
+        await TelegramGalleryCache.deleteCached(fileId);
+      }
+
+      _coverFutures.remove(folder.id);
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      }
+      _showSnack(
+        "Folder dan data fotonya berhasil dihapus. File Telegram lama tetap dikelola oleh layanan media.",
+      );
+    } catch (e) {
+      debugPrint("Gagal menghapus folder galeri: $e");
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      }
+      _showSnack(
+        "Penghapusan folder belum selesai. Coba lagi.",
+        color: Colors.red,
+      );
+    }
   }
 
   Future<void> _clearCache() async {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Bersihkan Memori"),
-        content: const Text("Tindakan ini akan menghapus semua file foto sementara di HP Anda. Foto di server tetap aman. Lanjutkan?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-            onPressed: () async {
-              Navigator.pop(context);
-              int deletedCount = 0;
-              try {
-                final dir = await getApplicationDocumentsDirectory();
-                final files = dir.listSync();
-                for (var file in files) {
-                  if (file is File && file.path.contains("IMG_")) {
-                    await file.delete();
-                    deletedCount++;
-                  }
-                }
-                _showSnack("$deletedCount file cache berhasil dibersihkan!");
-                setState(() {}); 
-              } catch (e) {
-                _showSnack("Gagal membersihkan cache.");
-              }
-            },
-            child: const Text("Bersihkan"),
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text("Bersihkan Cache Foto"),
+            content: const Text(
+              "File foto sementara di HP akan dihapus. Foto di server tetap aman dan akan diunduh lagi saat dibuka.",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text("Batal"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text("Bersihkan"),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
+        ) ??
+        false;
 
-  void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (!confirmed) return;
+
+    try {
+      final deletedCount = await TelegramGalleryCache.clearAll();
+      _coverFutures.clear();
+      if (mounted) setState(() {});
+      _showSnack("$deletedCount file cache berhasil dibersihkan.");
+    } catch (e) {
+      debugPrint("Gagal membersihkan cache: $e");
+      _showSnack("Gagal membersihkan cache.", color: Colors.red);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    String title = (widget.filterKategorial == null || widget.filterKategorial!.isEmpty) 
-        ? "Galeri Foto" 
-        : "Galeri ${widget.filterKategorial}";
+    final title = _kategori == null ? "Galeri Foto" : "Galeri $_kategori";
+
+    if (_churchId == null || _churchId!.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(title),
+          backgroundColor: const Color(0xFF075E54),
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(child: Text("Data gereja tidak valid.")),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.grey[100],
@@ -224,85 +451,154 @@ class _GalleryPageState extends State<GalleryPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.cleaning_services),
-            tooltip: "Bersihkan Memori",
+            tooltip: "Bersihkan Cache",
             onPressed: _clearCache,
           ),
         ],
       ),
-      body: _isLoading 
-        ? LoadingSultan(size: 80)
-        : _folderList.isEmpty
-          ? Center(child: Text("Belum ada folder.", style: TextStyle(color: Colors.grey[600])))
-          : GridView.builder(
-              padding: const EdgeInsets.all(15),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, 
-                crossAxisSpacing: 15, 
-                mainAxisSpacing: 15, 
-                childAspectRatio: 0.85 
-              ),
-              itemCount: _folderList.length,
-              itemBuilder: (context, index) {
-                var folder = _folderList[index];
-                
-                return Card(
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  clipBehavior: Clip.antiAlias, 
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => DetailFolderPage(
-                        folderId: folder.id,
-                        folderName: folder.name,
-                        filterKategorial: widget.filterKategorial,
-                      )));
-                    },
-                    // 👇 HAPUS FOLDER HANYA BISA OLEH ADMIN / PENGURUS 👇
-                    onLongPress: canEdit ? () => _showDeleteFolderDialog(folder) : null,
+      body: _isLoading
+          ? const LoadingSultan(size: 80)
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Expanded(
-                          child: FutureBuilder<File?>(
-                            future: _getFolderCover(folder.id),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                              } else if (snapshot.hasData && snapshot.data != null) {
-                                return Image.file(snapshot.data!, fit: BoxFit.cover);
-                              } else {
-                                return Container(
-                                  color: Colors.indigo.shade50,
-                                  child: const Icon(Icons.folder_special, size: 50, color: Colors.indigo),
-                                );
-                              }
-                            },
-                          ),
+                        const Icon(
+                          Icons.cloud_off,
+                          size: 52,
+                          color: Colors.grey,
                         ),
-                        Container(
-                          color: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                          child: Text(
-                            folder.name, 
-                            textAlign: TextAlign.center, 
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            maxLines: 1, 
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
+                        const SizedBox(height: 12),
+                        Text(
+                          _loadError!,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: _loadFolders,
+                          child: const Text("COBA LAGI"),
+                        ),
                       ],
                     ),
                   ),
-                );
-              },
+                )
+              : _folderList.isEmpty
+                  ? Center(
+                      child: Text(
+                        "Belum ada folder.",
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.all(15),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 15,
+                        mainAxisSpacing: 15,
+                        childAspectRatio: 0.85,
+                      ),
+                      itemCount: _folderList.length,
+                      itemBuilder: (context, index) {
+                        final folder = _folderList[index];
+
+                        return Card(
+                          elevation: 3,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DetailFolderPage(
+                                    folderId: folder.id,
+                                    folderName: folder.name,
+                                    filterKategorial:
+                                        widget.filterKategorial,
+                                  ),
+                                ),
+                              ).then((_) {
+                                _coverFutures.remove(folder.id);
+                                if (mounted) setState(() {});
+                              });
+                            },
+                            onLongPress: _canEditNow
+                                ? () => _showDeleteFolderDialog(folder)
+                                : null,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(
+                                  child: FutureBuilder<File?>(
+                                    future: _coverFuture(folder.id),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                          ConnectionState.waiting) {
+                                        return const Center(
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        );
+                                      }
+                                      if (snapshot.hasData &&
+                                          snapshot.data != null) {
+                                        return Image.file(
+                                          snapshot.data!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) =>
+                                              _folderPlaceholder(),
+                                        );
+                                      }
+                                      return _folderPlaceholder();
+                                    },
+                                  ),
+                                ),
+                                Container(
+                                  color: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                    horizontal: 8,
+                                  ),
+                                  child: Text(
+                                    folder.name,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+      floatingActionButton: !_canEditNow
+          ? null
+          : FloatingActionButton(
+              backgroundColor: const Color(0xFF075E54),
+              foregroundColor: Colors.white,
+              onPressed: _showAddFolderDialog,
+              child: const Icon(Icons.create_new_folder),
             ),
-            
-      // 👇 TOMBOL BIKIN FOLDER BARU HANYA MUNCUL UNTUK ADMIN / PENGURUS 👇
-      floatingActionButton: !canEdit ? null : FloatingActionButton(
-        backgroundColor: const Color(0xFF075E54),
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.create_new_folder),
-        onPressed: _showAddFolderDialog,
+    );
+  }
+
+  Widget _folderPlaceholder() {
+    return Container(
+      color: Colors.indigo.shade50,
+      child: const Icon(
+        Icons.folder_special,
+        size: 50,
+        color: Colors.indigo,
       ),
     );
   }

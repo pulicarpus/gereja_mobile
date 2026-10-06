@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:onesignal_flutter/onesignal_flutter.dart'; 
 
 import 'main.dart'; 
 import 'login_page.dart'; 
@@ -63,6 +64,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
 
         if (data['isBlocked'] == true) {
           await FirebaseAuth.instance.signOut();
+          OneSignal.logout();
           await userManager.reset();
           _doNavigate(const LoginPage());
           return;

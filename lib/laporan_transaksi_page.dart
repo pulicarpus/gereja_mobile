@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 import 'tambah_transaksi_page.dart'; 
 import 'tambah_perpuluhan_page.dart'; 
 
@@ -365,7 +366,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     final user = UserManager();
     final kategori = widget.filterKategorial?.trim();
     final canEdit = user.isAdmin() ||
-        (kategori != null && kategori.isNotEmpty && user.isPengurus && user.userKomisi == kategori);
+        (kategori != null && kategori.isNotEmpty && user.isPengurus && KategorialConfig.same(user.userKomisi, kategori));
     if (!canEdit) {
       _showSnack("Anda tidak memiliki izin untuk menghapus transaksi ini.");
       return;
@@ -478,7 +479,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     bool isPengurusKomisiIni = false;
     
     if (widget.filterKategorial != null && widget.filterKategorial!.isNotEmpty) {
-      isPengurusKomisiIni = userManager.isPengurus && (userManager.userKomisi == widget.filterKategorial);
+      isPengurusKomisiIni = userManager.isPengurus && (KategorialConfig.same(userManager.userKomisi, widget.filterKategorial));
     }
     
     bool canEdit = isGlobalAdmin || isPengurusKomisiIni;

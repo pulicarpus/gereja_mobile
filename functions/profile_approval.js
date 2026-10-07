@@ -105,7 +105,8 @@ function createApprovalService(db, clock = () => Date.now()) {
       if (previous?.submittedAt?.toMillis() > clock() - 60000) throw new HttpsError('resource-exhausted', 'Tunggu sebentar sebelum mengirim ulang.');
       // No phone/year copied into the request. Admin inspects existing book.
       tx.set(requestRef, { uid: user, kind, churchId: church, jemaatId: bookId, status: 'pending',
-        namaLengkap: text(account.namaLengkap), email: text(account.email), bookName: text(book?.namaLengkap),
+        namaLengkap: text(account.namaLengkap), email: text(req.auth.token?.email),
+        emailVerified: req.auth.token?.email_verified === true, bookName: text(book?.namaLengkap),
         ...(book ? { bookRevision: revision(book) } : {}),
         submittedAt: Timestamp.fromMillis(clock()) });
       return { status: 'pending', id: requestRef.id };

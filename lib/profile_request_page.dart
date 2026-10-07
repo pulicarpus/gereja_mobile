@@ -51,6 +51,7 @@ class _ProfileRequestPageState extends State<ProfileRequestPage> {
           for (final row in rows) Card(child: ListTile(
             title: Text(managementText(row.data()['namaLengkap'], 'Tanpa nama')),
             subtitle: Text('${managementText(row.data()['email'])}\n'
+              '${row.data()['emailVerified'] == true ? 'Email terverifikasi' : 'Email belum terverifikasi'} • UID: ${managementText(row.data()['uid'])}\n'
               '${row.data()['kind'] == 'link' ? 'Tautan: ${managementText(row.data()['bookName'])}' : 'Pendaftaran gereja'}'),
             trailing: _busy == row.id ? const CircularProgressIndicator() : Row(mainAxisSize: MainAxisSize.min, children: [
               IconButton(onPressed: _busy == null ? () => _review(row, false) : null, icon: const Icon(Icons.close)),

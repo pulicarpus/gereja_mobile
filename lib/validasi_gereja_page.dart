@@ -59,6 +59,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       await UserManager().setUser(role: account.role, churchId: account.churchId, churchName: account.churchName,
         uId: account.uid, uNama: account.name, uFoto: account.photo,
         uKomisi: account.data['kelompok']?.toString() ?? 'Umum',
+        uJemaatId: account.jemaatId,
         uAdminDaerahArea: account.data['adminDaerahArea']?.toString(), uDaerah: account.data['daerah']?.toString(),
         uIsPengurus: account.data['isPengurus'] == true);
       if (!mounted || !_current) return;

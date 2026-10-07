@@ -155,9 +155,14 @@ class FirebaseProfileGateway implements ProfileGateway {
     }
     // An already approved retry refreshes the authoritative account/cache.
     final fresh = await loadAccount();
-    await _manager.linkJemaatId(fresh.jemaatId);
-    await _manager.updateKategorialContext(profileText(fresh.data['kelompok']), pengurus: fresh.data['isPengurus'] == true);
-    return true;
+    if (_manager.userId != candidate.uid || _manager.originalChurchId != fresh.churchId) return false;
+    try {
+      await _manager.linkJemaatId(fresh.jemaatId).timeout(const Duration(seconds: 10));
+      _guard(candidate.uid);
+      await _manager.updateKategorialContext(profileText(fresh.data['kelompok']), pengurus: fresh.data['isPengurus'] == true)
+        .timeout(const Duration(seconds: 10));
+      return true;
+    } catch (_) { return false; }
   }
   @override Future<void> logout() async {
     try { await _auth.signOut().timeout(const Duration(seconds: 20)); }

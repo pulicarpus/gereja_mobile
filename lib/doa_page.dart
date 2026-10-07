@@ -326,6 +326,7 @@ class _DoaPageState extends State<DoaPage> {
             style: TextStyle(color: Colors.white70, fontSize: 11), textAlign: TextAlign.center))),
       ),
       body: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        key: ValueKey('$churchId|$myUid'),
         stream: _prayers(churchId, myUid),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {

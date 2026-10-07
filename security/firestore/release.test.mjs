@@ -4,10 +4,10 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import { doc, collection, getDoc, getDocs, updateDoc, setDoc, writeBatch, query, where } from 'firebase/firestore';
-const require = createRequire(import.meta.url);
-const { initializeApp, deleteApp } = require('../../functions/node_modules/firebase-admin/app');
-const { getAuth } = require('../../functions/node_modules/firebase-admin/auth');
-const { getFirestore, Timestamp } = require('../../functions/node_modules/firebase-admin/firestore');
+const require = createRequire(new URL('../../functions/package.json', import.meta.url));
+const { initializeApp, deleteApp } = require('firebase-admin/app');
+const { getAuth } = require('firebase-admin/auth');
+const { getFirestore, Timestamp } = require('firebase-admin/firestore');
 const project = 'demo-gereja-rules';
 for (const key of ['FIRESTORE_EMULATOR_HOST','FIREBASE_AUTH_EMULATOR_HOST']) {
   if (!/^(localhost|127\.0\.0\.1):\d+$/.test(process.env[key] || '')) throw Error(`Local ${key} is required`);

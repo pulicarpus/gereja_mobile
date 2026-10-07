@@ -228,3 +228,17 @@ bool permitsRoomAccess(Map<String, dynamic> actor, String churchId, String? cate
   if (actor['role'] == 'admin' || category == null || category.trim().isEmpty) return true;
   return KategorialConfig.same(actor['kelompok'], category);
 }
+
+bool permitsGlobalSongWrite(Map<String, dynamic> actor) =>
+    actor['isBlocked'] != true && (actor['role'] == 'admin' || actor['role'] == 'superadmin');
+
+Future<void> checkGlobalSongWrite(String? expectedUid) async {
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (uid == null || uid != expectedUid) throw StateError('Sesi login berubah.');
+  final actor = await FirebaseFirestore.instance.collection('users').doc(uid)
+      .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
+  if (FirebaseAuth.instance.currentUser?.uid != uid || UserManager().userId != uid ||
+      !actor.exists || !permitsGlobalSongWrite(actor.data()!)) {
+    throw StateError('Izin mengubah Buku Nyanyian sudah berubah.');
+  }
+}

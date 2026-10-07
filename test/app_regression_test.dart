@@ -132,4 +132,11 @@ void main() {
     expect(permitsRoomAccess({...actor, 'isBlocked': true}, 'A', null), isFalse);
   });
 
+  test('Global song admin rights do not require an active church', () {
+    expect(permitsGlobalSongWrite({'role': 'superadmin'}), isTrue);
+    expect(permitsGlobalSongWrite({'role': 'admin'}), isTrue);
+    expect(permitsGlobalSongWrite({'role': 'user', 'isPengurus': true}), isFalse);
+    expect(permitsGlobalSongWrite({'role': 'superadmin', 'isBlocked': true}), isFalse);
+  });
+
 }

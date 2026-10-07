@@ -364,6 +364,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     }
     if (_isLoading || !(_formKey.currentState?.validate() ?? false)) return;
 
+    final uid = UserManager().userId;
     final judulBaru = _etJudul.text.trim();
     final nomorBaru = _etNomor.text.trim();
     final pencipta = _etPencipta.text.trim();
@@ -406,11 +407,8 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     };
 
     try {
-      final church = UserManager().getChurchIdForCurrentView();
-      if (church == null) throw StateError("Gereja aktif tidak valid.");
-      final access = await ChurchWriteAccess.check(church);
+      await checkGlobalSongWrite(uid);
       if (!mounted) return;
-      access.assertCurrent();
       if (widget.songId != null) {
         await _db.collection("songs").doc(widget.songId).update(songData).timeout(const Duration(seconds: 20));
       } else {

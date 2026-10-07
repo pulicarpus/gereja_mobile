@@ -1,0 +1,7 @@
+{
+  "name": "gereja-profile-approval",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "dependencies": { "firebase-admin": "13.0.2", "firebase-functions": "6.3.2" }
+}

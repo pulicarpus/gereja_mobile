@@ -1,3 +1,4 @@
+import 'approval_service.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -61,6 +62,10 @@ class _SinkronisasiJemaatPageState extends State<SinkronisasiJemaatPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(cacheSaved
         ? 'Data jemaat berhasil ditautkan.' : 'Data berhasil ditautkan. Cache lokal belum diperbarui; profil akan dimuat ulang.')));
       _finish(true);
+    } on ApprovalPending catch (pending) {
+      if (!mounted || request != _request || !_sameSession) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(pending.message)));
+      _finish(false);
     } catch (e) {
       if (mounted && request == _request && _sameSession) setState(() { _error = profileError(e); _uncertain = e is TimeoutException; });
     } finally { if (mounted && request == _request) setState(() => _loading = false); }
@@ -87,11 +92,11 @@ class _SinkronisasiJemaatPageState extends State<SinkronisasiJemaatPage> {
         const SizedBox(height: 24), Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(children: [
           const Text('Data ditemukan', style: TextStyle(fontWeight: FontWeight.bold)),
           Text(profileMaskedName(_candidate!.data['namaLengkap'])),
-          const Text('Nama ditampilkan sebagian sebelum verifikasi.'),
+          const Text('Tautan baru berlaku setelah disetujui Admin Gereja.'),
         ]))),
         TextField(controller: _year, enabled: !_loading && !_uncertain && _sameSession, keyboardType: TextInputType.number,
           inputFormatters: [FilteringTextInputFormatter.digitsOnly], maxLength: 4, decoration: const InputDecoration(labelText: 'Tahun lahir (empat digit)')),
-        ElevatedButton.icon(onPressed: _loading || _uncertain || !_sameSession ? null : _verify, icon: const Icon(Icons.verified_user), label: const Text('VERIFIKASI & HUBUNGKAN')),
+        ElevatedButton.icon(onPressed: _loading || _uncertain || !_sameSession ? null : _verify, icon: const Icon(Icons.verified_user), label: const Text('AJUKAN TAUTAN KE ADMIN')),
         TextButton(onPressed: _loading || _uncertain ? null : () => setState(() { _request++; _candidate = null; _phone.clear(); _year.clear(); _error = null; }), child: const Text('Bukan data saya, cari ulang')),
       ],
       const SizedBox(height: 24), const Text('Jika nomor dipakai bersama, tanggal lahir belum valid, atau tautan salah, hubungi Admin Gereja. Tautan lama tidak dipindah otomatis.', textAlign: TextAlign.center),
@@ -102,3 +107,4 @@ class _SinkronisasiJemaatPageState extends State<SinkronisasiJemaatPage> {
     ]),
   ));
 }
+

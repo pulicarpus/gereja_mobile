@@ -1,0 +1,12 @@
+{
+  "firestore": { "rules": "firestore.release.rules" },
+  "storage": { "rules": "storage.release.rules" },
+  "functions": { "source": "../../functions" },
+  "emulators": {
+    "firestore": { "host": "127.0.0.1", "port": 8080 },
+    "storage": { "host": "127.0.0.1", "port": 9199 },
+    "auth": { "host": "127.0.0.1", "port": 9099 },
+    "functions": { "host": "127.0.0.1", "port": 5001 },
+    "ui": { "enabled": false }
+  }
+}

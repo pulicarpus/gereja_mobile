@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'user_manager.dart';
 import 'tambah_doa_page.dart';
 import 'secrets.dart';
+import 'prayer_feed.dart';
 
 class DoaPage extends StatefulWidget {
   const DoaPage({super.key});
@@ -27,6 +28,8 @@ class _DoaPageState extends State<DoaPage> {
 
   String _searchQuery = "";
   String _filter = "Semua";
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>>? _feed;
+  String? _feedChurch, _feedUid;
 
   bool get _canViewPrivateChurchPrayers =>
       _userManager.isAdmin() || _userManager.isSuperAdmin() || _userManager.isGembala();
@@ -285,6 +288,13 @@ class _DoaPageState extends State<DoaPage> {
     );
   }
 
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _prayers(String church, String uid) {
+    if (_feed == null || _feedChurch != church || _feedUid != uid) {
+      _feedChurch = church; _feedUid = uid; _feed = PrayerFeed().watch(church);
+    }
+    return _feed!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final churchId = _userManager.getChurchIdForCurrentView();
@@ -311,14 +321,12 @@ class _DoaPageState extends State<DoaPage> {
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(48), child: Padding(
+          padding: EdgeInsets.all(8), child: Text('Doa publik lama tanpa status privasi perlu diperiksa admin sebelum muncul untuk semua anggota.',
+            style: TextStyle(color: Colors.white70, fontSize: 11), textAlign: TextAlign.center))),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        // Sort dilakukan di perangkat agar data lama tanpa field tanggal tetap
-        // dapat ditampilkan dan tidak membutuhkan composite index tambahan.
-        stream: _db
-            .collection("prayers")
-            .where("churchId", isEqualTo: churchId)
-            .snapshots(),
+      body: StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+        stream: _prayers(churchId, myUid),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -337,13 +345,14 @@ class _DoaPageState extends State<DoaPage> {
                       "Pokok doa gagal dimuat. Periksa koneksi atau coba lagi.",
                       textAlign: TextAlign.center,
                     ),
+                    TextButton(onPressed: () => setState(() { _feed = null; }), child: const Text('Coba lagi')),
                   ],
                 ),
               ),
             );
           }
 
-          final docs = snapshot.data?.docs.toList() ?? <QueryDocumentSnapshot>[];
+          final docs = snapshot.data?.toList() ?? <QueryDocumentSnapshot<Map<String, dynamic>>>[];
           docs.sort((a, b) {
             final ad = _tanggal(a.data() as Map<String, dynamic>) ??
                 DateTime.fromMillisecondsSinceEpoch(0);
@@ -680,3 +689,4 @@ class _DoaPageState extends State<DoaPage> {
     );
   }
 }
+

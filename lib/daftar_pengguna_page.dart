@@ -1,3 +1,4 @@
+import 'profile_request_page.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'detail_pengguna_page.dart';
@@ -27,7 +28,7 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
   }
   @override void dispose() { _auth?.cancel(); _search.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Manajemen Pengguna')),
+    appBar: AppBar(title: const Text('Manajemen Pengguna'), actions: [IconButton(tooltip: 'Persetujuan anggota dan tautan', icon: const Icon(Icons.how_to_reg), onPressed: _expired ? null : () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileRequestPage())))]),
     body: _expired ? const Center(child: Text('Sesi berubah. Silakan masuk ulang.')) : Column(children: [
       Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _search,
         onChanged: (value) => setState(() => _query = value.trim().toLowerCase()),
@@ -56,3 +57,4 @@ class _DaftarPenggunaPageState extends State<DaftarPenggunaPage> {
         });
       }))]));
 }
+

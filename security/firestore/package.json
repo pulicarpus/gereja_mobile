@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "firebase emulators:exec --only firestore --project demo-gereja-rules --config firebase.emulator.json 'node --test --test-concurrency=1 rules.test.mjs'",
-    "test:storage": "firebase emulators:exec --only firestore,storage --project demo-gereja-rules --config firebase.storage-emulator.json 'node --test --test-concurrency=1 storage.test.mjs'"
+    "test:storage": "firebase emulators:exec --only firestore,storage --project demo-gereja-rules --config firebase.storage-emulator.json 'node --test --test-concurrency=1 storage.test.mjs'",
+    "test:release": "firebase emulators:exec --only firestore,storage,auth,functions --project demo-gereja-rules --config firebase.release-emulator.json 'node --test --test-concurrency=1 release.test.mjs'"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "4.0.1",

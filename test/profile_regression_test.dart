@@ -177,7 +177,7 @@ void main() {
     await tester.tap(find.text('CARI DATA SAYA')); await tester.pumpAndSettle();
     expect(find.text('Nama Resmi'), findsNothing); expect(find.text('Nama R.'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '2000');
-    await tester.tap(find.text('VERIFIKASI & HUBUNGKAN')); await tester.pumpAndSettle();
+    await tester.tap(find.text('AJUKAN TAUTAN KE ADMIN')); await tester.pumpAndSettle();
     expect(find.text('Profil Saya'), findsOneWidget); expect(find.text('Nama Resmi'), findsOneWidget);
     expect(find.text('BUKA'), findsNothing); expect(gateway.links, 1);
     expect(tester.takeException(), isNull);
@@ -214,7 +214,7 @@ void main() {
     final gateway = FakeProfileGateway(); final pending = Completer<bool>(); gateway.linking = () => pending.future;
     await tester.pumpWidget(MaterialApp(home: SinkronisasiJemaatPage(gateway: gateway, returnToProfile: true))); await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '081234567890'); await tester.tap(find.text('CARI DATA SAYA')); await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '2000'); await tester.tap(find.text('VERIFIKASI & HUBUNGKAN')); await tester.pump();
+    await tester.enterText(find.byType(TextField), '2000'); await tester.tap(find.text('AJUKAN TAUTAN KE ADMIN')); await tester.pump();
     await reveal(tester, find.text('Kembali ke Profil'));
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Bukan data saya, cari ulang')).onPressed, isNull);
     expect(tester.widget<TextButton>(find.widgetWithText(TextButton, 'Kembali ke Profil')).onPressed, isNull);

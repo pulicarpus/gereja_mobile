@@ -1,3 +1,4 @@
+import 'upload_support.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -74,7 +75,7 @@ class PengurusRepository {
         final ref = FirebaseStorage.instance.ref(uploadedPath);
         final task = ref.putFile(
           photo,
-          SettableMetadata(contentType: 'image/jpeg'),
+          await prepareUpload(photo),
         );
         try {
           await task.timeout(const Duration(seconds: 60));
@@ -139,7 +140,7 @@ class PengurusRepository {
       );
       final task = ref.putFile(
         photo,
-        SettableMetadata(contentType: 'image/jpeg'),
+        await prepareUpload(photo),
       );
       try {
         await task.timeout(const Duration(seconds: 60));
@@ -185,7 +186,7 @@ class PengurusRepository {
         );
         final task = ref.putFile(
           photo,
-          SettableMetadata(contentType: 'image/jpeg'),
+          await prepareUpload(photo),
         );
         try {
           await task.timeout(const Duration(seconds: 60));
@@ -223,3 +224,4 @@ class PengurusRepository {
         .timeout(const Duration(seconds: 30));
   }
 }
+

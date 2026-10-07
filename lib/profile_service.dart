@@ -1,3 +1,5 @@
+import 'approval_service.dart';
+import 'upload_support.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -114,7 +116,7 @@ class FirebaseProfileGateway implements ProfileGateway {
         final suffix = _db.collection('users').doc().id;
         uploadedPath = 'users/${account.uid}/profil_${account.uid}_$suffix.jpg';
         final ref = _storage.ref(uploadedPath);
-        final task = ref.putFile(photo, SettableMetadata(contentType: 'image/jpeg'));
+        final task = ref.putFile(photo, await prepareUpload(photo));
         try { await task.timeout(const Duration(seconds: 60)); }
         on TimeoutException { await task.cancel().timeout(const Duration(seconds: 5), onTimeout: () => false); rethrow; }
         changes['photoUrl'] = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
@@ -135,55 +137,27 @@ class FirebaseProfileGateway implements ProfileGateway {
     return ProfileSaved(result, cacheSaved: cached);
   }
   @override Future<ProfileCandidate> search(String phone) async {
-    final variants = profilePhoneVariants(phone), normalized = profilePhone(phone);
-    if (variants.isEmpty || normalized == null) throw StateError('Masukkan nomor HP/WhatsApp yang valid.');
+    if (profilePhone(phone) == null) throw StateError('Masukkan nomor HP/WhatsApp yang valid.');
     final account = await loadAccount();
-    if (!profileValidId(account.churchId)) throw StateError('Gereja asal akun belum tersedia. Hubungi Admin Gereja.');
-    final queries = await Future.wait([
-      for (var start = 0; start < variants.length; start += 10)
-        _db.collection('churches').doc(account.churchId).collection('jemaat')
-          .where('nomorTelepon', whereIn: variants.sublist(start, start + 10 < variants.length ? start + 10 : variants.length))
-          .limit(3).get(const GetOptions(source: Source.server)),
-    ]).timeout(const Duration(seconds: 20));
+    final result = await ApprovalService().call('searchJemaatCandidate', {'phone': phone});
     _guard(account.uid);
-    final matches = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
-    for (final query in queries) { for (final doc in query.docs) { matches[doc.id] = doc; } }
-    if (matches.isEmpty) throw StateError('Nomor tidak ditemukan di gereja asal akun. Periksa nomor atau hubungi Admin Gereja.');
-    if (matches.length != 1) throw StateError('Nomor dipakai lebih dari satu jemaat. Hubungi Admin Gereja untuk memastikan orang yang tepat.');
-    final doc = matches.values.single, data = _readData(matches.values.single.data());
-    final owner = profileText(data['uid']);
-    if (owner.isNotEmpty && owner != account.uid) throw StateError('Data jemaat sudah tertaut ke akun lain. Hubungi Admin Gereja.');
-    if (account.linked && account.jemaatId != doc.id) throw StateError('Akun sudah tertaut ke jemaat lain. Hubungi Admin Gereja.');
-    return ProfileCandidate(uid: account.uid, churchId: account.churchId, jemaatId: doc.id, phone: normalized, data: data);
+    return ProfileCandidate(uid: account.uid, churchId: result['churchId'] as String,
+      jemaatId: result['jemaatId'] as String, phone: phone,
+      data: {'namaLengkap': result['namaLengkap']});
   }
   @override Future<bool> link(ProfileCandidate candidate, String year) async {
     _guard(candidate.uid);
-    if (!RegExp(r'^\d{4}$').hasMatch(year)) throw StateError('Tahun lahir harus empat digit angka.');
-    final userRef = _db.collection('users').doc(candidate.uid);
-    final jemaatRef = _db.collection('churches').doc(candidate.churchId).collection('jemaat').doc(candidate.jemaatId);
-    final category = await _db.runTransaction<String>((tx) async {
-      final user = await tx.get(userRef), jemaat = await tx.get(jemaatRef);
-      _guard(candidate.uid);
-      if (!user.exists || !jemaat.exists) throw StateError('Data akun atau jemaat sudah tidak tersedia. Cari kembali atau hubungi Admin Gereja.');
-      final accountData = user.data()!, jemaatData = _readData(jemaat.data()!);
-      validateProfileLink(uid: candidate.uid, churchId: candidate.churchId, jemaatId: candidate.jemaatId,
-        phone: candidate.phone, inputYear: year, account: accountData, jemaat: jemaatData);
-      final category = KategorialConfig.canonicalJemaat(jemaatData['kelompok']);
-      if (accountData['isPengurus'] == true && KategorialConfig.canonicalJemaat(accountData['kelompok']) != category) {
-        throw StateError('Kategori pengurus perlu diperiksa Admin Gereja sebelum ditautkan.');
-      }
-      tx.update(jemaatRef, {'uid': candidate.uid});
-      tx.update(userRef, {'jemaatId': candidate.jemaatId, 'kelompok': category});
-      return category;
-    }).timeout(const Duration(seconds: 30));
-    // Local cache failure must not report a committed link as a failed link.
-    if (signedInUid != candidate.uid || _manager.userId != candidate.uid || _manager.originalChurchId != candidate.churchId) return false;
-    try {
-      await _manager.linkJemaatId(candidate.jemaatId).timeout(const Duration(seconds: 10));
-      _guard(candidate.uid);
-      await _manager.updateKategorialContext(category, pengurus: _manager.isPengurus).timeout(const Duration(seconds: 10));
-      return true;
-    } catch (_) { return false; }
+    final result = await ApprovalService().call('requestJemaatLink', {
+      'jemaatId': candidate.jemaatId, 'phone': candidate.phone, 'year': year});
+    _guard(candidate.uid);
+    if (result['status'] != 'approved') {
+      throw const ApprovalPending('Permohonan tautan terkirim. Admin Gereja perlu memastikan identitas Anda sebelum menyetujui.');
+    }
+    // An already approved retry refreshes the authoritative account/cache.
+    final fresh = await loadAccount();
+    await _manager.linkJemaatId(fresh.jemaatId);
+    await _manager.updateKategorialContext(profileText(fresh.data['kelompok']), pengurus: fresh.data['isPengurus'] == true);
+    return true;
   }
   @override Future<void> logout() async {
     try { await _auth.signOut().timeout(const Duration(seconds: 20)); }
@@ -192,3 +166,4 @@ class FirebaseProfileGateway implements ProfileGateway {
     await _manager.reset().timeout(const Duration(seconds: 10));
   }
 }
+

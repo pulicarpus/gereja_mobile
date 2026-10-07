@@ -2,9 +2,9 @@ name: Firestore Rules Emulator
 on:
   push:
     branches: ['security/firestore-compatibility']
-    paths: ['security/firestore/**', '.github/workflows/firestore-rules.yml']
+    paths: ['security/firestore/**', 'functions/**', '.github/workflows/firestore-rules.yml']
   pull_request:
-    paths: ['security/firestore/**', '.github/workflows/firestore-rules.yml']
+    paths: ['security/firestore/**', 'functions/**', '.github/workflows/firestore-rules.yml']
 permissions:
   contents: read
 jobs:
@@ -35,3 +35,12 @@ jobs:
           CI: 'true'
           FIREBASE_CLI_DISABLE_TELEMETRY: '1'
         run: npm run test:storage
+      - name: Install draft backend dependencies
+        working-directory: functions
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Test release rules and real callable approval flow
+        working-directory: security/firestore
+        env:
+          CI: 'true'
+          FIREBASE_CLI_DISABLE_TELEMETRY: '1'
+        run: npm run test:release

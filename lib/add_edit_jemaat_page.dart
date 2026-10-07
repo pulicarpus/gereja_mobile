@@ -1,3 +1,4 @@
+import 'upload_support.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -125,7 +126,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       if (_imageFile != null) {
         String fileName = "${widget.jemaatData?['id'] ?? 'baru'}_${DateTime.now().microsecondsSinceEpoch}";
         Reference ref = _storage.ref().child("churches/$churchId/foto_jemaat/$fileName.jpg");
-        await ref.putFile(_imageFile!).timeout(const Duration(seconds: 30));
+        await ref.putFile(_imageFile!, await prepareUpload(_imageFile!)).timeout(const Duration(seconds: 30));
         photoUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
       }
 

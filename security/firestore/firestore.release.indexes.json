@@ -1,0 +1,14 @@
+{
+  "indexes": [
+    { "collectionGroup": "prayers", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "churchId", "order": "ASCENDING" }, { "fieldPath": "isPrivat", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "prayers", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "churchId", "order": "ASCENDING" }, { "fieldPath": "uid", "order": "ASCENDING" }
+    ] },
+    { "collectionGroup": "profile_requests", "queryScope": "COLLECTION", "fields": [
+      { "fieldPath": "churchId", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" }
+    ] }
+  ],
+  "fieldOverrides": []
+}

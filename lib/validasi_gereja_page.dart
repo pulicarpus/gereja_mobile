@@ -1,238 +1,92 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
+import 'approval_service.dart';
 import 'user_manager.dart';
-import 'app_safety.dart';
-
-
-// 👇 IMPORT HALAMAN SINKRONISASI KITA 👇
-import 'sinkronisasi_jemaat_page.dart'; 
+import 'profile_service.dart';
+import 'sinkronisasi_jemaat_page.dart';
 
 class ValidasiGerejaPage extends StatefulWidget {
-  final String userUid;
-  final String userName;
-  final String userEmail;
-
-  const ValidasiGerejaPage({
-    super.key,
-    required this.userUid,
-    required this.userName,
-    required this.userEmail,
-  });
-
-  @override
-  State<ValidasiGerejaPage> createState() => _ValidasiGerejaPageState();
+  final String userUid, userName, userEmail;
+  const ValidasiGerejaPage({super.key, required this.userUid, required this.userName, required this.userEmail});
+  @override State<ValidasiGerejaPage> createState() => _ValidasiGerejaPageState();
 }
-
 class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
-  final TextEditingController _kodeController = TextEditingController();
-  final _db = FirebaseFirestore.instance;
+  final _code = TextEditingController();
   final _auth = FirebaseAuth.instance;
-  bool _isLoading = false;
-
-  void _kembaliKeLogin() async {
-    await _auth.signOut();
-    OneSignal.logout();
-    await UserManager().reset();
-    // Ganti dengan route login Bos
-    if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-    }
-  }
-
-  Future<void> _validasiDanSimpan() async {
-    if (_isLoading || !mounted) return;
-    String kodeMasukan = _kodeController.text.trim();
-
-    if (kodeMasukan.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Masukkan kode undangan!")),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
+  final _db = FirebaseFirestore.instance;
+  bool _loading = false;
+  String? _message;
+  bool get _current => _auth.currentUser?.uid == widget.userUid;
+  @override void dispose() { _code.dispose(); super.dispose(); }
+  Future<void> _submit() async {
+    if (_loading || !_current) return;
+    if (_code.text.trim().isEmpty) { setState(() => _message = 'Masukkan kode undangan.'); return; }
+    setState(() { _loading = true; _message = null; });
     try {
-      // Cari gereja berdasarkan kode undangan
-      var query = await _db
-          .collection("churches")
-          .where("kodeUndangan", isEqualTo: kodeMasukan)
-          .limit(1)
-          .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 20));
-      if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
-
-      if (query.docs.isEmpty) {
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Kode tidak valid!")),
-          );
-        }
-      } else {
-        var docGereja = query.docs.first;
-        String idGereja = docGereja.id;
-        
-        // 👇 JARING PENGAMAN ANTI-CRASH SULTAN 👇
-        // Ubah doc jadi Map dulu, biar aman ngecek datanya
-        Map<String, dynamic>? dataGereja = docGereja.data();
-        
-        // Cek kalau field namaGereja beneran ada, kalau nggak ada otomatis kasih nama "Gereja"
-        String namaGereja = "Gereja";
-        if (dataGereja.containsKey('namaGereja') && dataGereja['namaGereja'] != null) {
-            namaGereja = dataGereja['namaGereja'].toString();
-        }
-
-        await _simpanUserKeFirestore(idGereja, namaGereja);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: ${e.toString()}")),
-        );
-      }
-    }
-    finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _simpanUserKeFirestore(String churchId, String churchName) async {
-    try {
-      Map<String, dynamic> dataUser = {
-        "uid": widget.userUid,
-        "namaLengkap": widget.userName,
-        "email": widget.userEmail,
-        "role": "user",
-        "isBlocked": false,
-        "churchId": churchId,
-        "churchName": churchName,
-        "jemaatId": "", // 👈 DEFAULT KOSONG DULU
-        "isPengurus": false // 👈 DEFAULT USER BIASA
-      };
-
-      final ref = _db.collection("users").doc(widget.userUid);
-      final saved = await _db.runTransaction<Map<String, dynamic>>((tx) async {
-        final existing = await tx.get(ref);
-        final church = await tx.get(_db.collection("churches").doc(churchId));
-        if (_auth.currentUser?.uid != widget.userUid) throw StateError("Sesi berubah.");
-        if (!church.exists || church.data()?['kodeUndangan'] != _kodeController.text.trim()) {
-          throw StateError("Kode undangan sudah berubah. Periksa kembali.");
-        }
-        if (existing.exists) {
-          final account = existing.data()!;
-          final patch = registrationChurchPatch(account, churchId, churchName);
-          tx.update(ref, patch);
-          return {...account, ...patch};
-        } else {
-          tx.set(ref, dataUser);
-          return dataUser;
-        }
+      final ref = _db.collection('users').doc(widget.userUid);
+      await _db.runTransaction((tx) async {
+        final account = await tx.get(ref);
+        if (!_current) throw StateError('Sesi berubah.');
+        if (!account.exists) tx.set(ref, {'uid': widget.userUid, 'email': widget.userEmail,
+          'namaLengkap': widget.userName, 'photoUrl': _auth.currentUser?.photoURL,
+          'role': 'user', 'isBlocked': false, 'churchId': '', 'churchName': '',
+          'jemaatId': '', 'isPengurus': false, 'daerah': ''});
       }).timeout(const Duration(seconds: 20));
-      if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
-
-      // --- SINKRONISASI ONESIGNAL (Add Tag) ---
-      OneSignal.User.addTagWithKey("active_church", churchId);
-
-      // Simpan ke SharedPreferences via UserManager
-      final userManager = UserManager();
-      await userManager.setUser(
-        role: "user",
-        churchId: churchId,
-        churchName: churchName,
-        uId: widget.userUid, 
-        uNama: saved['namaLengkap']?.toString() ?? widget.userName, 
-        uFoto: saved['photoUrl']?.toString() ?? _auth.currentUser?.photoURL, 
-        uKomisi: saved['kelompok']?.toString() ?? "Umum", 
-        uAdminDaerahArea: saved['adminDaerahArea']?.toString(),
-        uDaerah: saved['daerah']?.toString(),
-        uIsPengurus: saved['isPengurus'] == true, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
-      );
-
-      if (mounted && _auth.currentUser?.uid == widget.userUid) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Berhasil masuk ke $churchName")),
-        );
-        
-        // 👇 PENGALIHAN JALUR SULTAN: KE SINKRONISASI DULU 👇
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const SinkronisasiJemaatPage()),
-          (route) => false,
-        );
+      if (!_current) throw StateError('Sesi berubah.');
+      await ApprovalService().call('requestChurchMembership', {'code': _code.text.trim()});
+      if (mounted && _current) setState(() => _message = 'Permohonan terkirim. Tunggu persetujuan Admin Gereja, lalu tekan Periksa persetujuan.');
+    } catch (e) { if (mounted) setState(() => _message = profileError(e)); }
+    finally { if (mounted) setState(() => _loading = false); }
+  }
+  Future<void> _refresh() async {
+    if (_loading || !_current) return;
+    setState(() { _loading = true; _message = null; });
+    try {
+      final account = await FirebaseProfileGateway().loadAccount();
+      if (!mounted || !_current) return;
+      if (account.churchId.isEmpty) {
+        final request = await _db.collection('profile_requests').doc('membership_${widget.userUid}')
+          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
+        if (mounted && _current) setState(() => _message = request.data()?['status'] == 'rejected'
+          ? 'Permohonan ditolak. Periksa kode dan identitas dengan admin sebelum mengirim ulang.'
+          : 'Gereja belum disetujui. Hubungi Admin Gereja atau periksa lagi nanti.');
+        return;
       }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal simpan: ${e.toString()}")),
-        );
-      }
-    }
+      // Account/church/link remain authoritative; cache failure can be retried.
+      await UserManager().setUser(role: account.role, churchId: account.churchId, churchName: account.churchName,
+        uId: account.uid, uNama: account.name, uFoto: account.photo,
+        uKomisi: account.data['kelompok']?.toString() ?? 'Umum',
+        uAdminDaerahArea: account.data['adminDaerahArea']?.toString(), uDaerah: account.data['daerah']?.toString(),
+        uIsPengurus: account.data['isPengurus'] == true);
+      if (!mounted || !_current) return;
+      try { OneSignal.User.addTagWithKey('active_church', account.churchId); } catch (_) {}
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const SinkronisasiJemaatPage()), (_) => false);
+    } catch (e) { if (mounted) setState(() => _message = profileError(e)); }
+    finally { if (mounted) setState(() => _loading = false); }
   }
-
-  @override
-  void dispose() {
-    _kodeController.dispose();
-    super.dispose();
+  Future<void> _logout() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await FirebaseProfileGateway().logout();
+      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+    } catch (e) { if (mounted) setState(() => _message = profileError(e)); }
+    finally { if (mounted) setState(() => _loading = false); }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (!_isLoading) _kembaliKeLogin();
-        return false;
-      },
-      child: Scaffold(
-        appBar: AppBar(title: const Text("Validasi Gereja")),
-        body: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text(
-                "Selamat Datang!",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Silakan masukkan kode undangan dari gereja Anda untuk melanjutkan.",
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 30),
-              TextField(
-                controller: _kodeController,
-                decoration: const InputDecoration(
-                  labelText: "Kode Undangan",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.vpn_key),
-                ),
-                textCapitalization: TextCapitalization.characters,
-              ),
-              const SizedBox(height: 20),
-              if (_isLoading)
-                const CircularProgressIndicator()
-              else
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _validasiDanSimpan,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.indigo,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text("SIMPAN GEREJA"),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  @override Widget build(BuildContext context) => PopScope(canPop: false, child: Scaffold(
+    appBar: AppBar(title: const Text('Pendaftaran Gereja'), leading: IconButton(onPressed: _loading ? null : _logout, icon: const Icon(Icons.arrow_back))),
+    body: ListView(padding: const EdgeInsets.all(24), children: [
+      const Text('Masukkan kode undangan dari gereja Anda. Admin Gereja memeriksa identitas dan menyetujui keanggotaan.'),
+      const SizedBox(height: 24),
+      TextField(controller: _code, enabled: !_loading && _current, maxLength: 100,
+        decoration: const InputDecoration(labelText: 'Kode undangan')),
+      if (_loading) const LinearProgressIndicator(),
+      if (_message != null) Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(_message!)),
+      ElevatedButton(onPressed: _loading || !_current ? null : _submit, child: const Text('Ajukan ke Admin Gereja')),
+      TextButton(onPressed: _loading || !_current ? null : _refresh, child: const Text('Periksa persetujuan')),
+      TextButton(onPressed: _loading ? null : _logout, child: const Text('Kembali ke login')),
+    ])));
 }

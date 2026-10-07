@@ -17,6 +17,7 @@ import 'dart:io';
 
 import 'secrets.dart'; 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 import 'chat_waveform.dart';
 
@@ -169,7 +170,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
           .doc(churchId)
           .collection("muted_$_collectionPath")
           .doc(uid)
-          .get();
+          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
 
       if (muteDoc.exists) {
         if (mounted) {
@@ -663,6 +664,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
+  String? _pendingSendId, _pendingSendKey;
   Future<bool> _sendToFirestore({
     required String isi,
     required String tipe,
@@ -730,7 +732,19 @@ class _ChatroomPageState extends State<ChatroomPage> {
           return false;
         }
 
-        await ref.update({"pesan": "$text (diedit)"});
+        await _db.runTransaction((tx) async {
+          final actor = await tx.get(_db.collection('users').doc(currentUser.uid));
+          final fresh = await tx.get(ref);
+          if (!mounted || _auth.currentUser?.uid != currentUser.uid || _churchId != churchId ||
+              !actor.exists || !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+            throw StateError('Sesi atau izin chat berubah.');
+          }
+          final owner = (fresh.data()?['pengirimId'] ?? fresh.data()?['senderId'])?.toString();
+          if (!fresh.exists || owner != currentUser.uid || (fresh.data()?['tipe'] ?? 'text') != 'text') {
+            throw StateError('Pesan sudah berubah atau tidak tersedia.');
+          }
+          tx.update(ref, {'pesan': '$text (diedit)'});
+        }).timeout(const Duration(seconds: 20));
         if (mounted) {
           setState(() {
             _editingMessageId = null;
@@ -742,11 +756,21 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
 
       final reply = _replyMessage;
-      await _db
-          .collection("churches")
-          .doc(churchId)
-          .collection(_collectionPath)
-          .add({
+      final key = '${currentUser.uid}|$churchId|$_collectionPath|$tipe|$text|${url ?? ''}';
+      if (_pendingSendKey != key) { _pendingSendKey = key; _pendingSendId = null; }
+      final messages = _db.collection('churches').doc(churchId).collection(_collectionPath);
+      final ref = messages.doc(_pendingSendId ??= messages.doc().id);
+      await _db.runTransaction((tx) async {
+        final actor = await tx.get(_db.collection('users').doc(currentUser.uid));
+        final muted = await tx.get(_db.collection('churches').doc(churchId)
+            .collection('muted_$_collectionPath').doc(currentUser.uid));
+        final existing = await tx.get(ref);
+        if (!mounted || _auth.currentUser?.uid != currentUser.uid || _churchId != churchId ||
+            !actor.exists || !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+          throw StateError('Sesi atau izin chat berubah.');
+        }
+        if (muted.exists) throw StateError('Anda sedang dibungkam di ruang ini.');
+        if (!existing.exists) tx.set(ref, {
         "pengirimId": currentUser.uid,
         "pengirimNama": UserManager().userNama ?? currentUser.displayName ?? "Jemaat",
         "pengirimFoto": UserManager().userFotoUrl,
@@ -763,6 +787,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         "replyToImage":
             (reply != null && reply['tipe'] == 'image') ? reply['fileUrl'] : null,
       });
+      }).timeout(const Duration(seconds: 20));
+      _pendingSendId = null;
+      _pendingSendKey = null;
 
       _lastSendAt = now;
       if (mounted) {
@@ -889,6 +916,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
       return;
     }
 
+    final churchId = _churchId;
+    if (churchId == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -914,8 +943,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
     ) ?? false;
     if (!confirmed) return;
 
-    final churchId = _churchId;
-    if (churchId == null) return;
+    if (!mounted || _auth.currentUser?.uid != currentUid || _churchId != churchId) return;
 
     try {
       final ref = _db
@@ -923,19 +951,21 @@ class _ChatroomPageState extends State<ChatroomPage> {
           .doc(churchId)
           .collection(_collectionPath)
           .doc(docId);
-      final latest = await ref.get();
-      if (!latest.exists) {
-        _showSnack("Pesan sudah tidak tersedia.");
-        return;
-      }
-      final data = latest.data() as Map<String, dynamic>;
-      final latestOwner =
-          (data['pengirimId'] ?? data['senderId'] ?? '').toString();
-      if (latestOwner != currentUid && !_canModerate) {
-        _showSnack("Izin menghapus pesan berubah.");
-        return;
-      }
-      await ref.delete();
+      await _db.runTransaction((tx) async {
+        final actor = await tx.get(_db.collection('users').doc(currentUid));
+        final latest = await tx.get(ref);
+        if (_auth.currentUser?.uid != currentUid || _churchId != churchId || !actor.exists ||
+            !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+          throw StateError('Sesi atau izin chat berubah.');
+        }
+        if (!latest.exists) return;
+        final data = latest.data()!;
+        final owner = (data['pengirimId'] ?? data['senderId'])?.toString();
+        if (owner != currentUid && !permitsChurchWrite(actor.data()!, churchId, category: widget.filterKategorial)) {
+          throw StateError('Izin menghapus pesan sudah berubah.');
+        }
+        tx.delete(ref);
+      }).timeout(const Duration(seconds: 20));
       _showSnack("Pesan dihapus.");
     } catch (e) {
       debugPrint("Gagal menghapus pesan: $e");
@@ -1027,7 +1057,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
           .doc(churchId)
           .collection("muted_$_collectionPath")
           .doc(targetUid);
-      final doc = await ref.get();
+      final doc = await ref.get().timeout(const Duration(seconds: 20));
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop();
 
@@ -1074,6 +1104,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
                     return;
                   }
                   try {
+                    final access = await ChurchWriteAccess.check(churchId, category: widget.filterKategorial);
+                    access.assertCurrent();
                     if (isMuted) {
                       await ref.delete();
                       _showSnack("$targetName berhasil di-unmute.");

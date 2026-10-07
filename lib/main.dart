@@ -175,7 +175,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       if (!mounted || user?.uid == _sessionUid) return;
       _sessionUid = user?.uid;
       _churchSubscription?.cancel();
-      UserManager().reset();
+      unawaited(UserManager().reset().catchError((Object _) {}));
       Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
     });
     _initSession();

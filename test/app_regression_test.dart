@@ -123,4 +123,13 @@ void main() {
     expect(permitsRegionWrite({'role': 'bpj', 'daerah': 'Selatan'}, 'Utara', allowPastors: true), isFalse);
   });
 
+  test('Room access uses fresh church/category without granting moderation', () {
+    final actor = {'role': 'user', 'churchId': 'A', 'kelompok': 'AMKI'};
+    expect(permitsRoomAccess(actor, 'A', 'AMKI'), isTrue);
+    expect(permitsChurchWrite(actor, 'A', category: 'AMKI'), isFalse);
+    expect(permitsRoomAccess(actor, 'B', null), isFalse);
+    expect(permitsRoomAccess(actor, 'A', 'Perkaria'), isFalse);
+    expect(permitsRoomAccess({...actor, 'isBlocked': true}, 'A', null), isFalse);
+  });
+
 }

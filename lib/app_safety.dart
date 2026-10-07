@@ -220,3 +220,11 @@ Future<void> saveRegionChanges(String area,
     }
   }).timeout(const Duration(seconds: 20));
 }
+
+bool permitsRoomAccess(Map<String, dynamic> actor, String churchId, String? category) {
+  if (actor['isBlocked'] == true || churchId.trim().isEmpty) return false;
+  if (actor['role'] == 'superadmin') return true;
+  if (legacyText(actor['churchId']).trim() != churchId.trim()) return false;
+  if (actor['role'] == 'admin' || category == null || category.trim().isEmpty) return true;
+  return KategorialConfig.same(actor['kelompok'], category);
+}

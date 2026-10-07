@@ -333,7 +333,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                   }
 
                   await checkRegionWrite(widget.namaDaerah);
-                  await postRef.set({
+                  final postData = {
                     "daerah": widget.namaDaerah,
                     "kategori": kategori,
                     "judul": txtJudul.text.trim(),
@@ -343,6 +343,16 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     "namaFile": fileNameOriginal, 
                     "pengirim": _user.userNama ?? "Pengurus",
                     "isImage": isImage,
+                  };
+                  final uid = _user.userId;
+                  await _db.runTransaction((tx) async {
+                    final actor = await tx.get(_db.collection('users').doc(uid));
+                    final existing = await tx.get(postRef);
+                    if (FirebaseAuth.instance.currentUser?.uid != uid || _user.userId != uid ||
+                        !actor.exists || !permitsRegionWrite(actor.data()!, widget.namaDaerah)) {
+                      throw StateError('Sesi atau izin daerah berubah.');
+                    }
+                    if (!existing.exists) tx.set(postRef, postData);
                   }).timeout(const Duration(seconds: 20));
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
 

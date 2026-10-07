@@ -78,7 +78,15 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         });
       }
     } catch (e) {
-      if (mounted && generation == _loadGeneration) setState(() { _isLoading = false; _loadError = "Gagal memuat data jemaat."; });
+      if (mounted && generation == _loadGeneration) setState(() { _loadError = "Gagal memuat data jemaat."; });
+    } finally {
+      if (mounted && generation == _loadGeneration) setState(() {
+        _isLoading = false;
+        if (_userManager.userId != uid || _userManager.getChurchIdForCurrentView() != churchId) {
+          _allJemaat = []; _filteredJemaat = [];
+          _loadError = "Sesi atau gereja aktif berubah. Buka ulang halaman.";
+        }
+      });
     }
   }
 

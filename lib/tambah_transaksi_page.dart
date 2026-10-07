@@ -38,6 +38,7 @@ class TambahTransaksiPage extends StatefulWidget {
 }
 
 class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
+  String? _newDocumentId;
   final _db = FirebaseFirestore.instance;
   final _formKey = GlobalKey<FormState>();
   
@@ -115,7 +116,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     
     final user = UserManager();
     final churchId = user.getChurchIdForCurrentView();
-    final kategori = widget.filterKategorial?.trim();
+    final kategori = _kategoriAktif?.trim();
     final canEdit = user.isAdmin() ||
         (kategori != null && kategori.isNotEmpty && user.isPengurus && KategorialConfig.same(user.userKomisi, kategori));
     if (!canEdit) {
@@ -152,17 +153,17 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
           "jenis": _jenisTransaksi,
           "tanggal": Timestamp.fromDate(_selectedDate),
           "kategori": kategoriSave, // <--- SEKARANG KATEGORI DISIMPAN!
-        });
+        }).timeout(const Duration(seconds: 20));
         _showSnack("Berhasil diupdate di Kas $kategoriSave");
       } else {
         // --- MODE TAMBAH BARU ---
-        await collection.add({
+        await collection.doc(_newDocumentId ??= collection.doc().id).set({
           "keterangan": _keteranganController.text.trim(),
           "jumlah": jumlah,
           "jenis": _jenisTransaksi,
           "tanggal": Timestamp.fromDate(_selectedDate),
           "kategori": kategoriSave, // <--- SEKARANG KATEGORI DISIMPAN!
-        });
+        }).timeout(const Duration(seconds: 20));
         _showSnack("Berhasil disimpan ke Kas $kategoriSave");
       }
       

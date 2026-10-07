@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'dart:convert'; 
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart'; 
 import 'add_edit_jadwal_page.dart';
 import 'susunan_acara_page.dart';
@@ -608,7 +609,8 @@ class _JadwalPageState extends State<JadwalPage> {
                                .doc(churchId)
                                .collection('jadwal')
                                .doc(id);
-                           final latest = await ref.get();
+                           final access = await ChurchWriteAccess.check(churchId!, category: widget.filterKategorial);
+                           final latest = await ref.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
                            if (!latest.exists) {
                              throw StateError("Jadwal sudah tidak tersedia");
                            }
@@ -633,9 +635,10 @@ class _JadwalPageState extends State<JadwalPage> {
                              }
                              return;
                            }
-                           await ref.delete();
+                           access.assertCurrent();
+                           await ref.delete().timeout(const Duration(seconds: 20));
                            if (c.mounted) Navigator.pop(c);
-                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal dihapus.")));
+                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Jadwal dihapus. Pengingat yang sudah dijadwalkan sebelumnya mungkin masih terkirim.")));
                          } catch (_) {
                            if (c.mounted) Navigator.pop(c);
                            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus jadwal."), backgroundColor: Colors.red));

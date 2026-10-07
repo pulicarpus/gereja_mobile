@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'secrets.dart';
 import 'loading_sultan.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 
 class AddEditLaguPage extends StatefulWidget {
   final String? songId;
@@ -37,6 +38,7 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
 
   final String _geminiApiKey = geminiApiKey;
 
+  String? _newSongId;
   bool get _canManageSongs => UserManager().isAdmin();
 
   @override
@@ -404,10 +406,15 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     };
 
     try {
+      final church = UserManager().getChurchIdForCurrentView();
+      if (church == null) throw StateError("Gereja aktif tidak valid.");
+      final access = await ChurchWriteAccess.check(church);
+      if (!mounted) return;
+      access.assertCurrent();
       if (widget.songId != null) {
-        await _db.collection("songs").doc(widget.songId).update(songData);
+        await _db.collection("songs").doc(widget.songId).update(songData).timeout(const Duration(seconds: 20));
       } else {
-        await _db.collection("songs").add(songData);
+        await _db.collection("songs").doc(_newSongId ??= _db.collection("songs").doc().id).set(songData).timeout(const Duration(seconds: 20));
       }
 
       if (!mounted) return;
@@ -654,3 +661,4 @@ class _AddEditLaguPageState extends State<AddEditLaguPage> {
     );
   }
 }
+

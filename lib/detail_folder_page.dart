@@ -12,6 +12,7 @@ import 'loading_sultan.dart';
 import 'secrets.dart';
 import 'telegram_gallery_cache.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 
 class GalleryImage {
@@ -312,7 +313,9 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
         return true;
       } catch (e) {
         debugPrint("Firestore gagal menyimpan foto galeri: $e");
-        if (telegramMessageId != null) {
+        final rejected = e is StateError || (e is FirebaseException &&
+            const ['permission-denied', 'unauthenticated', 'invalid-argument'].contains(e.code));
+        if (rejected && telegramMessageId != null) {
           await _tryDeleteTelegramMessage(telegramMessageId);
         }
         return false;
@@ -338,15 +341,16 @@ class _DetailFolderPageState extends State<DetailFolderPage> {
         .collection(_collectionPath)
         .doc(widget.folderId);
 
-    final folderDoc = await folderRef.get();
-    if (!folderDoc.exists) {
-      throw StateError("Folder sudah dihapus");
-    }
+    final access = await ChurchWriteAccess.check(churchId, category: widget.filterKategorial);
+    final imageRef = folderRef.collection('images').doc();
+    await _db.runTransaction((tx) async {
+      await access.inTransaction(tx);
+      final folder = await tx.get(folderRef);
+      if (!folder.exists) throw StateError('Folder sudah dihapus.');
+      access.assertCurrent();
+      tx.set(imageRef, {'imageUrl': fileId, 'timestamp': DateTime.now().millisecondsSinceEpoch});
+    }).timeout(const Duration(seconds: 20));
 
-    await folderRef.collection("images").add({
-      "imageUrl": fileId,
-      "timestamp": DateTime.now().millisecondsSinceEpoch,
-    });
   }
 
   Future<void> _tryDeleteTelegramMessage(int messageId) async {
@@ -787,3 +791,4 @@ class _TelegramGalleryItemState extends State<TelegramGalleryItem> {
     );
   }
 }
+

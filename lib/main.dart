@@ -15,6 +15,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
+import 'kategorial_config.dart';
+import 'info_surat_daerah_page.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
 import 'jadwal_page.dart';
@@ -56,25 +59,45 @@ void _initOneSignal() {
 
   OneSignal.Notifications.addClickListener((event) {
     final data = event.notification.additionalData;
-    
-    if (data != null && data['type'] != null) {
-      String type = data['type'];
-      
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (navigatorKey.currentState != null) {
-          if (type == 'chat') {
-            String? namaKategorial = data['kategorial']; 
-            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => ChatroomPage(filterKategorial: namaKategorial)));
-          } else if (type == 'doa') {
-            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => const DoaPage()));
-          } else if (type == 'jadwal') {
-            String? namaKategorial = data['kategorial'];
-            navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => JadwalPage(filterKategorial: namaKategorial)));
-          }
-        }
-      });
-    }
+    if (data == null) return;
+    _pendingNotification = Map<String, dynamic>.from(data);
+    _openPendingNotification();
   });
+}
+
+Map<String, dynamic>? _pendingNotification;
+String? _notificationReadyUid;
+
+void _openPendingNotification() {
+  final data = _pendingNotification;
+  final nav = navigatorKey.currentState;
+  final manager = UserManager();
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  if (data == null || nav == null || uid == null || uid != _notificationReadyUid || manager.userId != uid) return;
+  _pendingNotification = null;
+  final type = data['type']?.toString();
+  if (type == 'info_daerah') {
+    final area = data['daerah']?.toString().trim() ?? '';
+    if (area.isEmpty || !(manager.isSuperAdmin() || manager.adminDaerahArea == area ||
+        ((manager.isGembala() || manager.isBPJ()) && manager.userDaerah == area))) return;
+    nav.push(MaterialPageRoute(builder: (_) => InfoSuratDaerahPage(namaDaerah: area)));
+    return;
+  }
+  final targetChurch = data['churchId']?.toString().trim();
+  final church = manager.getChurchIdForCurrentView();
+  if (church == null || (targetChurch != null && targetChurch.isNotEmpty && targetChurch != church)) return;
+  // Old payloads cannot identify another church while Superadmin is monitoring it.
+  if ((targetChurch == null || targetChurch.isEmpty) && church != manager.originalChurchId) return;
+  final category = data['kategorial']?.toString();
+  if (category != null && category.trim().isNotEmpty && !manager.isAdmin() &&
+      !KategorialConfig.same(category, manager.userKomisi)) return;
+  if (type == 'chat') {
+    nav.push(MaterialPageRoute(builder: (_) => ChatroomPage(filterKategorial: category)));
+  } else if (type == 'doa') {
+    nav.push(MaterialPageRoute(builder: (_) => const DoaPage()));
+  } else if (type == 'jadwal') {
+    nav.push(MaterialPageRoute(builder: (_) => JadwalPage(filterKategorial: category)));
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -111,6 +134,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
   
   final PageController _pageController = PageController();
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _churchSubscription;
+  StreamSubscription<User?>? _authSubscription;
+  String? _sessionUid;
   int _currentIndex = 0;
 
   String? _fotoGembalaUrl;
@@ -144,6 +169,15 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _setAyatHariIni();
     _scheduleAyatRefresh();
+    _notificationReadyUid = null;
+    _sessionUid = _auth.currentUser?.uid;
+    _authSubscription = _auth.authStateChanges().listen((user) {
+      if (!mounted || user?.uid == _sessionUid) return;
+      _sessionUid = user?.uid;
+      _churchSubscription?.cancel();
+      UserManager().reset();
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+    });
     _initSession();
   }
 
@@ -397,6 +431,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     _ayatTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _churchSubscription?.cancel();
+    _authSubscription?.cancel();
+    _notificationReadyUid = null;
     _pageController.dispose();
     super.dispose();
   }
@@ -497,6 +533,10 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     _setupOneSignal();
     _loadDataGereja();
     await _loadHomeLocalState();
+    if (mounted && _auth.currentUser?.uid == userManager.userId) {
+      _notificationReadyUid = userManager.userId;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openPendingNotification());
+    }
     _isRefreshingSession = false;
     if (mounted) setState(() {});
     } catch (_) {
@@ -611,18 +651,24 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
 
+    if (_isLoadingUpload) return;
+    final churchId = user.getChurchIdForCurrentView();
+    if (churchId == null) return;
     final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (pickedFile == null) return;
+    if (pickedFile == null || !mounted) return;
 
     setState(() => _isLoadingUpload = true);
     try {
-      String churchId = user.activeChurchId!;
+      final access = await ChurchWriteAccess.check(churchId);
       File imageFile = File(pickedFile.path);
       String fileName = "header_${DateTime.now().millisecondsSinceEpoch}.jpg";
       Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-      await ref.putFile(imageFile);
-      String url = await ref.getDownloadURL();
-      await _db.collection("churches").doc(churchId).update({"fotoGerejaUrl": url});
+      await ref.putFile(imageFile).timeout(const Duration(seconds: 30));
+      String url = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        tx.update(_db.collection("churches").doc(churchId), {"fotoGerejaUrl": url});
+      }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Foto Gereja berhasil diperbarui.")));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal upload foto: $e")));
@@ -634,6 +680,9 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
   void _tampilkanDialogEditRekening() {
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
+    final churchId = user.getChurchIdForCurrentView();
+    if (churchId == null) return;
+    bool saving = false;
 
     final txtBank = TextEditingController(text: _namaBank);
     final txtRekening = TextEditingController(text: _noRekening);
@@ -662,17 +711,24 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
             onPressed: () async {
-              Navigator.pop(context);
-              String churchId = user.activeChurchId!;
+              if (saving || !mounted) return;
+              saving = true;
               try {
-                await _db.collection("churches").doc(churchId).update({
+                final access = await ChurchWriteAccess.check(churchId);
+                await _db.runTransaction((tx) async {
+                  await access.inTransaction(tx);
+                  tx.update(_db.collection("churches").doc(churchId), {
                   "namaBank": txtBank.text.trim(),
                   "noRekening": txtRekening.text.trim(),
                   "atasNamaRekening": txtAtasNama.text.trim(),
                 });
+                }).timeout(const Duration(seconds: 20));
+                if (context.mounted) Navigator.pop(context);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data Rekening berhasil diperbarui.")));
               } catch (e) {
                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
+              } finally {
+                saving = false;
               }
             },
             child: const Text("Simpan"),
@@ -685,6 +741,9 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
   void _tampilkanDialogEditGembala() {
     final user = UserManager();
     if (!user.isAdmin() && !user.isSuperAdmin()) return;
+    final churchId = user.getChurchIdForCurrentView();
+    if (churchId == null) return;
+    bool saving = false;
 
     File? imageFile;
     final txtNama = TextEditingController(text: _namaGembala);
@@ -708,7 +767,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
                 GestureDetector(
                   onTap: () async {
                     final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-                    if (pickedFile != null) setStateDialog(() => imageFile = File(pickedFile.path));
+                    if (pickedFile != null && context.mounted && !saving) setStateDialog(() => imageFile = File(pickedFile.path));
                   },
                   child: CircleAvatar(
                     radius: 50,
@@ -739,30 +798,36 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
               onPressed: () async {
+                if (saving || !mounted) return;
+                saving = true;
                 setState(() => _isLoadingUpload = true);
-                Navigator.pop(context);
                 String? finalFotoUrl = _fotoGembalaUrl;
-                String churchId = user.activeChurchId!;
                 try {
+                  final access = await ChurchWriteAccess.check(churchId);
                   if (imageFile != null) {
                     String fileName = "gembala_${DateTime.now().millisecondsSinceEpoch}.jpg";
                     Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-                    await ref.putFile(imageFile!);
-                    finalFotoUrl = await ref.getDownloadURL();
+                    await ref.putFile(imageFile!).timeout(const Duration(seconds: 30));
+                    finalFotoUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
                   }
-                  await _db.collection("churches").doc(churchId).update({
+                  await _db.runTransaction((tx) async {
+                  await access.inTransaction(tx);
+                  tx.update(_db.collection("churches").doc(churchId), {
                     "namaGembala": txtNama.text.trim(),
                     "waGembala": txtWa.text.trim(),
                     "fbGembala": txtFb.text.trim(),
                     "igGembala": txtIg.text.trim(),
                     "tiktokGembala": txtTiktok.text.trim(),
                     "ytGembala": txtYt.text.trim(),
-                    if (finalFotoUrl != null) "fotoGembalaUrl": finalFotoUrl,
+                    if (imageFile != null && finalFotoUrl != null) "fotoGembalaUrl": finalFotoUrl,
                   });
+                }).timeout(const Duration(seconds: 20));
+                if (context.mounted) Navigator.pop(context);
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil Gembala diperbarui.")));
                 } catch (e) {
                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
                 } finally {
+                  saving = false;
                   if (mounted) setState(() => _isLoadingUpload = false);
                 }
               },

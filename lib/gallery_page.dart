@@ -9,6 +9,7 @@ import 'loading_sultan.dart';
 import 'secrets.dart';
 import 'telegram_gallery_cache.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 
 class GalleryFolder {
@@ -256,6 +257,8 @@ class _GalleryPageState extends State<GalleryPage> {
 
                       setDialogState(() => saving = true);
                       try {
+                        final access = await ChurchWriteAccess.check(churchId, category: _kategori);
+                        access.assertCurrent();
                         await _db
                             .collection("churches")
                             .doc(churchId)
@@ -351,6 +354,7 @@ class _GalleryPageState extends State<GalleryPage> {
 
     final cachedIds = <String>[];
     try {
+      final access = await ChurchWriteAccess.check(churchId, category: _kategori);
       final folderRef = _db
           .collection("churches")
           .doc(churchId)
@@ -359,7 +363,8 @@ class _GalleryPageState extends State<GalleryPage> {
       final imagesRef = folderRef.collection("images");
 
       while (true) {
-        final page = await imagesRef.limit(400).get();
+        access.assertCurrent();
+        final page = await imagesRef.limit(400).get().timeout(const Duration(seconds: 20));
         if (page.docs.isEmpty) break;
 
         final batch = _db.batch();
@@ -368,10 +373,11 @@ class _GalleryPageState extends State<GalleryPage> {
           if (fileId.isNotEmpty) cachedIds.add(fileId);
           batch.delete(doc.reference);
         }
-        await batch.commit();
+        await batch.commit().timeout(const Duration(seconds: 20));
       }
 
-      await folderRef.delete();
+      access.assertCurrent();
+      await folderRef.delete().timeout(const Duration(seconds: 20));
 
       for (final fileId in cachedIds) {
         await TelegramGalleryCache.deleteCached(fileId);
@@ -611,3 +617,4 @@ class _GalleryPageState extends State<GalleryPage> {
     );
   }
 }
+

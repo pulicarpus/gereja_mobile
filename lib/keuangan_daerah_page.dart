@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'user_manager.dart';
+import 'app_safety.dart';
 
 // 👇 MESIN FORMAT TITIK OTOMATIS SAAT MENGETIK RUPIAH 👇
 class CurrencyInputFormatter extends TextInputFormatter {
@@ -16,7 +17,8 @@ class CurrencyInputFormatter extends TextInputFormatter {
     if (newValue.text.isEmpty) return newValue;
     String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleanText.isEmpty) return const TextEditingValue(text: '');
-    final int value = int.parse(cleanText);
+    final int? value = int.tryParse(cleanText);
+    if (value == null) return oldValue;
     final String formatted = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(value);
     return TextEditingValue(
       text: formatted,
@@ -249,8 +251,11 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
     bool isEdit = docId != null;
 
+    bool saving = false;
+    final newId = _db.collection("keuangan_daerah").doc().id;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -308,7 +313,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
+            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text("Batal")),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: isEdit ? Colors.blue : (isPemasukan ? Colors.green : Colors.red), foregroundColor: Colors.white),
               onPressed: () async {
@@ -323,9 +328,11 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   return;
                 }
 
-                Navigator.pop(dialogContext);
-
+                if (saving) return;
+                setStateDialog(() => saving = true);
                 try {
+                  await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+                  if (!mounted || !dialogContext.mounted) return;
                   Map<String, dynamic> payload = {
                     "daerah": widget.namaDaerah,
                     "jenis": jenis,
@@ -335,17 +342,20 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   };
 
                   if (isEdit) {
-                    await _db.collection("keuangan_daerah").doc(docId).update(payload);
+                    await _db.collection("keuangan_daerah").doc(docId).update(payload).timeout(const Duration(seconds: 20));
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Transaksi berhasil diedit!"), backgroundColor: Colors.blue));
                   } else {
-                    await _db.collection("keuangan_daerah").add(payload);
+                    await _db.collection("keuangan_daerah").doc(newId).set(payload).timeout(const Duration(seconds: 20));
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $jenis berhasil dicatat!"), backgroundColor: Colors.green));
                   }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
+                } finally {
+                  if (dialogContext.mounted) setStateDialog(() => saving = false);
                 }
               },
-              child: Text(isEdit ? "Simpan Perubahan" : "Simpan"),
+              child: Text(saving ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Simpan"),
             ),
           ],
         ),
@@ -394,12 +404,13 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
+                await checkRegionWrite(widget.namaDaerah, allowPastors: true);
                 final linkedRef = _db.collection("perpuluhan_daerah").doc(docId);
                 final linked = await linkedRef.get();
                 WriteBatch batch = _db.batch();
                 batch.delete(_db.collection("keuangan_daerah").doc(docId));
                 if (linked.exists) batch.delete(linkedRef);
-                await batch.commit();
+                await batch.commit().timeout(const Duration(seconds: 20));
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
               } catch (_) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus data."), backgroundColor: Colors.red));
@@ -818,8 +829,11 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     TextEditingController? autoNameController;
     bool isEdit = docId != null;
 
+    bool saving = false;
+    final newId = _db.collection("keuangan_daerah").doc().id;
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setStateDialog) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -924,7 +938,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
+            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text("Batal")),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: isEdit ? Colors.blue : Colors.indigo, foregroundColor: Colors.white),
               onPressed: () async {
@@ -940,9 +954,11 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                    return;
                 }
 
-                Navigator.pop(dialogContext);
-
+                if (saving) return;
+                setStateDialog(() => saving = true);
                 try {
+                  await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+                  if (!mounted || !dialogContext.mounted) return;
                   WriteBatch batch = _db.batch();
 
                   if (isEdit) {
@@ -958,10 +974,10 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                       "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
                     }, SetOptions(merge: true));
 
-                    await batch.commit();
+                    await batch.commit().timeout(const Duration(seconds: 20));
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan direvisi & Kas disesuaikan!"), backgroundColor: Colors.blue));
                   } else {
-                    DocumentReference docRef = _db.collection("perpuluhan_daerah").doc();
+                    DocumentReference docRef = _db.collection("perpuluhan_daerah").doc(newId);
                     batch.set(docRef, {
                       "daerah": widget.namaDaerah, "tipe": tipeSumber, "nama": inputNama,
                       "nominal": nom, "tanggal": Timestamp.fromDate(selectedDate),
@@ -971,14 +987,17 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                       "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
                     });
 
-                    await batch.commit();
+                    await batch.commit().timeout(const Duration(seconds: 20));
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan dicatat & masuk ke Kas!"), backgroundColor: Colors.green));
                   }
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
                 } catch (e) {
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
+                } finally {
+                  if (dialogContext.mounted) setStateDialog(() => saving = false);
                 }
               },
-              child: Text(isEdit ? "Simpan Perubahan" : "Simpan"),
+              child: Text(saving ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Simpan"),
             ),
           ],
         ),
@@ -1026,11 +1045,16 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               Navigator.pop(ctx);
+              try {
+              await checkRegionWrite(widget.namaDaerah, allowPastors: true);
               WriteBatch batch = _db.batch();
               batch.delete(_db.collection("perpuluhan_daerah").doc(docId));
               batch.delete(_db.collection("keuangan_daerah").doc(docId));
-              await batch.commit();
+              await batch.commit().timeout(const Duration(seconds: 20));
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hapus belum berhasil: $e")));
+              }
             },
             child: const Text("Hapus", style: TextStyle(color: Colors.white)),
           )

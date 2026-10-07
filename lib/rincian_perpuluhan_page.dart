@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'tambah_perpuluhan_page.dart'; // Buka komen ini saat file Tambah Perpuluhan sudah kita buat
 
 // --- DATA CLASS ---
@@ -86,7 +87,7 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
       final snap = await _db.collection("churches").doc(churchId).collection("perpuluhan")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
           .where("tanggal", isLessThan: endDate)
-          .get();
+          .get().timeout(const Duration(seconds: 20));
 
       List<PerpuluhanItem> tempList = [];
       final targetId = widget.jemaatId?.trim() ?? "";
@@ -99,9 +100,9 @@ class _RincianPerpuluhanPageState extends State<RincianPerpuluhanPage> {
         final cocok = targetId.isNotEmpty ? docIdJemaat == targetId : docNama == targetName;
         if (!cocok) continue;
 
-        final rawJumlah = data['jumlah'];
+        final rawJumlah = legacyAmount(data['jumlah']);
         final rawTanggal = data['tanggal'];
-        if (rawJumlah is! num || rawTanggal is! Timestamp) continue;
+        if (rawJumlah == null || rawTanggal is! Timestamp) continue;
 
         tempList.add(PerpuluhanItem(
           id: doc.id,

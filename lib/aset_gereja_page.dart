@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'user_manager.dart'; // 👈 PASTIKAN PATH IMPORT INI SESUAI DENGAN LOKASI FILE user_manager.dart ANDA
+import 'user_manager.dart';
+import 'app_safety.dart'; // 👈 PASTIKAN PATH IMPORT INI SESUAI DENGAN LOKASI FILE user_manager.dart ANDA
 
 class AsetGerejaPage extends StatefulWidget {
   final String gerejaId;
@@ -89,6 +90,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     String fotoUrl = oldFotoUrl;
     File? imageFile;
     bool saving = false;
+    final createRef = _firestore.collection('aset_gereja').doc();
 
     await showDialog<void>(
       context: context,
@@ -108,13 +110,15 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
               setStateDialog(() => saving = true);
               Reference? uploadedRef;
               try {
+                final access = await ChurchWriteAccess.check(widget.gerejaId);
+                if (!mounted || !dialogContext.mounted) return;
                 if (imageFile != null) {
                   uploadedRef = FirebaseStorage.instance
                       .ref()
                       .child('aset_gereja')
                       .child('${widget.gerejaId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-                  await uploadedRef.putFile(imageFile!);
-                  fotoUrl = await uploadedRef.getDownloadURL();
+                  await uploadedRef.putFile(imageFile!).timeout(const Duration(seconds: 30));
+                  fotoUrl = await uploadedRef.getDownloadURL().timeout(const Duration(seconds: 20));
                 }
 
                 final data = <String, dynamic>{
@@ -129,28 +133,24 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                   if (doc == null) 'createdAt': FieldValue.serverTimestamp(),
                 };
 
-                if (doc == null) {
-                  await _firestore.collection('aset_gereja').add(data);
-                } else {
-                  await _firestore.collection('aset_gereja').doc(doc.id).update(data);
-                }
-
-                if (imageFile != null && oldFotoUrl.isNotEmpty && oldFotoUrl != fotoUrl) {
-                  try {
-                    await FirebaseStorage.instance.refFromURL(oldFotoUrl).delete();
-                  } catch (e) {
-                    debugPrint("Foto aset lama gagal dibersihkan: $e");
+                await _firestore.runTransaction((tx) async {
+                  await access.inTransaction(tx);
+                  final target = doc == null ? createRef : _firestore.collection('aset_gereja').doc(doc.id);
+                  final fresh = await tx.get(target);
+                  if (doc != null && (!fresh.exists || fresh.data()?['gerejaId'] != widget.gerejaId)) {
+                    throw StateError('Data aset berubah atau bukan milik gereja aktif.');
                   }
-                }
+                  access.assertCurrent();
+                  if (doc == null) {
+                    if (!fresh.exists) tx.set(target, data);
+                  } else {
+                    tx.update(target, data);
+                  }
+                }).timeout(const Duration(seconds: 20));
 
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 _showSnack(doc == null ? "Aset berhasil ditambahkan." : "Aset berhasil diperbarui.");
               } catch (e) {
-                if (uploadedRef != null) {
-                  try {
-                    await uploadedRef.delete();
-                  } catch (_) {}
-                }
                 _showSnack("Gagal menyimpan aset. Data lama tetap dipertahankan.", color: Colors.red);
                 if (dialogContext.mounted) setStateDialog(() => saving = false);
               }
@@ -307,22 +307,17 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     if (!confirmed) return;
 
     try {
-      await _firestore.collection('aset_gereja').doc(docId).delete();
-      bool photoCleaned = true;
-      if (fotoUrl != null && fotoUrl.trim().isNotEmpty) {
-        try {
-          await FirebaseStorage.instance.refFromURL(fotoUrl).delete();
-        } catch (e) {
-          photoCleaned = false;
-          debugPrint("Foto aset gagal dibersihkan setelah dokumen dihapus: $e");
-        }
-      }
-      _showSnack(
-        photoCleaned
-            ? "Aset berhasil dihapus."
-            : "Aset dihapus, tetapi file foto lama gagal dibersihkan.",
-        color: photoCleaned ? null : Colors.orange,
-      );
+      final access = await ChurchWriteAccess.check(widget.gerejaId);
+      final target = _firestore.collection('aset_gereja').doc(docId);
+      await _firestore.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final fresh = await tx.get(target);
+        if (!fresh.exists) return;
+        if (fresh.data()?['gerejaId'] != widget.gerejaId) throw StateError('Gereja aset tidak sesuai.');
+        access.assertCurrent();
+        tx.delete(target);
+      }).timeout(const Duration(seconds: 20));
+      _showSnack('Aset berhasil dihapus.');
     } catch (e) {
       _showSnack("Gagal menghapus aset.", color: Colors.red);
     }
@@ -723,3 +718,4 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
     );
   }
 }
+

@@ -94,7 +94,7 @@ jobs:
         run: flutter test test/management_regression_test.dart
 
       - name: Analyze comprehensive fixes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/video_splash_page.dart lib/data_jemaat_page.dart lib/pilih_jemaat_page.dart lib/kategorial_page.dart lib/detail_jemaat_page.dart lib/add_edit_jemaat_page.dart lib/user_manager.dart lib/add_edit_jadwal_page.dart lib/dashboard_page.dart lib/info_surat_daerah_page.dart lib/tambah_perpuluhan_page.dart lib/main.dart lib/login_page.dart lib/app_safety.dart lib/chatroom_page.dart lib/jadwal_page.dart lib/laporan_transaksi_page.dart lib/tambah_transaksi_page.dart lib/dashboard_daerah_page.dart lib/anggota_keluarga_page.dart lib/validasi_gereja_page.dart test/app_regression_test.dart
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/rincian_perpuluhan_page.dart lib/video_splash_page.dart lib/data_jemaat_page.dart lib/pilih_jemaat_page.dart lib/kategorial_page.dart lib/detail_jemaat_page.dart lib/keuangan_page.dart lib/add_edit_jemaat_page.dart lib/user_manager.dart lib/detail_folder_page.dart lib/add_edit_jadwal_page.dart lib/renungan_page.dart lib/dashboard_page.dart lib/add_edit_lagu_page.dart lib/info_surat_daerah_page.dart lib/tambah_perpuluhan_page.dart lib/main.dart lib/login_page.dart lib/app_safety.dart lib/aset_gereja_page.dart lib/chatroom_page.dart lib/keuangan_daerah_page.dart lib/gallery_page.dart lib/jadwal_page.dart lib/laporan_transaksi_page.dart lib/tambah_transaksi_page.dart lib/dashboard_daerah_page.dart lib/anggota_keluarga_page.dart lib/validasi_gereja_page.dart test/app_regression_test.dart
 
       - name: Test app regressions
         run: flutter test test/app_regression_test.dart

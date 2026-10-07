@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:characters/characters.dart';
 import 'user_manager.dart';
+import 'kategorial_config.dart';
 
 String legacyText(Object? value, [String fallback = '']) {
   if (value == null) return fallback;
@@ -27,7 +28,7 @@ bool permitsChurchWrite(Map<String, dynamic> actor, String churchId,
   if (actor['role'] == 'admin') return true;
   return category != null && category.trim().isNotEmpty &&
       actor['isPengurus'] == true &&
-      actor['kelompok']?.toString().trim().toLowerCase() == category.trim().toLowerCase();
+      KategorialConfig.same(actor['kelompok'], category);
 }
 
 void assertBookOwner(Map<String, dynamic> book, Map<String, dynamic>? account,
@@ -150,4 +151,34 @@ Future<String> checkRegionWrite(String area, {bool allowPastors = false}) async 
     throw StateError('Sesi atau izin daerah sudah berubah.');
   }
   return uid;
+}
+
+class LedgerBalance {
+  final int total;
+  final int invalidRows;
+  const LedgerBalance(this.total, this.invalidRows);
+}
+
+/// Annual balance deliberately has no monthly list/type filter.
+LedgerBalance annualLedgerBalance(Iterable<Map<String, dynamic>> transactions,
+    Iterable<Map<String, dynamic>> tithes, {String? category}) {
+  final general = category == null || category.trim().isEmpty;
+  int total = 0, invalid = 0;
+  for (final data in transactions) {
+    final group = legacyText(data['kategori']).trim();
+    if (general ? (group.isNotEmpty && group.toLowerCase() != 'umum') : !KategorialConfig.same(group, category)) continue;
+    final amount = legacyAmount(data['jumlah']);
+    if (amount == null || (data['jenis'] != 'Pemasukan' && data['jenis'] != 'Pengeluaran')) {
+      invalid++;
+      continue;
+    }
+    total += data['jenis'] == 'Pemasukan' ? amount : -amount;
+  }
+  if (general) {
+    for (final data in tithes) {
+      final amount = legacyAmount(data['jumlah']);
+      if (amount == null) { invalid++; } else { total += amount; }
+    }
+  }
+  return LedgerBalance(total, invalid);
 }

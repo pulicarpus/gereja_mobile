@@ -21,6 +21,7 @@ class AddEditJadwalPage extends StatefulWidget {
 }
 
 class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
+  String? _newDocumentId;
   final _formKey = GlobalKey<FormState>();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final UserManager _userManager = UserManager();
@@ -324,9 +325,9 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       var colRef = _db.collection("churches").doc(churchId).collection("jadwal");
       
       if (_isEdit) {
-        await colRef.doc(widget.jadwalId).update(jadwalData);
+        await colRef.doc(widget.jadwalId).update(jadwalData).timeout(const Duration(seconds: 20));
       } else {
-        await colRef.add(jadwalData);
+        await colRef.doc(_newDocumentId ??= colRef.doc().id).set(jadwalData).timeout(const Duration(seconds: 20));
       }
 
       // Jadwalkan reminder hanya saat membuat jadwal baru. Edit tidak membuat reminder kedua.
@@ -338,7 +339,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(_isEdit
-              ? "Jadwal berhasil diperbarui."
+              ? "Jadwal berhasil diperbarui. Pengingat lama belum dapat disesuaikan otomatis."
               : notifOk ? "Jadwal berhasil disimpan & pengingat dijadwalkan." : "Jadwal tersimpan, tetapi pengingat gagal dijadwalkan."),
           backgroundColor: notifOk ? Colors.green : Colors.orange,
         ));

@@ -62,7 +62,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   
   int _totalPemasukan = 0;
   int _totalPengeluaran = 0;
-  int _totalSaldoTahunan = 0; 
+  int _totalSaldoTahunan = 0;
+  int _invalidRows = 0; 
 
   late int _selectedMonth;
   late int _selectedYear;
@@ -92,6 +93,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
     final generation = ++_loadGeneration;
     if (mounted) {
       setState(() {
@@ -153,7 +155,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         tasksToRun.add(perpQueryTahunan.get());
       }
 
-      var results = await Future.wait(tasksToRun);
+      var results = await Future.wait(tasksToRun).timeout(const Duration(seconds: 20));
       
       List<TransaksiItem> combinedList = [];
       int tempMasukBulan = 0;
@@ -218,36 +220,12 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         }
       }
 
-      var docTahunan = results[1 + offset].docs;
-      for (var doc in docTahunan) {
-          var data = doc.data();
-          String kat = data['kategori']?.toString().trim() ?? "";
-          
-          if (isModeUmum) {
-            if (kat.isNotEmpty && kat.toLowerCase() != "umum") continue;
-          } else {
-            if (kat.toLowerCase() != widget.filterKategorial?.trim().toLowerCase()) continue;
-          }
-
-          final rawJumlah = legacyAmount(data['jumlah']);
-          final jns = data['jenis']?.toString() ?? "";
-          if (rawJumlah == null) continue;
-          final jml = rawJumlah.toInt();
-          
-          if (jns == "Pemasukan") {
-            tempSaldoTahunan += jml;
-          } else if (jns == "Pengeluaran") {
-            tempSaldoTahunan -= jml;
-          }
-      }
-
-      if (isModeUmum) {
-         var docPerpTahunan = results[2 + offset].docs;
-         for (var doc in docPerpTahunan) {
-            final rawJumlah = legacyAmount(doc.data()['jumlah']);
-            if (rawJumlah != null) tempSaldoTahunan += rawJumlah.toInt();
-         }
-      }
+      final balance = annualLedgerBalance(
+        results[1 + offset].docs.map((doc) => doc.data()),
+        isModeUmum ? results[2 + offset].docs.map((doc) => doc.data()) : const <Map<String, dynamic>>[],
+        category: widget.filterKategorial,
+      );
+      tempSaldoTahunan = balance.total;
 
       combinedList.sort((a, b) => b.tanggal.compareTo(a.tanggal));
 
@@ -257,6 +235,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         _totalPemasukan = tempMasukBulan;
         _totalPengeluaran = tempKeluarBulan;
         _totalSaldoTahunan = tempSaldoTahunan;
+        _invalidRows = balance.invalidRows;
       });
 
     } catch (e) {
@@ -363,7 +342,9 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     );
   }
 
+  bool _deleting = false;
   Future<void> _deleteTransaksi(TransaksiItem trx) async {
+    if (_deleting) return;
     final user = UserManager();
     final kategori = widget.filterKategorial?.trim();
     final canEdit = user.isAdmin() ||
@@ -375,13 +356,25 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
     final churchId = user.getChurchIdForCurrentView();
     if (churchId == null || churchId.isEmpty) return;
 
+    _deleting = true;
     try {
+      final access = await ChurchWriteAccess.check(churchId, category: trx.sumber == "perpuluhan" ? null : trx.kategori);
       String collectionName = trx.sumber == "perpuluhan" ? "perpuluhan" : "transaksi";
-      await _db.collection("churches").doc(churchId).collection(collectionName).doc(trx.id).delete();
+      final ref = _db.collection("churches").doc(churchId).collection(collectionName).doc(trx.id);
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final fresh = await tx.get(ref);
+        if (!fresh.exists) return;
+        if (legacyAmount(fresh.data()?['jumlah']) != trx.jumlah) throw StateError("Jumlah sudah berubah. Muat ulang dahulu.");
+        access.assertCurrent();
+        tx.delete(ref);
+      }).timeout(const Duration(seconds: 20));
       _showSnack("Berhasil dihapus");
       _loadData();
     } catch (e) {
       _showSnack("Gagal menghapus: $e");
+    } finally {
+      _deleting = false;
     }
   }
 
@@ -510,6 +503,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       ),
       body: Column(
         children: [
+          if (_invalidRows > 0) Padding(padding: const EdgeInsets.all(8),
+            child: Text("$_invalidRows data nominal/jenis belum valid dan tidak dihitung. Periksa data sebelum memakai laporan.", style: const TextStyle(color: Colors.orange))),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(

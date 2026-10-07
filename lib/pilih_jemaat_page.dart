@@ -100,6 +100,11 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
             return nama.contains(_searchQuery);
           }).toList();
 
+          listJemaat.sort((a, b) {
+            final ad = a.data() as Map<String, dynamic>;
+            final bd = b.data() as Map<String, dynamic>;
+            return (ad['namaLengkap']?.toString() ?? '').toLowerCase().compareTo((bd['namaLengkap']?.toString() ?? '').toLowerCase());
+          });
           // Kalau hasil pencarian kosong
           if (listJemaat.isEmpty) {
             return Center(

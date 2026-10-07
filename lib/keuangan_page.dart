@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'laporan_transaksi_page.dart';
 import 'laporan_perpuluhan_page.dart';
 import 'loading_sultan.dart';
@@ -109,14 +110,12 @@ class _KeuanganPageState extends State<KeuanganPage> {
       var trxQuery = await churchRef.collection("transaksi")
           .where("tanggal", isGreaterThanOrEqualTo: startDate)
           .where("tanggal", isLessThan: endDate)
-          .get();
+          .get().timeout(const Duration(seconds: 20));
 
       for (var doc in trxQuery.docs) {
         var data = doc.data();
         final kategori = data['kategori'];
-        int jumlah = (data['jumlah'] is num)
-            ? (data['jumlah'] as num).toInt()
-            : int.tryParse(data['jumlah']?.toString() ?? "") ?? 0;
+        int jumlah = legacyAmount(data['jumlah']) ?? 0;
         DateTime? tgl = _readDate(data['tanggal']);
         String jenis = data['jenis']?.toString().trim() ?? "";
 
@@ -139,13 +138,11 @@ class _KeuanganPageState extends State<KeuanganPage> {
         var perpQuery = await churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDate)
             .where("tanggal", isLessThan: endDate)
-            .get();
+            .get().timeout(const Duration(seconds: 20));
 
         for (var doc in perpQuery.docs) {
           var data = doc.data();
-          int jumlah = (data['jumlah'] is num)
-              ? (data['jumlah'] as num).toInt()
-              : int.tryParse(data['jumlah']?.toString() ?? "") ?? 0;
+          int jumlah = legacyAmount(data['jumlah']) ?? 0;
           DateTime? tgl = _readDate(data['tanggal']);
 
           if (tgl != null) {

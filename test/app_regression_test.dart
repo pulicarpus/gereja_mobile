@@ -94,4 +94,33 @@ void main() {
     expect(find.text('123'), findsOneWidget);
     expect(find.byIcon(Icons.person), findsOneWidget);
   });
+  test('Annual total includes tithes even on expense-only report', () {
+    final balance = annualLedgerBalance([
+      {'jenis': 'Pemasukan', 'jumlah': 200000},
+      {'jenis': 'Pengeluaran', 'jumlah': '50000'},
+    ], [{'jumlah': '100000'}]);
+    expect(balance.total, 250000);
+    expect(balance.invalidRows, 0);
+  });
+  test('Category balances do not import general tithes', () {
+    final balance = annualLedgerBalance([
+      {'jenis': 'Pemasukan', 'jumlah': 200000, 'kategori': 'AMKI'},
+      {'jenis': 'Pengeluaran', 'jumlah': 50000, 'kategori': 'AMKI'},
+      {'jenis': 'Pemasukan', 'jumlah': 999999, 'kategori': 'Umum'},
+    ], [{'jumlah': 100000}], category: 'AMKI');
+    expect(balance.total, 150000);
+  });
+  test('Unparseable amounts and types are reported, not silently accepted as zero', () {
+    final balance = annualLedgerBalance([
+      {'jenis': 'Pemasukan', 'jumlah': 'rusak'},
+      {'jenis': 'Lain', 'jumlah': 50000},
+    ], [{'jumlah': null}]);
+    expect(balance.total, 0);
+    expect(balance.invalidRows, 3);
+  });
+  test('Region permission rejects blocked and wrong-region pastors', () {
+    expect(permitsRegionWrite({'role': 'superadmin', 'isBlocked': true}, 'Utara'), isFalse);
+    expect(permitsRegionWrite({'role': 'bpj', 'daerah': 'Selatan'}, 'Utara', allowPastors: true), isFalse);
+  });
+
 }

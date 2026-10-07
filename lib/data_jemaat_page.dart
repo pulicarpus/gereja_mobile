@@ -36,6 +36,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   Future<void> _loadJemaat() async {
+    if (!mounted) return;
     String? churchId = _userManager.getChurchIdForCurrentView();
     if (churchId == null) {
       if (mounted) setState(() { _isLoading = false; _loadError = "Data gereja tidak valid."; });

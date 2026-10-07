@@ -33,6 +33,7 @@ class TambahPerpuluhanPage extends StatefulWidget {
 }
 
 class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
+  String? _newDocumentId;
   final _db = FirebaseFirestore.instance;
   final _formKey = GlobalKey<FormState>();
   
@@ -183,7 +184,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
           "jumlah": jumlah,
           "tanggal": Timestamp.fromDate(_selectedDate),
           if (_isJemaatLuar) "namaJemaat": namaUpdate,
-        });
+        }).timeout(const Duration(seconds: 20));
         
         _showSnack("Data berhasil diupdate");
       } else {
@@ -205,12 +206,12 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
           namaJemaatSave = selectedJemaat['namaLengkap'];
         }
 
-        await _db.collection("churches").doc(churchId).collection("perpuluhan").add({
+        await _db.collection("churches").doc(churchId).collection("perpuluhan").doc(_newDocumentId ??= _db.collection("churches").doc(churchId).collection("perpuluhan").doc().id).set({
           "jumlah": jumlah,
           "jemaatId": jemaatIdSave,
           "namaJemaat": namaJemaatSave,
           "tanggal": Timestamp.fromDate(_selectedDate),
-        });
+        }).timeout(const Duration(seconds: 20));
         
         _showSnack("Data berhasil disimpan");
       }

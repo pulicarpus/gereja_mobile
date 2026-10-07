@@ -331,7 +331,7 @@ class _RenunganPageState extends State<RenunganPage> {
                       children: [
                         Expanded(
                           child: Text(
-                            _formatTanggalIndonesia(shownDate),
+                            "Dimuat: ${_formatTanggalIndonesia(shownDate)}",
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[700],
@@ -351,7 +351,7 @@ class _RenunganPageState extends State<RenunganPage> {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            _isFromCache ? "TERSIMPAN" : "TERBARU",
+                            _isFromCache ? "TERSIMPAN" : "DARI SUMBER",
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
@@ -471,3 +471,4 @@ class _RenunganPageState extends State<RenunganPage> {
     );
   }
 }
+

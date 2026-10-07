@@ -76,7 +76,7 @@ flutter test
 flutter build windows --release
 ```
 
-Script membuat runner Windows dari template SDK di proyek sementara dan menyalin
-hanya folder windows. Source Android/pubspec tidak digenerate ulang. Workflow
-mengekspor source runner untuk review. Seluruh bundle Release harus dibagikan,
+Runner Windows dari build CI yang berhasil sudah disimpan dalam repository.
+Script hanya membuat runner dari template SDK jika folder windows belum ada;
+source Android/pubspec tidak digenerate ulang. Workflow mengekspor runner untuk review. Seluruh bundle Release harus dibagikan,
 bukan hanya EXE. Workflow tidak deploy Firebase atau mengirim Telegram.

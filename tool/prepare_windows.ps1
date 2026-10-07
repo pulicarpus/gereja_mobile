@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+if (Test-Path 'windows/runner/main.cpp') { exit 0 }
 # Generate only the native Windows runner in a temporary project. Never run
 # flutterfire configure or alter the existing Android Firebase configuration.
 $runnerTemp = Join-Path ([System.IO.Path]::GetTempPath()) ('gkii-runner-' + [Guid]::NewGuid())

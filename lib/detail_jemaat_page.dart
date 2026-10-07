@@ -38,8 +38,8 @@ class DetailJemaatPage extends StatelessWidget {
                   ? const Icon(Icons.person, size: 60, color: Colors.indigo)
                   : ClipOval(child: CachedNetworkImage(
                       imageUrl: fotoUrl, width: 120, height: 120, fit: BoxFit.cover,
-                      placeholder: (_, _) => const Icon(Icons.person, size: 60, color: Colors.indigo),
-                      errorWidget: (_, _, _) => const Icon(Icons.person, size: 60, color: Colors.indigo),
+                      placeholder: (context, imageUrl) => const Icon(Icons.person, size: 60, color: Colors.indigo),
+                      errorWidget: (context, imageUrl, error) => const Icon(Icons.person, size: 60, color: Colors.indigo),
                     )),
             ),
             const SizedBox(height: 20),

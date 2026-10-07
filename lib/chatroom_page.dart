@@ -664,6 +664,54 @@ class _ChatroomPageState extends State<ChatroomPage> {
   }
 
   // --- 4. FIRESTORE & NOTIFIKASI & EDIT ---
+  final List<QueryDocumentSnapshot> _legacyMessages = [];
+  QueryDocumentSnapshot? _legacyCursor;
+  String? _legacyScope;
+  bool _loadingLegacy = false, _legacyEnded = false;
+
+  Future<void> _loadLegacyMessages() async {
+    if (_loadingLegacy || !mounted) return;
+    final church = _churchId;
+    final uid = _auth.currentUser?.uid;
+    if (church == null || uid == null) return;
+    final scope = '$uid|$church|$_collectionPath';
+    if (_legacyScope != scope) {
+      _legacyMessages.clear(); _legacyCursor = null; _legacyEnded = false; _legacyScope = scope;
+    }
+    if (_legacyEnded) {
+      _showSnack('Pencarian arsip selesai.');
+      return;
+    }
+    setState(() => _loadingLegacy = true);
+    try {
+      final actor = await _db.collection('users').doc(uid)
+          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
+      if (!actor.exists || !permitsRoomAccess(actor.data()!, church, widget.filterKategorial)) {
+        throw StateError('Izin chat berubah.');
+      }
+      Query query = _db.collection('churches').doc(church).collection(_collectionPath).limit(200);
+      if (_legacyCursor != null) query = query.startAfterDocument(_legacyCursor!);
+      final page = await query.get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
+      if (!mounted || _auth.currentUser?.uid != uid || _churchId != church) return;
+      final older = page.docs.where((d) {
+        final raw = d.data();
+        return raw is Map && _readTimestamp(raw['timestamp']) == null;
+      }).toList();
+      setState(() {
+        _legacyMessages.addAll(older);
+        if (page.docs.isNotEmpty) _legacyCursor = page.docs.last;
+        _legacyEnded = page.docs.length < 200;
+      });
+      _showSnack(older.isEmpty
+          ? (_legacyEnded ? 'Pencarian arsip selesai.' : 'Belum ditemukan pesan tanpa tanggal. Ketuk lagi untuk bagian berikutnya.')
+          : '${older.length} pesan lama tanpa tanggal dimuat.');
+    } catch (_) {
+      _showSnack('Arsip belum dapat dimuat. Periksa koneksi lalu coba lagi.');
+    } finally {
+      if (mounted) setState(() => _loadingLegacy = false);
+    }
+  }
+
   String? _pendingSendId, _pendingSendKey;
   Future<bool> _sendToFirestore({
     required String isi,
@@ -1264,6 +1312,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
         backgroundColor: const Color(0xFF075E54),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(tooltip: "Cari pesan lama tanpa tanggal",
+            onPressed: _loadingLegacy ? null : _loadLegacyMessages,
+            icon: const Icon(Icons.manage_search)),
           if (_isUploading || _isSending)
             const Padding(
               padding: EdgeInsets.all(15),
@@ -1307,7 +1358,19 @@ class _ChatroomPageState extends State<ChatroomPage> {
                   );
                 }
 
-                final docs = snap.data?.docs ?? const [];
+                final recent = snap.data?.docs ?? const <QueryDocumentSnapshot>[];
+                final docs = List<QueryDocumentSnapshot>.from(recent);
+                final scope = '${_auth.currentUser?.uid}|$churchId|$_collectionPath';
+                if (_legacyScope == scope) {
+                  final ids = docs.map((d) => d.id).toSet();
+                  docs.addAll(_legacyMessages.where((d) => !ids.contains(d.id)));
+                }
+                docs.sort((a, b) {
+                  final ad = a.data(), bd = b.data();
+                  final at = ad is Map ? _readTimestamp(ad['timestamp']) : null;
+                  final bt = bd is Map ? _readTimestamp(bd['timestamp']) : null;
+                  return (bt ?? DateTime(0)).compareTo(at ?? DateTime(0));
+                });
                 if (docs.isEmpty) {
                   return const Center(
                     child: Text(
@@ -1317,7 +1380,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
                   );
                 }
 
-                final canLoadOlder = docs.length >= _messageLimit;
+                final canLoadOlder = recent.length >= _messageLimit;
                 return ListView.builder(
                   reverse: true,
                   padding: const EdgeInsets.all(10),

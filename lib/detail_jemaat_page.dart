@@ -34,8 +34,13 @@ class DetailJemaatPage extends StatelessWidget {
             CircleAvatar(
               radius: 60,
               backgroundColor: Colors.indigo.shade50,
-              backgroundImage: fotoUrl != null ? CachedNetworkImageProvider(fotoUrl) : null,
-              child: fotoUrl == null ? const Icon(Icons.person, size: 60, color: Colors.indigo) : null,
+              child: fotoUrl == null
+                  ? const Icon(Icons.person, size: 60, color: Colors.indigo)
+                  : ClipOval(child: CachedNetworkImage(
+                      imageUrl: fotoUrl, width: 120, height: 120, fit: BoxFit.cover,
+                      placeholder: (_, _) => const Icon(Icons.person, size: 60, color: Colors.indigo),
+                      errorWidget: (_, _, _) => const Icon(Icons.person, size: 60, color: Colors.indigo),
+                    )),
             ),
             const SizedBox(height: 20),
             Text(nama, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),

@@ -198,6 +198,7 @@ service cloud.firestore {
     }
     function messageOwner(d) { return d.get('pengirimId', d.get('senderId', '')); }
     match /aset_gereja/{id} {
+      allow get: if active() && !exists(/databases/$(database)/documents/aset_gereja/$(id));
       allow read: if member(resource.data.get('gerejaId', '')) || superAdmin();
       allow create: if admin(request.resource.data.get('gerejaId', ''));
       allow update: if admin(resource.data.get('gerejaId', ''))
@@ -205,6 +206,8 @@ service cloud.firestore {
       allow delete: if admin(resource.data.get('gerejaId', ''));
     }
     match /{finance}/{id} {
+      allow get: if finance in ['keuangan_daerah','perpuluhan_daerah'] && active()
+        && !exists(/databases/$(database)/documents/$(finance)/$(id));
       allow read: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionReader(resource.data.get('daerah', ''));
       allow create: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(request.resource.data.get('daerah', ''));
       allow update: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(resource.data.get('daerah', ''))
@@ -212,6 +215,7 @@ service cloud.firestore {
       allow delete: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(resource.data.get('daerah', ''));
     }
     match /info_surat_daerah/{id} {
+      allow get: if active() && !exists(/databases/$(database)/documents/info_surat_daerah/$(id));
       allow read: if regionReader(resource.data.get('daerah', ''));
       allow create: if infoWriter(request.resource.data.get('daerah', ''));
       allow update: if infoWriter(resource.data.get('daerah', '')) && request.resource.data.get('daerah', '') == resource.data.get('daerah', '');

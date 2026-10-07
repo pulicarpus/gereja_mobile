@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, test, before, after, beforeEach } from 'node:test';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, query, where, arrayUnion } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, arrayUnion } from 'firebase/firestore';
 
 // Fail closed: these tests may ONLY connect to the local emulator, never prod.
 const address = process.env.FIRESTORE_EMULATOR_HOST;
@@ -212,6 +212,20 @@ describe('Transition rules: application contracts and denied attacks', () => {
     const batch = writeBatch(db('bpj'));
     for (const c of ['perpuluhan_daerah','keuangan_daerah']) batch.set(ref('bpj', `${c}/paired`), { daerah: 'Utara', jumlah: 100 });
     await assertSucceeds(batch.commit());
+  });
+  test('actual create transactions may read missing asset, notice and both regional ledger docs', async () => {
+    for (const [uid, entries] of [
+      ['admin', [['aset_gereja/new', { gerejaId: 'a', nama: 'Meja' }]]],
+      ['regional', [['info_surat_daerah/new', { daerah: 'Utara', judul: 'Info' }]]],
+      ['bpj', [['perpuluhan_daerah/new', { daerah: 'Utara', jumlah: 100 }],
+        ['keuangan_daerah/new', { daerah: 'Utara', jumlah: 100 }]]],
+    ]) {
+      await assertSucceeds(runTransaction(db(uid), async tx => {
+        await tx.get(ref(uid, `users/${uid}`));
+        for (const [path] of entries) await tx.get(ref(uid, path));
+        for (const [path, value] of entries) tx.set(ref(uid, path), value);
+      }));
+    }
   });
   test('songs admin writable; notes private; unknown modules/worker queue denied', async () => {
     await assertFails(updateDoc(ref('u', 'songs/s'), { judul: 'Forged' }));

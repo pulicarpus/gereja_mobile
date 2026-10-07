@@ -342,10 +342,10 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   };
 
                   if (isEdit) {
-                    await _db.collection("keuangan_daerah").doc(docId).update(payload).timeout(const Duration(seconds: 20));
+                    await saveRegionChanges(widget.namaDaerah, {_db.collection("keuangan_daerah").doc(docId): payload}, requireExisting: true);
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Transaksi berhasil diedit!"), backgroundColor: Colors.blue));
                   } else {
-                    await _db.collection("keuangan_daerah").doc(newId).set(payload).timeout(const Duration(seconds: 20));
+                    await saveRegionChanges(widget.namaDaerah, {_db.collection("keuangan_daerah").doc(newId): payload}, createOnly: true);
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $jenis berhasil dicatat!"), backgroundColor: Colors.green));
                   }
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -407,10 +407,10 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                 await checkRegionWrite(widget.namaDaerah, allowPastors: true);
                 final linkedRef = _db.collection("perpuluhan_daerah").doc(docId);
                 final linked = await linkedRef.get();
-                WriteBatch batch = _db.batch();
-                batch.delete(_db.collection("keuangan_daerah").doc(docId));
-                if (linked.exists) batch.delete(linkedRef);
-                await batch.commit().timeout(const Duration(seconds: 20));
+                final changes = <DocumentReference, Map<String, dynamic>?>{};
+                changes[_db.collection("keuangan_daerah").doc(docId)] = null;
+                if (linked.exists) changes[linkedRef] = null;
+                await saveRegionChanges(widget.namaDaerah, changes);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
               } catch (_) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus data."), backgroundColor: Colors.red));
@@ -959,35 +959,35 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                 try {
                   await checkRegionWrite(widget.namaDaerah, allowPastors: true);
                   if (!mounted || !dialogContext.mounted) return;
-                  WriteBatch batch = _db.batch();
+                  final changes = <DocumentReference, Map<String, dynamic>?>{};
 
                   if (isEdit) {
                     DocumentReference refPerpuluhan = _db.collection("perpuluhan_daerah").doc(docId);
                     DocumentReference refKas = _db.collection("keuangan_daerah").doc(docId);
 
-                    batch.update(refPerpuluhan, {
+                    changes[refPerpuluhan] = {
                       "tipe": tipeSumber, "nama": inputNama, "nominal": nom, "tanggal": Timestamp.fromDate(selectedDate),
-                    });
+                    };
                     
-                    batch.set(refKas, {
+                    changes[refKas] = {
                       "daerah": widget.namaDaerah, "jenis": "Pemasukan", "nominal": nom,
                       "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
-                    }, SetOptions(merge: true));
+                    };
 
-                    await batch.commit().timeout(const Duration(seconds: 20));
+                    await saveRegionChanges(widget.namaDaerah, changes, requireExisting: true);
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan direvisi & Kas disesuaikan!"), backgroundColor: Colors.blue));
                   } else {
                     DocumentReference docRef = _db.collection("perpuluhan_daerah").doc(newId);
-                    batch.set(docRef, {
+                    changes[docRef] = {
                       "daerah": widget.namaDaerah, "tipe": tipeSumber, "nama": inputNama,
                       "nominal": nom, "tanggal": Timestamp.fromDate(selectedDate),
-                    });
-                    batch.set(_db.collection("keuangan_daerah").doc(docRef.id), {
+                    };
+                    changes[_db.collection("keuangan_daerah").doc(docRef.id)] = {
                       "daerah": widget.namaDaerah, "jenis": "Pemasukan", "nominal": nom,
                       "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
-                    });
+                    };
 
-                    await batch.commit().timeout(const Duration(seconds: 20));
+                    await saveRegionChanges(widget.namaDaerah, changes, createOnly: !isEdit);
                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan dicatat & masuk ke Kas!"), backgroundColor: Colors.green));
                   }
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
@@ -1047,10 +1047,10 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
               Navigator.pop(ctx);
               try {
               await checkRegionWrite(widget.namaDaerah, allowPastors: true);
-              WriteBatch batch = _db.batch();
-              batch.delete(_db.collection("perpuluhan_daerah").doc(docId));
-              batch.delete(_db.collection("keuangan_daerah").doc(docId));
-              await batch.commit().timeout(const Duration(seconds: 20));
+              final changes = <DocumentReference, Map<String, dynamic>?>{};
+              changes[_db.collection("perpuluhan_daerah").doc(docId)] = null;
+              changes[_db.collection("keuangan_daerah").doc(docId)] = null;
+              await saveRegionChanges(widget.namaDaerah, changes);
               if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
               } catch (e) {
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hapus belum berhasil: $e")));

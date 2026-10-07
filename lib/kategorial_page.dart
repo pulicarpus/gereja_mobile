@@ -40,7 +40,7 @@ class _KategorialPageState extends State<KategorialPage> {
       final data = doc.data() ?? <String, dynamic>{};
       final rawKelompok = data['kelompok']?.toString().trim() ?? "";
       var kelompok = rawKelompok.isEmpty ? "Umum" : rawKelompok;
-      var isPengurus = data['isPengurus'] == true;
+      var isPengurus = data['isPengurus'] == true && data['isBlocked'] != true;
 
       final jemaatId = data['jemaatId']?.toString().trim() ?? "";
       final registeredChurchId =

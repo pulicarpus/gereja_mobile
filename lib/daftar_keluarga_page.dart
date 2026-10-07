@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'anggota_keluarga_page.dart';
 import 'pilih_jemaat_page.dart'; // Memanggil halaman yang kita buat kemarin
 
@@ -22,7 +23,9 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
     _churchId = _userManager.getChurchIdForCurrentView();
   }
 
+  bool _saving = false;
   Future<void> _buatKeluargaBaru() async {
+    if (_saving) return;
     if (_churchId == null) return;
     final selected = await Navigator.push<Map<String, dynamic>>(
       context,
@@ -50,14 +53,26 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
       if (!lanjut) return;
     }
 
+    if (!mounted || _saving) return;
+    _saving = true;
     try {
-      await _db.collection("churches").doc(_churchId).collection("jemaat").doc(id).update({
-        "idKepalaKeluarga": id,
-        "statusKeluarga": "Kepala Keluarga",
-      });
+      final access = await ChurchWriteAccess.check(_churchId!);
+      final ref = _db.collection('churches').doc(_churchId).collection('jemaat').doc(id);
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final fresh = await tx.get(ref);
+        if (!fresh.exists || legacyText(fresh.data()?['idKepalaKeluarga']) != currentFamily ||
+            fresh.data()?['statusKeluarga'] != selected['statusKeluarga']) {
+          throw StateError('Relasi keluarga sudah berubah. Pilih ulang jemaat.');
+        }
+        access.assertCurrent();
+        tx.update(ref, {'idKepalaKeluarga': id, 'statusKeluarga': 'Kepala Keluarga'});
+      }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Keluarga $nama berhasil dibuat.")));
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal membuat keluarga.")));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal membuat keluarga: $e")));
+    } finally {
+      _saving = false;
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert'; // 👈 DITAMBAHKAN UNTUK JSON ENCODE NOTIFIKASI
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart'; 
 import 'package:firebase_storage/firebase_storage.dart';
@@ -95,7 +96,16 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     setState(() => _isLoading = true);
     try {
       await checkRegionWrite(widget.namaDaerah);
-      await _db.collection('info_surat_daerah').doc(id).delete().timeout(const Duration(seconds: 20));
+      final ref = _db.collection('info_surat_daerah').doc(id);
+      final uid = _user.userId;
+      await _db.runTransaction((tx) async {
+        final actor = await tx.get(_db.collection('users').doc(uid));
+        final post = await tx.get(ref);
+        if (FirebaseAuth.instance.currentUser?.uid != uid || _user.userId != uid || !actor.exists || !permitsRegionWrite(actor.data()!, widget.namaDaerah)) throw StateError('Izin daerah berubah.');
+        if (!post.exists) return;
+        if (post.data()?['daerah'] != widget.namaDaerah) throw StateError('Daerah postingan tidak sesuai.');
+        tx.delete(ref);
+      }).timeout(const Duration(seconds: 20));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hapus belum berhasil: $e')));
     } finally {

@@ -110,11 +110,11 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
         ) ?? false;
         if (!lanjut) return;
       }
-      if (mounted) _showSetFamilyStatusDialog(selectedJemaat['id'], selectedJemaat['namaLengkap']);
+      if (mounted) _showSetFamilyStatusDialog(selectedJemaat['id'].toString(), legacyText(selectedJemaat['namaLengkap']), expectedFamily: legacyText(selectedJemaat['idKepalaKeluarga']), expectedStatus: selectedJemaat['statusKeluarga']);
     }
   }
 
-  void _showSetFamilyStatusDialog(String jemaatId, String namaJemaat) {
+  void _showSetFamilyStatusDialog(String jemaatId, String namaJemaat, {required String expectedFamily, Object? expectedStatus}) {
     final List<String> statusOptions = ["Istri", "Anak", "Ayah", "Ibu"];
     
     showDialog(
@@ -127,7 +127,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             title: Text(status),
             onTap: () {
               Navigator.pop(context);
-              _addMemberToFamily(jemaatId, namaJemaat, status);
+              _addMemberToFamily(jemaatId, namaJemaat, status, expectedFamily: expectedFamily, expectedStatus: expectedStatus);
             },
           )).toList(),
         ),
@@ -138,7 +138,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
     );
   }
 
-  Future<void> _addMemberToFamily(String jemaatId, String namaJemaat, String newStatus) async {
+  Future<void> _addMemberToFamily(String jemaatId, String namaJemaat, String newStatus, {required String expectedFamily, Object? expectedStatus}) async {
     if (_churchId == null || _changingFamily || !mounted) return;
     _changingFamily = true;
     try {
@@ -150,6 +150,9 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
         final head = await tx.get(col.doc(widget.idKepalaKeluarga));
         if (!member.exists || !head.exists || head.data()?['statusKeluarga'] != 'Kepala Keluarga') {
           throw StateError('Data keluarga berubah. Muat ulang dahulu.');
+        }
+        if (legacyText(member.data()?['idKepalaKeluarga']) != expectedFamily || member.data()?['statusKeluarga'] != expectedStatus) {
+          throw StateError('Relasi keluarga berubah. Pilih ulang jemaat.');
         }
         if (jemaatId == widget.idKepalaKeluarga || member.data()?['statusKeluarga'] == 'Kepala Keluarga' ||
             member.data()?['idKepalaKeluarga'] == jemaatId) {

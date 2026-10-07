@@ -25,6 +25,7 @@ class AddEditJemaatPage extends StatefulWidget {
 }
 
 class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
+  final String? _openedChurchId = UserManager().getChurchIdForCurrentView();
   final _formKey = GlobalKey<FormState>();
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
@@ -107,7 +108,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     if (_isSaving || !_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
-    String? churchId = UserManager().getChurchIdForCurrentView();
+    String? churchId = _openedChurchId;
     String? photoUrl = _existingPhotoUrl;
     if (churchId == null || churchId.isEmpty) {
       if (mounted) {

@@ -33,6 +33,7 @@ class TambahPerpuluhanPage extends StatefulWidget {
 }
 
 class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
+  final String? _openedChurchId = UserManager().getChurchIdForCurrentView();
   String? _newDocumentId;
   final _db = FirebaseFirestore.instance;
   final _formKey = GlobalKey<FormState>();
@@ -151,7 +152,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
     if (_isLoading || !_formKey.currentState!.validate()) return;
     
     final user = UserManager();
-    final churchId = user.getChurchIdForCurrentView();
+    final churchId = _openedChurchId;
     if (!user.isAdmin()) {
       _showSnack("Anda tidak memiliki izin untuk mengubah perpuluhan.");
       return;

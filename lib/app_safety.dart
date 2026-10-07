@@ -182,3 +182,41 @@ LedgerBalance annualLedgerBalance(Iterable<Map<String, dynamic>> transactions,
   }
   return LedgerBalance(total, invalid);
 }
+
+/// Retains the existing regional collections and fields; no backfill/migration.
+Future<void> saveRegionChanges(String area,
+    Map<DocumentReference, Map<String, dynamic>?> changes,
+    {bool createOnly = false, bool requireExisting = false}) async {
+  final uid = await checkRegionWrite(area, allowPastors: true);
+  final db = FirebaseFirestore.instance;
+  await db.runTransaction((tx) async {
+    final actor = await tx.get(db.collection('users').doc(uid));
+    final current = <DocumentReference, DocumentSnapshot>{};
+    for (final ref in changes.keys) {
+      current[ref] = await tx.get(ref);
+    }
+    if (FirebaseAuth.instance.currentUser?.uid != uid || UserManager().userId != uid ||
+        !actor.exists || !permitsRegionWrite(actor.data()!, area, allowPastors: true)) {
+      throw StateError('Sesi atau izin daerah berubah.');
+    }
+    for (final entry in changes.entries) {
+      final fresh = current[entry.key]!;
+      final raw = fresh.data();
+      final data = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      if (fresh.exists && legacyText(data['daerah']).trim() != area.trim()) {
+        throw StateError('Transaksi bukan milik daerah ini atau daerahnya belum dapat dipastikan.');
+      }
+      if (requireExisting && !fresh.exists && entry.value != null) {
+        throw StateError('Transaksi telah dihapus. Muat ulang dahulu.');
+      }
+    }
+    for (final entry in changes.entries) {
+      final fresh = current[entry.key]!;
+      if (entry.value == null) {
+        if (fresh.exists) tx.delete(entry.key);
+      } else if (!createOnly || !fresh.exists) {
+        tx.set(entry.key, entry.value!, SetOptions(merge: true));
+      }
+    }
+  }).timeout(const Duration(seconds: 20));
+}

@@ -67,37 +67,13 @@ jobs:
           echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
           echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
         
-      - name: Analyze Bible changes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/alkitab_page.dart lib/bible_support.dart lib/bible_local_store.dart lib/bible_models.dart lib/search_page.dart lib/notes_pages.dart lib/offline_audio_page.dart lib/buat_gambar_page.dart lib/kamus_page.dart lib/kamus_alkitab_page.dart lib/ayat_data.dart
+      - name: Analyze all application code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Test Bible regressions
+      - name: Test all regressions
         run: |
-          flutter test test/bible_regression_test.dart
+          flutter test
           dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
-
-      - name: Analyze Pengurus changes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/pengurus_page.dart lib/detail_seksi_page.dart lib/pengurus_support.dart lib/pengurus_repository.dart lib/pengurus_widgets.dart lib/menu_daerah_page.dart
-
-      - name: Test Pengurus regressions
-        run: flutter test test/pengurus_regression_test.dart
-
-      - name: Analyze Profile changes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/profil_page.dart lib/sinkronisasi_jemaat_page.dart lib/profile_service.dart lib/profile_support.dart lib/main.dart test/profile_regression_test.dart
-
-      - name: Test Profile regressions
-        run: flutter test test/profile_regression_test.dart
-
-      - name: Analyze Management changes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/daftar_pengguna_page.dart lib/detail_pengguna_page.dart lib/kelola_gereja_page.dart lib/add_edit_gereja_page.dart lib/management_support.dart lib/management_service.dart test/management_regression_test.dart
-
-      - name: Test Management regressions
-        run: flutter test test/management_regression_test.dart
-
-      - name: Analyze comprehensive fixes
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/rincian_perpuluhan_page.dart lib/video_splash_page.dart lib/data_jemaat_page.dart lib/pilih_jemaat_page.dart lib/kategorial_page.dart lib/detail_jemaat_page.dart lib/keuangan_page.dart lib/add_edit_jemaat_page.dart lib/user_manager.dart lib/detail_folder_page.dart lib/add_edit_jadwal_page.dart lib/renungan_page.dart lib/dashboard_page.dart lib/add_edit_lagu_page.dart lib/info_surat_daerah_page.dart lib/tambah_perpuluhan_page.dart lib/main.dart lib/login_page.dart lib/app_safety.dart lib/aset_gereja_page.dart lib/chatroom_page.dart lib/keuangan_daerah_page.dart lib/gallery_page.dart lib/jadwal_page.dart lib/laporan_transaksi_page.dart lib/tambah_transaksi_page.dart lib/dashboard_daerah_page.dart lib/anggota_keluarga_page.dart lib/validasi_gereja_page.dart test/app_regression_test.dart
-
-      - name: Test app regressions
-        run: flutter test test/app_regression_test.dart
 
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation

@@ -38,6 +38,7 @@ class TambahTransaksiPage extends StatefulWidget {
 }
 
 class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
+  final String? _openedChurchId = UserManager().getChurchIdForCurrentView();
   String? _newDocumentId;
   final _db = FirebaseFirestore.instance;
   final _formKey = GlobalKey<FormState>();
@@ -115,7 +116,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     if (_isLoading || !_formKey.currentState!.validate()) return;
     
     final user = UserManager();
-    final churchId = user.getChurchIdForCurrentView();
+    final churchId = _openedChurchId;
     final kategori = _kategoriAktif?.trim();
     final canEdit = user.isAdmin() ||
         (kategori != null && kategori.isNotEmpty && user.isPengurus && KategorialConfig.same(user.userKomisi, kategori));

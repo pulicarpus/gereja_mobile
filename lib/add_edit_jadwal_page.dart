@@ -21,6 +21,7 @@ class AddEditJadwalPage extends StatefulWidget {
 }
 
 class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
+  final String? _openedChurchId = UserManager().getChurchIdForCurrentView();
   String? _newDocumentId;
   final _formKey = GlobalKey<FormState>();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -285,7 +286,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     }
 
     setState(() => _isLoading = true);
-    String? churchId = _userManager.getChurchIdForCurrentView();
+    String? churchId = _openedChurchId;
     if (churchId == null || churchId.isEmpty) {
       if (mounted) {
         setState(() => _isLoading = false);

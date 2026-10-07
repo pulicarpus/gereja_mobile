@@ -115,7 +115,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       };
 
       final ref = _db.collection("users").doc(widget.userUid);
-      await _db.runTransaction((tx) async {
+      final saved = await _db.runTransaction<Map<String, dynamic>>((tx) async {
         final existing = await tx.get(ref);
         final church = await tx.get(_db.collection("churches").doc(churchId));
         if (_auth.currentUser?.uid != widget.userUid) throw StateError("Sesi berubah.");
@@ -124,9 +124,12 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         }
         if (existing.exists) {
           final account = existing.data()!;
-          tx.update(ref, registrationChurchPatch(account, churchId, churchName));
+          final patch = registrationChurchPatch(account, churchId, churchName);
+          tx.update(ref, patch);
+          return {...account, ...patch};
         } else {
           tx.set(ref, dataUser);
+          return dataUser;
         }
       }).timeout(const Duration(seconds: 20));
       if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
@@ -141,13 +144,15 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         churchId: churchId,
         churchName: churchName,
         uId: widget.userUid, 
-        uNama: widget.userName, 
-        uFoto: null, 
-        uKomisi: "Umum", 
-        uIsPengurus: false, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
+        uNama: saved['namaLengkap']?.toString() ?? widget.userName, 
+        uFoto: saved['photoUrl']?.toString() ?? _auth.currentUser?.photoURL, 
+        uKomisi: saved['kelompok']?.toString() ?? "Umum", 
+        uAdminDaerahArea: saved['adminDaerahArea']?.toString(),
+        uDaerah: saved['daerah']?.toString(),
+        uIsPengurus: saved['isPengurus'] == true, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
       );
 
-      if (mounted) {
+      if (mounted && _auth.currentUser?.uid == widget.userUid) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Berhasil masuk ke $churchName")),

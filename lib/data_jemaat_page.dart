@@ -25,6 +25,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   List<Map<String, dynamic>> _allJemaat = [];
   List<Map<String, dynamic>> _filteredJemaat = [];
   bool _isLoading = true;
+  int _loadGeneration = 0;
   bool _isSearching = false;
   String? _loadError;
   final _searchController = TextEditingController();
@@ -37,6 +38,8 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
 
   Future<void> _loadJemaat() async {
     if (!mounted) return;
+    final generation = ++_loadGeneration;
+    final uid = _userManager.userId;
     String? churchId = _userManager.getChurchIdForCurrentView();
     if (churchId == null) {
       if (mounted) setState(() { _isLoading = false; _loadError = "Data gereja tidak valid."; });
@@ -48,7 +51,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
           .collection("churches")
           .doc(churchId)
           .collection("jemaat")
-          .get();
+          .get().timeout(const Duration(seconds: 20));
       var tempData = snapshot.docs.map((doc) {
         final source = doc.data() as Map<String, dynamic>;
         return <String, dynamic>{...source, 'id': doc.id};
@@ -67,7 +70,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
       // Saring data aktif (kecuali yang berstatus 'Meninggal') untuk tampilan list
       var activeData = tempData.where((j) => j['status'] != 'Meninggal').toList();
 
-      if (mounted) {
+      if (mounted && generation == _loadGeneration && _userManager.userId == uid && _userManager.getChurchIdForCurrentView() == churchId) {
         setState(() {
           _allJemaat = tempData;        // SEMUA data (termasuk meninggal) untuk Dashboard
           _filteredJemaat = activeData; // Hanya data aktif untuk ListView
@@ -75,7 +78,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() { _isLoading = false; _loadError = "Gagal memuat data jemaat."; });
+      if (mounted && generation == _loadGeneration) setState(() { _isLoading = false; _loadError = "Gagal memuat data jemaat."; });
     }
   }
 
@@ -86,8 +89,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   String _initial(Map<String, dynamic> j) {
-    final name = (j['namaLengkap'] ?? '').toString().trim();
-    return name.isEmpty ? '?' : name[0].toUpperCase();
+    return nameInitial(j['namaLengkap']);
   }
 
   // --- LOGIKA PENCARIAN ---
@@ -121,9 +123,8 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
 
   // --- DETAIL JEMAAT (BOTTOM SHEET) ---
   bool _performingAction = false;
-  Future<void> _performJemaatAction(Map<String, dynamic> book, {required bool remove}) async {
+  Future<void> _performJemaatAction(Map<String, dynamic> book, {required bool remove, required String? church}) async {
     if (_performingAction || !mounted) return;
-    final church = _userManager.getChurchIdForCurrentView();
     if (church == null) return;
     _performingAction = true;
     try {
@@ -390,6 +391,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   void _showAksiAdmin(Map<String, dynamic> j) {
+    final church = _userManager.getChurchIdForCurrentView();
     showModalBottomSheet(
       context: context, 
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -412,7 +414,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Navigator.pop(context);
               final ok = await _confirmAksi("Tandai Meninggal", "Yakin menandai ${j['namaLengkap'] ?? 'jemaat ini'} sebagai meninggal?");
               if (!ok) return;
-              await _performJemaatAction(j, remove: false); 
+              await _performJemaatAction(j, remove: false, church: church); 
             },
           ),
           ListTile(
@@ -422,7 +424,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Navigator.pop(context);
               final ok = await _confirmAksi("Hapus Permanen", "Data ${j['namaLengkap'] ?? 'jemaat ini'} akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.", danger: true);
               if (!ok) return;
-              await _performJemaatAction(j, remove: true); 
+              await _performJemaatAction(j, remove: true, church: church); 
             },
           ),
           const SizedBox(height: 20),

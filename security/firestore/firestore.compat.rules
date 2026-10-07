@@ -1,0 +1,253 @@
+// REVIEW CANDIDATE ONLY. See README.md: prayer privacy and invitation proof
+// require coordinated client/backend changes before a production rollout.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function actor() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function active() {
+      return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && actor().get('isBlocked', false) != true;
+    }
+    function superAdmin() { return active() && actor().get('role', 'user') == 'superadmin'; }
+    function member(church) {
+      return active() && church is string && church != '' && actor().get('churchId', '') == church;
+    }
+    function admin(church) {
+      return superAdmin() || (member(church) && actor().get('role', 'user') == 'admin');
+    }
+    // Match Flutter KategorialConfig, including legacy case/space variations.
+    function category(value) {
+      return !(value is string) ? 'Lainnya'
+        : value.lower().matches('^\\s*sekolah minggu\\s*$') ? 'Sekolah Minggu'
+        : value.lower().matches('^\\s*amki\\s*$') ? 'AMKI'
+        : value.lower().matches('^\\s*perkawan\\s*$') ? 'Perkawan'
+        : value.lower().matches('^\\s*perkaria\\s*$') ? 'Perkaria' : 'Lainnya';
+    }
+    function leader(church, group) {
+      return member(church) && actor().get('isPengurus', false) == true
+        && category(group) != 'Lainnya'
+        && category(actor().get('kelompok', '')) == category(group);
+    }
+    function groupWriter(church, group) { return admin(church) || leader(church, group); }
+    function churchArea() {
+      return get(/databases/$(database)/documents/churches/$(actor().get('churchId', ''))).data.get('daerah', '');
+    }
+    function regionReader(area) {
+      return superAdmin() || (active() && area is string && area != '' && (
+        actor().get('adminDaerahArea', '') == area || actor().get('daerah', '') == area || churchArea() == area));
+    }
+    // Gembala/BPJ may write regional finance; only appointed regional admins
+    // and superadmins may publish regional information.
+    function regionWriter(area) {
+      return superAdmin() || (active() && area is string && area != '' && (
+        actor().get('adminDaerahArea', '') == area ||
+        (actor().get('role', 'user') in ['gembala', 'bpj'] &&
+          (actor().get('daerah', '') == area || churchArea() == area))));
+    }
+    function infoWriter(area) {
+      return superAdmin() || (active() && area is string && area != '' && actor().get('adminDaerahArea', '') == area);
+    }
+    function changedOnly(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
+    function newAccount(uid) {
+      let d = request.resource.data;
+      return signedIn() && request.auth.uid == uid && d.get('uid', '') == uid
+        && d.keys().hasOnly(['uid','email','namaLengkap','photoUrl','role','isBlocked',
+          'churchId','churchName','jemaatId','isPengurus','daerah'])
+        && d.get('role', '') == 'user' && d.get('isBlocked', true) == false
+        && d.get('isPengurus', true) == false && d.get('jemaatId', '') == ''
+        && d.get('daerah', '') == ''
+        && (d.get('churchId', '') == '' || exists(/databases/$(database)/documents/churches/$(d.churchId)));
+    }
+    // Compatibility exception: old clients do not send invitation proof.
+    // This permits only the initial assignment, never a church transfer.
+    function initialJoin() {
+      let d = request.resource.data;
+      return resource.data.get('churchId', '') == '' && resource.data.get('jemaatId', '') == ''
+        && resource.data.get('role', 'user') == 'user' && resource.data.get('isPengurus', false) != true
+        && changedOnly(['churchId','churchName']) && d.churchId is string && d.churchId != ''
+        && exists(/databases/$(database)/documents/churches/$(d.churchId));
+    }
+    function selfLink(uid) {
+      let d = request.resource.data;
+      let church = resource.data.get('churchId', '');
+      let book = d.get('jemaatId', '');
+      let before = get(/databases/$(database)/documents/churches/$(church)/jemaat/$(book)).data;
+      let after = getAfter(/databases/$(database)/documents/churches/$(church)/jemaat/$(book)).data;
+      return church != '' && book is string && book != '' && changedOnly(['jemaatId','kelompok'])
+        && (resource.data.get('jemaatId', '') == '' || resource.data.get('jemaatId', '') == book)
+        && before.get('uid', '') in ['', null, uid] && after.get('uid', '') == uid
+        && d.get('kelompok', '') == category(before.get('kelompok', ''))
+        && (resource.data.get('isPengurus', false) != true ||
+          category(resource.data.get('kelompok', '')) == d.kelompok);
+    }
+    function manageUser(uid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      return uid != request.auth.uid && before.get('role', 'user') != 'superadmin'
+        && admin(before.get('churchId', ''))
+        && (superAdmin() || before.get('role', 'user') == 'user')
+        && changedOnly(['role','kelompok','isPengurus','isBlocked','churchId','churchName','daerah','adminDaerahArea'])
+        && (after.get('role', 'user') == before.get('role', 'user') || after.get('role', '') in ['user','admin'])
+        && (superAdmin() || (after.get('churchId', '') == before.get('churchId', '')
+          && after.get('churchName', '') == before.get('churchName', '')
+          && after.get('daerah', '') == before.get('daerah', '')
+          && after.get('adminDaerahArea', '') == before.get('adminDaerahArea', '')))
+        && (after.get('churchId', '') == before.get('churchId', '') ||
+          (before.get('jemaatId', '') == '' && after.get('isPengurus', false) == false
+            && exists(/databases/$(database)/documents/churches/$(after.churchId))))
+        && (after.get('isPengurus', false) != true ||
+          (after.get('role', 'user') == 'user' && category(after.get('kelompok', '')) != 'Lainnya'));
+    }
+    match /users/{uid} {
+      // Own get also permits the login page to inspect blocked/missing accounts.
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow read: if active() && admin(resource.data.get('churchId', ''));
+      allow create: if newAccount(uid);
+      allow update: if active() && (
+        (request.auth.uid == uid && (changedOnly(['namaLengkap','photoUrl']) || initialJoin() || selfLink(uid)))
+        || manageUser(uid));
+      // No application flow deletes user accounts client-side.
+      match /notes/{noteId} {
+        allow read, write: if active() && request.auth.uid == uid;
+      }
+    }
+    match /churches/{church} {
+      // Existing invitation/region screens query the church directory.
+      allow read: if signedIn() && (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || active());
+      allow create, delete: if superAdmin();
+      allow update: if superAdmin() || (admin(church) && changedOnly([
+        'fotoGerejaUrl','namaBank','noRekening','atasNamaRekening','namaGembala',
+        'waGembala','fbGembala','igGembala','tiktokGembala','ytGembala','fotoGembalaUrl']));
+      match /jemaat/{book} {
+        allow read: if member(church) || superAdmin() || regionReader(get(/databases/$(database)/documents/churches/$(church)).data.get('daerah', ''));
+        allow create, delete: if admin(church);
+        allow update: if admin(church) || (member(church) && changedOnly(['uid'])
+          && resource.data.get('uid', '') in ['', null, request.auth.uid]
+          && request.resource.data.get('uid', '') == request.auth.uid
+          && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('churchId', '') == church
+          && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('jemaatId', '') == book
+          && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('kelompok', '') == category(resource.data.get('kelompok', '')));
+      }
+      match /aset/{id} {
+        allow read: if member(church) || superAdmin();
+        allow write: if admin(church);
+      }
+      match /perpuluhan/{id} {
+        allow read: if member(church) || superAdmin();
+        allow write: if admin(church);
+      }
+      match /transaksi/{id} {
+        allow read: if member(church) || superAdmin();
+        allow create: if groupWriter(church, request.resource.data.get('kategori', ''));
+        allow update: if groupWriter(church, resource.data.get('kategori', ''))
+          && groupWriter(church, request.resource.data.get('kategori', ''));
+        allow delete: if groupWriter(church, resource.data.get('kategori', ''));
+      }
+      match /jadwal/{id} {
+        allow read: if member(church) || superAdmin();
+        allow create: if groupWriter(church, request.resource.data.get('kategoriKegiatan', ''));
+        allow update: if groupWriter(church, resource.data.get('kategoriKegiatan', ''))
+          && groupWriter(church, request.resource.data.get('kategoriKegiatan', ''));
+        allow delete: if groupWriter(church, resource.data.get('kategoriKegiatan', ''));
+      }
+      match /pengumuman/{id} {
+        allow read: if member(church) || superAdmin();
+        allow write: if admin(church) || (leader(church, actor().get('kelompok', ''))
+          && id == 'pengumuman_' + category(actor().get('kelompok', '')));
+      }
+      // A constrained one-level match is NOT a recursive write wildcard.
+      match /{module}/{id} {
+        allow read: if module in ['bpj_bpk','bpj_penasehat','bpj_seksi'] && (member(church) || superAdmin());
+        allow write: if module in ['bpj_bpk','bpj_penasehat','bpj_seksi'] && admin(church);
+        allow read: if galleryModule(module) && (member(church) || superAdmin());
+        allow write: if galleryModule(module) && moduleWriter(church, module, 'gallery_folders');
+        allow read: if chatModule(module) && roomReader(church, module);
+        allow create: if chatModule(module) && roomReader(church, module)
+          && !exists(/databases/$(database)/documents/churches/$(church)/$( 'muted_' + module )/$(request.auth.uid))
+          && messageOwner(request.resource.data) == request.auth.uid;
+        allow update: if chatModule(module) && roomReader(church, module)
+          && messageOwner(resource.data) == request.auth.uid && changedOnly(['pesan'])
+          && resource.data.get('tipe', 'text') == 'text'
+          && !exists(/databases/$(database)/documents/churches/$(church)/$( 'muted_' + module )/$(request.auth.uid));
+        allow delete: if chatModule(module) && roomReader(church, module)
+          && (messageOwner(resource.data) == request.auth.uid || moduleWriter(church, module, 'chats'));
+        allow get: if muteModule(module) && active() && (id == request.auth.uid || moduleWriter(church, module, 'muted_chats'));
+        allow list, write: if muteModule(module) && moduleWriter(church, module, 'muted_chats');
+        match /images/{image} {
+          allow read: if galleryModule(module) && (member(church) || superAdmin());
+          allow create: if galleryModule(module) && moduleWriter(church, module, 'gallery_folders')
+            && exists(/databases/$(database)/documents/churches/$(church)/$(module)/$(id));
+          allow update, delete: if galleryModule(module) && moduleWriter(church, module, 'gallery_folders');
+        }
+      }
+    }
+    function groups() { return ['Sekolah Minggu','AMKI','Perkawan','Perkaria']; }
+    function galleryModule(m) { return m == 'gallery_folders' || m in ['gallery_folders_Sekolah Minggu','gallery_folders_AMKI','gallery_folders_Perkawan','gallery_folders_Perkaria']; }
+    function chatModule(m) { return m == 'chats' || m in ['chats_Sekolah Minggu','chats_AMKI','chats_Perkawan','chats_Perkaria']; }
+    function muteModule(m) { return m == 'muted_chats' || m in ['muted_chats_Sekolah Minggu','muted_chats_AMKI','muted_chats_Perkawan','muted_chats_Perkaria']; }
+    function moduleWriter(church, module, prefix) {
+      return admin(church) || (leader(church, actor().get('kelompok', ''))
+        && module == prefix + '_' + category(actor().get('kelompok', '')));
+    }
+    function roomReader(church, module) {
+      return admin(church) || (member(church) && (module == 'chats'
+        || module == 'chats_' + category(actor().get('kelompok', ''))));
+    }
+    function messageOwner(d) { return d.get('pengirimId', d.get('senderId', '')); }
+    match /aset_gereja/{id} {
+      allow read: if member(resource.data.get('gerejaId', '')) || superAdmin();
+      allow create: if admin(request.resource.data.get('gerejaId', ''));
+      allow update: if admin(resource.data.get('gerejaId', ''))
+        && request.resource.data.get('gerejaId', '') == resource.data.get('gerejaId', '');
+      allow delete: if admin(resource.data.get('gerejaId', ''));
+    }
+    match /{finance}/{id} {
+      allow read: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionReader(resource.data.get('daerah', ''));
+      allow create: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(request.resource.data.get('daerah', ''));
+      allow update: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(resource.data.get('daerah', ''))
+        && request.resource.data.get('daerah', '') == resource.data.get('daerah', '');
+      allow delete: if finance in ['keuangan_daerah','perpuluhan_daerah'] && regionWriter(resource.data.get('daerah', ''));
+    }
+    match /info_surat_daerah/{id} {
+      allow read: if regionReader(resource.data.get('daerah', ''));
+      allow create: if infoWriter(request.resource.data.get('daerah', ''));
+      allow update: if infoWriter(resource.data.get('daerah', '')) && request.resource.data.get('daerah', '') == resource.data.get('daerah', '');
+      allow delete: if infoWriter(resource.data.get('daerah', ''));
+    }
+    match /songs/{id} {
+      allow read: if active();
+      allow write: if superAdmin() || (active() && actor().get('role', 'user') == 'admin');
+    }
+    match /kamus_global/{id} {
+      allow read: if active();
+      // Existing AI cache permits first contribution but never overwriting it.
+      allow create: if active() && request.resource.data.keys().hasOnly(['kata_asli','arti','dicari_pada'])
+        && request.resource.data.arti is string && request.resource.data.arti.size() <= 60000;
+      allow update, delete: if superAdmin();
+    }
+    match /prayers/{id} {
+      // TRANSITION ONLY: old client filters private prayers AFTER downloading.
+      // Private reads remain possible to church members. See rollout blockers.
+      allow read: if member(resource.data.get('churchId', '')) || superAdmin();
+      allow create: if (member(request.resource.data.get('churchId', '')) || superAdmin())
+        && request.resource.data.get('uid', '') == request.auth.uid;
+      allow update: if (member(resource.data.get('churchId', '')) || superAdmin()) && (
+        (resource.data.get('uid', '') == request.auth.uid && changedOnly(['isiDoa','isPrivat']))
+        || (changedOnly(['daftarAmin']) && request.resource.data.daftarAmin is list
+          && request.resource.data.daftarAmin.toSet().hasAll(resource.data.get('daftarAmin', []))
+          && request.resource.data.daftarAmin.size() == resource.data.get('daftarAmin', []).size() + 1
+          && request.resource.data.daftarAmin.toSet().difference(resource.data.get('daftarAmin', []).toSet())
+            == [actor().get('namaLengkap', 'Jemaat')].toSet()));
+      allow delete: if admin(resource.data.get('churchId', '')) ||
+        (member(resource.data.get('churchId', '')) && resource.data.get('uid', '') == request.auth.uid);
+    }
+    // Neither collection is referenced by the audited Flutter source.
+    // Unknown notification worker and regional-chat contracts are not trusted.
+    match /pending_notifications/{id} { allow read, write: if false; }
+    match /chats_daerah/{path=**} { allow read, write: if false; }
+    // No broad fallback. Unknown paths/subcollections are denied.
+  }
+}

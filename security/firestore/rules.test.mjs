@@ -12,7 +12,7 @@ const account = (uid, extra = {}) => ({ uid, role: 'user', isBlocked: false, chu
 const fixtures = {
   'churches/a': { namaGereja: 'A', daerah: 'Utara', kodeUndangan: 'old-code' },
   'churches/b': { namaGereja: 'B', daerah: 'Selatan', kodeUndangan: 'another-code' },
-  'users/u': account('u'), 'users/v': account('v'), 'users/other': account('other', { churchId: 'b', daerah: 'Selatan' }),
+  'users/u': account('u'), 'users/v': account('v', { jemaatId: 'claimed' }), 'users/other': account('other', { churchId: 'b', daerah: 'Selatan' }),
   'users/admin': account('admin', { role: 'admin' }),
   'users/super': account('super', { role: 'superadmin' }),
   'users/blocked': account('blocked', { role: 'superadmin', isBlocked: true }),
@@ -122,6 +122,14 @@ describe('Transition rules: application contracts and denied attacks', () => {
     await assertSucceeds(updateDoc(ref('super', 'users/v'), { adminDaerahArea: 'Utara' }));
     await assertFails(updateDoc(ref('super', 'users/v'), { role: 'superadmin' }));
     await assertFails(updateDoc(ref('super', 'users/super'), { churchId: 'b' }));
+    await assertFails(updateDoc(ref('super', 'users/new'), { role: 'admin' }));
+  });
+  test('management category edits keep linked account/book consistent and reset leadership', async () => {
+    await assertFails(updateDoc(ref('admin', 'users/v'), { kelompok: 'Perkawan', isPengurus: false }));
+    const batch = writeBatch(db('admin'));
+    batch.update(ref('admin', 'users/v'), { kelompok: 'Perkawan', isPengurus: false });
+    batch.update(ref('admin', 'churches/a/jemaat/claimed'), { kelompok: 'Perkawan' });
+    await assertSucceeds(batch.commit());
   });
   test('atomic account/book link allowed including legacy missing uid and category spacing', async () => {
     const batch = writeBatch(db('u'));

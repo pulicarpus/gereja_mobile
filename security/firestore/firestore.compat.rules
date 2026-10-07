@@ -91,6 +91,11 @@ service cloud.firestore {
         && (superAdmin() || before.get('role', 'user') == 'user')
         && changedOnly(['role','kelompok','isPengurus','isBlocked','churchId','churchName','daerah','adminDaerahArea'])
         && (after.get('role', 'user') == before.get('role', 'user') || after.get('role', '') in ['user','admin'])
+        && (after.get('role', 'user') != 'admin' || before.get('role', 'user') == 'admin' ||
+          (after.get('churchId', '') != '' && exists(/databases/$(database)/documents/churches/$(after.churchId))))
+        && (after.get('kelompok', '') == before.get('kelompok', '') ||
+          (after.get('isPengurus', false) == false && category(after.get('kelompok', '')) == after.kelompok
+            && managedBookMatches(uid, before, after)))
         && (superAdmin() || (after.get('churchId', '') == before.get('churchId', '')
           && after.get('churchName', '') == before.get('churchName', '')
           && after.get('daerah', '') == before.get('daerah', '')
@@ -100,6 +105,11 @@ service cloud.firestore {
             && exists(/databases/$(database)/documents/churches/$(after.churchId))))
         && (after.get('isPengurus', false) != true ||
           (after.get('role', 'user') == 'user' && category(after.get('kelompok', '')) != 'Lainnya'));
+    }
+    function managedBookMatches(uid, before, after) {
+      return before.get('jemaatId', '') == '' || (
+        getAfter(/databases/$(database)/documents/churches/$(before.churchId)/jemaat/$(before.jemaatId)).data.get('uid', '') == uid
+        && category(getAfter(/databases/$(database)/documents/churches/$(before.churchId)/jemaat/$(before.jemaatId)).data.get('kelompok', '')) == after.kelompok);
     }
     match /users/{uid} {
       // Own get also permits the login page to inspect blocked/missing accounts.

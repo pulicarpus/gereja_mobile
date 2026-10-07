@@ -19,6 +19,8 @@ const fixtures = {
   'users/leader': account('leader', { isPengurus: true, kelompok: ' amki ' }),
   'users/regional': account('regional', { adminDaerahArea: 'Utara' }),
   'users/gembala': account('gembala', { role: 'gembala' }),
+  'users/gembalaMismatch': account('gembalaMismatch', { role: 'gembala', churchId: 'b' }),
+  'users/regionalLegacy': account('regionalLegacy', { adminDaerahArea: ' Utara ' }),
   'users/bpj': account('bpj', { role: 'bpj' }),
   'users/new': account('new', { churchId: '', churchName: '', daerah: '', kelompok: 'Umum' }),
   'churches/a/jemaat/free': { kelompok: ' amki ', nama: 'Legacy' },
@@ -213,10 +215,11 @@ describe('Transition rules: application contracts and denied attacks', () => {
     await assertSucceeds(batch.commit());
   });
   test('regional finance allows designated admin, gembala and BPJ but no cross-region move', async () => {
-    for (const uid of ['regional','gembala','bpj']) await assertSucceeds(updateDoc(ref(uid, 'keuangan_daerah/n'), { jumlah: 200 }));
+    for (const uid of ['regional','regionalLegacy','gembala','bpj']) await assertSucceeds(updateDoc(ref(uid, 'keuangan_daerah/n'), { jumlah: 200 }));
     await assertFails(updateDoc(ref('u', 'keuangan_daerah/n'), { jumlah: 200 }));
     await assertFails(updateDoc(ref('regional', 'keuangan_daerah/s'), { jumlah: 200 }));
     await assertFails(updateDoc(ref('regional', 'keuangan_daerah/n'), { daerah: 'Selatan' }));
+    await assertFails(updateDoc(ref('gembalaMismatch', 'keuangan_daerah/s'), { jumlah: 200 }));
     await assertSucceeds(getDocs(query(collection(db('regional'), 'keuangan_daerah'), where('daerah', '==', 'Utara'))));
     await assertFails(getDocs(collection(db('regional'), 'keuangan_daerah')));
   });

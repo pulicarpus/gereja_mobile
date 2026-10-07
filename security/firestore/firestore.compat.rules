@@ -4,6 +4,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function signedIn() { return request.auth != null; }
+    function cleanText(value) { return value is string ? value.trim() : ''; }
     function actor() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
@@ -37,18 +38,18 @@ service cloud.firestore {
     }
     function regionReader(area) {
       return superAdmin() || (active() && area is string && area != '' && (
-        actor().get('adminDaerahArea', '') == area || actor().get('daerah', '') == area || churchArea() == area));
+        cleanText(actor().get('adminDaerahArea', '')) == area || cleanText(actor().get('daerah', '')) == area || churchArea() == area));
     }
     // Gembala/BPJ may write regional finance; only appointed regional admins
     // and superadmins may publish regional information.
     function regionWriter(area) {
       return superAdmin() || (active() && area is string && area != '' && (
-        actor().get('adminDaerahArea', '') == area ||
+        cleanText(actor().get('adminDaerahArea', '')) == area ||
         (actor().get('role', 'user') in ['gembala', 'bpj'] &&
-          (actor().get('daerah', '') == area || churchArea() == area))));
+          cleanText(actor().get('daerah', '')) == area)));
     }
     function infoWriter(area) {
-      return superAdmin() || (active() && area is string && area != '' && actor().get('adminDaerahArea', '') == area);
+      return superAdmin() || (active() && area is string && area != '' && cleanText(actor().get('adminDaerahArea', '')) == area);
     }
     function changedOnly(fields) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields); }
     function newAccount(uid) {

@@ -1,11 +1,19 @@
-# Audit Firestore — kandidat transisi, belum untuk deploy
+# Audit Firestore — catatan kandidat transisi awal
+
+Catatan ini menjelaskan kandidat `compat` pada tahap audit awal. Penyesuaian
+Flutter/backend dan kandidat `release` terbaru dijelaskan dalam
+[RELEASE_REVIEW.md](RELEASE_REVIEW.md). Untuk review rilis baru, gunakan
+`firestore.release.rules` dan `storage.release.rules`; kandidat `compat` tetap
+memiliki batasan privasi dan tautan yang dijelaskan di bawah.
 
 Sumber aplikasi: `perbaikan-fitur-daerah` pada commit
 `1272a970f585d63edda8ecbf34b5b1df98ebf85b`. Rules masukan pengguna disalin
 ke `firestore.supplied.rules` dengan komentar/format disederhanakan, izin sama.
 `firestore.compat.rules` adalah kandidat review, **bukan rules produksi final**.
 Tidak ada data produksi dibaca, ditulis, dimigrasi, atau dihapus oleh pekerjaan ini.
-Tidak ada kode Flutter, konfigurasi Android, Storage rules, atau cabang Windows diubah.
+Pada tahap awal belum ada perubahan Flutter. Tahap lanjutan menambahkan perubahan
+Flutter, backend persetujuan, dan kandidat Storage yang tercatat di RELEASE_REVIEW.md.
+Konfigurasi Android, Firebase produksi, dan cabang Windows tidak diubah.
 
 ## Temuan dan perubahan
 
@@ -39,7 +47,11 @@ Tidak ada kode Flutter, konfigurasi Android, Storage rules, atau cabang Windows 
 | keuangan_daerah/info_surat | global collections, field daerah; adminDaerahArea terpisah dari role, bukan role admin_daerah |
 | kamus/notes/doa | kamus_global/{kata}, users/{uid}/notes, prayers.churchId/uid/isPrivat/daftarAmin |
 
-## Batasan yang MENGHALANGI deploy produksi final
+## Batasan kandidat compat awal
+
+Butir 1–2 telah ditangani pada client/backend dan kandidat release yang diuji
+emulator, tetapi belum diaktifkan di produksi. Batasan kompatibilitas, data legacy,
+moderasi kamus, dan integritas ledger tetap memerlukan review sebelum rollout.
 
 1. **Doa privat belum aman di kandidat transisi.** `doa_page.dart` mengambil semua
    doa gereja lalu menyaring `isPrivat` di perangkat. Kandidat mempertahankan query

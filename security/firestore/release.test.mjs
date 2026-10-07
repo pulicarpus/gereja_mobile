@@ -61,6 +61,8 @@ describe('Release rules and real authenticated callable approval flow', () => {
   test('private reads denied to other members/BPJ; owner/admin/gembala allowed', async () => {
     for (const uid of ['u','bpj','adminB','blocked']) await assertFails(getDoc(doc(user(uid),'prayers/private')));
     for (const uid of ['v','admin','gembala','super']) await assertSucceeds(getDoc(doc(user(uid),'prayers/private')));
+    await assertFails(getDoc(doc(user('u'),'prayers/legacy')));
+    await assertSucceeds(getDoc(doc(user('v'),'prayers/legacy')));
   });
   test('new public/own queries allowed; old broad member query denied, privileged broad query allowed', async () => {
     const base=collection(user('u'),'prayers');

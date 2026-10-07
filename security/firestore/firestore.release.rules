@@ -219,8 +219,9 @@ service cloud.firestore {
     function aminName() { return cleanText(actor().get('namaLengkap', '')) == '' ? 'Jemaat' : cleanText(actor().get('namaLengkap', '')); }
     function visiblePrayer(data) {
       let church = data.get('churchId', '');
-      return superAdmin() || (member(church) && (data.get('isPrivat', false) != true
-        || data.get('uid', '') == request.auth.uid || actor().get('role', 'user') in ['admin','gembala']));
+      return superAdmin() || (member(church) && (
+        actor().get('role', 'user') in ['admin','gembala'] || data.get('uid', '') == request.auth.uid
+        || data.isPrivat == false));
     }
     match /profile_requests/{id} {
       allow get: if active() && (id == 'membership_' + request.auth.uid || id == 'link_' + request.auth.uid);

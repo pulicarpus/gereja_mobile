@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() { return request.auth != null; }
+    function isPrivilegedUser() {
+      return isSignedIn() && (
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'superadmin');
+    }
+    match /churches/{churchId}/foto_jemaat/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isPrivilegedUser();
+    }
+    match /aset_gereja_photos/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isPrivilegedUser();
+    }
+    match /{allPaths=**} { allow read, write: if isSignedIn(); }
+  }
+}

@@ -64,8 +64,9 @@ Tidak ada kode Flutter, konfigurasi Android, Storage rules, atau cabang Windows 
    Batch aplikasi sekarang didukung, tetapi rules ini belum memaksakan kesetaraan
    nilai kedua dokumen. Kontrak ledger lengkap harus dirancang dan diuji sebelum
    menyatakan integritas keuangan server selesai.
-5. **Storage Rules belum diberikan.** Akses upload/foto, batas tipe/ukuran, dan
-   penghapusan file belum diaudit lewat rules. REST key OneSignal/Telegram di APK
+5. **Storage Rules sudah diberikan dan memiliki kandidat terpisah.** Lihat
+   STORAGE_AUDIT.md, storage.compat.rules dan tes cross-service. Kandidat belum
+   di-deploy; kompatibilitas upload APK lama masih membutuhkan staging. REST key OneSignal/Telegram di APK
    tidak diamankan oleh Firestore rules; perlu backend terpisah, bukan ubah data.
 6. **Bukan verifikasi seluruh versi APK lama atau worker.** Source yang diuji
    adalah commit di atas. Koleksi settings/gallery tambahan, client worker
@@ -102,7 +103,7 @@ update dengan memeriksa changed fields, bukan mengganti dokumen tersebut.
    kontrak worker yang belum ada. Jangan copy-paste kandidat sebagai rules final.
 2. Siapkan query/flow verifikasi yang diperlukan di cabang uji; uji aplikasi lama
    dan baru pada staging/emulator dengan fixture representatif tanpa data produksi.
-3. Selesaikan blockers di atas dan audit Storage Rules setelah tersedia.
+3. Selesaikan blockers di atas dan review kandidat Storage bersama Firestore.
 4. Baru rencanakan aktivasi rules terkoordinasi. Tidak ada deployment pada audit ini.
 5. Setelah kesesuaian Firebase disepakati, lanjut Windows di `fitur-windows`.
 

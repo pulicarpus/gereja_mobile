@@ -29,3 +29,9 @@ jobs:
           CI: 'true'
           FIREBASE_CLI_DISABLE_TELEMETRY: '1'
         run: npm test
+      - name: Run Storage and Firestore cross-service emulator tests
+        working-directory: security/firestore
+        env:
+          CI: 'true'
+          FIREBASE_CLI_DISABLE_TELEMETRY: '1'
+        run: npm run test:storage

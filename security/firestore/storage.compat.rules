@@ -1,0 +1,79 @@
+// REVIEW ONLY: deploy with reviewed Firestore rules; see STORAGE_AUDIT.md.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function actor() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    function active() { return signedIn() && actor().get('isBlocked', false) != true; }
+    function superAdmin() { return active() && actor().get('role', 'user') == 'superadmin'; }
+    function admin(church) {
+      return superAdmin() || (active() && church != '' && actor().get('role', 'user') == 'admin'
+        && actor().get('churchId', '') == church);
+    }
+    function infoWriter(area) {
+      return superAdmin() || (active() && area != '' && actor().get('adminDaerahArea', '') is string
+        && actor().get('adminDaerahArea', '').trim() == area);
+    }
+    function imageUpload() {
+      return request.resource.size > 0 && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg','image/png','image/webp'];
+    }
+    function attachmentUpload() {
+      return request.resource.size > 0 && request.resource.size <= 20 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg','image/png','image/webp','application/pdf',
+          'application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+    }
+    function ownFlatAsset(file) {
+      let church = actor().get('churchId', '');
+      return church is string && church != '' && actor().get('role', 'user') == 'admin'
+        && file.size() > church.size() + 1
+        && file[0:church.size()+1] == church + '_'
+        && file[church.size()+1:file.size()].matches('^[0-9]+[.]jpg$');
+    }
+    match /users/{uid}/{file} {
+      // Existing book/profile/chat displays use other accounts' profile photos.
+      allow get: if active();
+      allow create, update: if active() && request.auth.uid == uid && imageUpload();
+      allow delete: if active() && request.auth.uid == uid;
+    }
+    match /churches/{church}/foto_jemaat/{file} {
+      allow get: if active();
+      allow create, update: if admin(church) && imageUpload();
+      allow delete: if admin(church);
+    }
+    match /gereja/{church}/{file} {
+      allow get: if active();
+      allow create, update: if admin(church) && imageUpload()
+        && file.matches('^(header|gembala)_[0-9]+[.]jpg$');
+      allow delete: if admin(church);
+    }
+    match /gereja/{church}/pengurus/{file} {
+      allow get: if active();
+      allow create, update: if admin(church) && imageUpload();
+      allow delete: if admin(church);
+    }
+    // Current Flutter asset uploader uses this FLAT path, not the old folder.
+    match /aset_gereja/{file} {
+      allow get: if active();
+      allow create, update: if active() && (superAdmin() || ownFlatAsset(file)) && imageUpload();
+      allow delete: if active() && (superAdmin() || ownFlatAsset(file));
+    }
+    match /aset_gereja_photos/{file} {
+      allow get: if active();
+      // Legacy filenames have no verified church mapping: never guess ownership.
+      allow create, update: if superAdmin() && imageUpload();
+      allow delete: if superAdmin();
+    }
+    match /info_daerah/{area}/{file} {
+      allow get: if active();
+      allow create, update: if infoWriter(area) && attachmentUpload()
+        && file.matches('^doc_[0-9]+[.](jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|ppt|pptx)$');
+      allow delete: if infoWriter(area);
+    }
+    // Unknown paths, recursive writes and listing are denied by default.
+  }
+}

@@ -1,7 +1,8 @@
+import 'mobile_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+
 
 import 'kategorial_config.dart';
 import 'sub_kategorial_page.dart';
@@ -79,7 +80,7 @@ class _KategorialPageState extends State<KategorialPage> {
         kelompok,
         pengurus: isPengurus,
       );
-      OneSignal.User.addTagWithKey("kelompok", kelompok);
+      MobilePush.tag("kelompok", kelompok);
 
       if (mounted) setState(() {});
     } catch (e) {

@@ -1,8 +1,9 @@
+import 'mobile_notifications.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+
 import 'user_manager.dart';
 import 'app_safety.dart';
 import 'profile_service.dart';
@@ -38,7 +39,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
     setState(() => _isLoading = true);
     try {
       await _auth.signOut().timeout(const Duration(seconds: 20));
-      try { await Future<void>.sync(OneSignal.logout).timeout(const Duration(seconds: 10)); } catch (_) {}
+      try { await Future<void>.sync(MobilePush.logout).timeout(const Duration(seconds: 10)); } catch (_) {}
       await UserManager().reset().timeout(const Duration(seconds: 10));
       if (mounted) Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
     } catch (e) {
@@ -144,7 +145,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
 
       // --- SINKRONISASI ONESIGNAL (Add Tag) ---
-      try { OneSignal.User.addTagWithKey("active_church", churchId); } catch (_) {}
+      try { MobilePush.tag("active_church", churchId); } catch (_) {}
 
       // Simpan ke SharedPreferences via UserManager
       final userManager = UserManager();

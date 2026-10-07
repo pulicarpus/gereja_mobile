@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:gal/gal.dart';
+import 'package:file_selector/file_selector.dart';
 
 import 'secrets.dart';
 import 'telegram_gallery_cache.dart';
@@ -75,24 +76,19 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
         botToken: _botToken,
       );
 
-      var hasAccess = await Gal.hasAccess(toAlbum: true);
-      if (!hasAccess) {
-        await Gal.requestAccess(toAlbum: true);
-        hasAccess = await Gal.hasAccess(toAlbum: true);
+      if (Platform.isWindows) {
+        final destination = await getSaveLocation(suggestedName: 'foto_gereja.jpg');
+        if (destination != null) await localFile.copy(destination.path);
+        if (mounted) Navigator.of(context, rootNavigator: true).maybePop();
+        if (destination != null) _showSnack('Foto berhasil disimpan ke komputer.');
+      } else {
+        var hasAccess = await Gal.hasAccess(toAlbum: true);
+        if (!hasAccess) { await Gal.requestAccess(toAlbum: true); hasAccess = await Gal.hasAccess(toAlbum: true); }
+        if (!hasAccess) throw FileSystemException('Izin menyimpan foto ke galeri ditolak.');
+        await Gal.putImage(localFile.path, album: 'GKII Mobile');
+        if (mounted) Navigator.of(context, rootNavigator: true).maybePop();
+        _showSnack('Foto berhasil disimpan ke Galeri HP.');
       }
-
-      if (!hasAccess) {
-        throw FileSystemException(
-          "Izin menyimpan foto ke galeri ditolak.",
-        );
-      }
-
-      await Gal.putImage(localFile.path, album: 'GKII Mobile');
-
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).maybePop();
-      }
-      _showSnack("Foto berhasil disimpan ke Galeri HP.");
     } catch (e) {
       debugPrint("Gagal menyimpan foto ke galeri HP: $e");
       if (mounted) {
@@ -205,7 +201,7 @@ class _FullImageSliderPageState extends State<FullImageSliderPage> {
                             color: Colors.white,
                             size: 28,
                           ),
-                    tooltip: "Simpan ke Galeri",
+                    tooltip: Platform.isWindows ? "Simpan ke Komputer" : "Simpan ke Galeri",
                     onPressed: _isSaving
                         ? null
                         : () => _saveImageToGallery(
@@ -334,3 +330,4 @@ class _FullscreenTelegramImageState
     );
   }
 }
+

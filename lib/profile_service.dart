@@ -1,9 +1,10 @@
+import 'mobile_notifications.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+
 import 'user_manager.dart';
 import 'kategorial_config.dart';
 import 'profile_support.dart';
@@ -189,7 +190,7 @@ class FirebaseProfileGateway implements ProfileGateway {
   @override Future<void> logout() async {
     try { await _auth.signOut().timeout(const Duration(seconds: 20)); }
     catch (_) { if (signedInUid != null) rethrow; }
-    try { await Future<void>.sync(OneSignal.logout).timeout(const Duration(seconds: 15)); } catch (_) {}
+    try { await Future<void>.sync(MobilePush.logout).timeout(const Duration(seconds: 15)); } catch (_) {}
     await _manager.reset().timeout(const Duration(seconds: 10));
   }
 }

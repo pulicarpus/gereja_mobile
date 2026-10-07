@@ -49,3 +49,5 @@ app.*.map.json
 # MANTRA KAIN GAIB: MENYEMBUNYIKAN API KEY
 # ==========================================
 lib/secrets.dart
+# Local Windows OAuth credentials (never commit)
+oauth-desktop.json

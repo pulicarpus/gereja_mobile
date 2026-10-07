@@ -43,6 +43,11 @@ dependencies:
   google_sign_in: ^6.2.1
   onesignal_flutter: ^5.2.6
 
+  crypto: ^3.0.6
+  file_selector: ^1.1.0
+  sqflite_common_ffi: ^2.4.0
+  sqlite3: ^3.0.0
+  video_player_win: ^3.3.0
   sqflite: ^2.3.0
   path: ^1.9.0
   path_provider: ^2.1.2

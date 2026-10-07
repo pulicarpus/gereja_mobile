@@ -115,6 +115,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
   }
 
   Future<File?> _scanDocument() async {
+    if (!Platform.isAndroid) return _pickDocument();
     try {
       DocumentScannerOptions options = DocumentScannerOptions(
         mode: ScannerMode.filter,
@@ -269,10 +270,10 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                       child: ElevatedButton.icon(
                         onPressed: () async {
                           File? file = await _scanDocument();
-                          if (file != null) setStateDialog(() { attachedFile = file; isImage = true; });
+                          if (file != null) setStateDialog(() { attachedFile = file; isImage = Platform.isAndroid; });
                         },
                         icon: const Icon(Icons.document_scanner, size: 16),
-                        label: const Text("Scan", style: TextStyle(fontSize: 12)),
+                        label: Text(Platform.isAndroid ? "Scan" : "Pilih File", style: const TextStyle(fontSize: 12)),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.shade50, foregroundColor: Colors.blue.shade900),
                       ),
                     ),

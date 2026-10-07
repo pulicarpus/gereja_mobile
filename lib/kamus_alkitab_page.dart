@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -19,6 +21,8 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
   @override
   void initState() {
     super.initState();
+
+    if (Platform.isWindows) { _isLoading = false; return; }
 
     // Inisialisasi WebView Controller
     _controller = WebViewController()
@@ -60,7 +64,16 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
   }
 
   // Fungsi untuk mengeksekusi pencarian
+  Future<void> _openDesktopKamus() async {
+    final word = _searchController.text.trim();
+    final url = Uri.https("alkitab.sabda.org", "/dictionary.php", {if (word.isNotEmpty) "word": word});
+    try {
+      if (!await launchUrl(url, mode: LaunchMode.externalApplication)) throw StateError("Browser belum dapat dibuka.");
+    } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kamus belum dapat dibuka. Periksa browser."))); }
+  }
+
   void _cariKata() {
+    if (Platform.isWindows) { _openDesktopKamus(); return; }
     String kata = _searchController.text.trim();
     if (kata.isNotEmpty) {
       // Kita langsung memanipulasi URL SABDA untuk melakukan pencarian
@@ -96,7 +109,7 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              _controller.reload();
+              if (Platform.isWindows) { _openDesktopKamus(); } else { _controller.reload(); }
             },
             tooltip: "Muat Ulang",
           ),
@@ -177,7 +190,9 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
           Expanded(
             child: Stack(
               children: [
-                WebViewWidget(controller: _controller),
+                if (Platform.isWindows) Center(child: FilledButton.icon(onPressed: _openDesktopKamus,
+                  icon: const Icon(Icons.open_in_browser), label: const Text('Buka Kamus SABDA di Browser')))
+                else WebViewWidget(controller: _controller),
                 // Overlay loading di tengah layar saat pertama kali buka
                 if (_isLoading)
                   Container(
@@ -194,3 +209,4 @@ class _KamusAlkitabPageState extends State<KamusAlkitabPage> {
     );
   }
 }
+

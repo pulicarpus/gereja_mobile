@@ -1,0 +1,96 @@
+name: Windows Desktop Preview
+on:
+  workflow_dispatch:
+  push:
+    branches: [fitur-windows]
+    paths: ['lib/**', 'test/**', 'pubspec.yaml', 'tool/**', 'windows/**', '.github/workflows/windows.yml']
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare native Windows runner
+        run: ./tool/prepare_windows.ps1
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Generate existing app secret constants
+        env:
+          APP_GEMINI: ${{ secrets.GEMINI_API_KEY }}
+          APP_TELEGRAM: ${{ secrets.TELE_BOT_TOKEN }}
+          APP_ONESIGNAL: ${{ secrets.ONESIGNAL_REST_KEY }}
+          APP_PIXABAY: ${{ secrets.PIXABAY_API_KEY }}
+        run: |
+          function DartLiteral([string]$value) {
+            return "'" + $value.Replace('\','\\').Replace("'","\'").Replace('$','\$').Replace("`r",'\r').Replace("`n",'\n') + "'"
+          }
+          $source = @(
+            ('const String geminiApiKey = ' + (DartLiteral $env:APP_GEMINI) + ';'),
+            ('const String teleBotTokenSecret = ' + (DartLiteral $env:APP_TELEGRAM) + ';'),
+            ('const String osRestKeySecret = ' + (DartLiteral $env:APP_ONESIGNAL) + ';'),
+            ('const String pixabayApiKey = ' + (DartLiteral $env:APP_PIXABAY) + ';')
+          )
+          Set-Content lib/secrets.dart $source
+      - name: Analyze application
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Test regressions on Windows
+        run: |
+          flutter test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build Windows x64
+        run: flutter build windows --release
+      - name: Verify executable and offline SQLite asset
+        run: |
+          $releasePath = 'build/windows/x64/runner/Release'
+          if (!(Test-Path "$releasePath/gereja_mobile.exe")) { throw 'Executable missing' }
+          if (!(Test-Path "$releasePath/data/flutter_assets/assets/TB.SQLite3")) { throw 'Bible database missing' }
+          if (!(Test-Path "$releasePath/sqlite3.dll")) { throw 'SQLite runtime missing' }
+          Copy-Item docs/WINDOWS_PREVIEW.md "$releasePath/BACA_DULU.md"
+          Get-FileHash "$releasePath/gereja_mobile.exe" -Algorithm SHA256
+      - name: Smoke test native startup without accounts or production writes
+        run: |
+          $readyPath = Join-Path $env:RUNNER_TEMP ('gkii-ready-' + [Guid]::NewGuid() + '.txt')
+          $env:GKII_SMOKE_READY_PATH = $readyPath
+          $appProcess = Start-Process -FilePath 'build/windows/x64/runner/Release/gereja_mobile.exe' -PassThru
+          try {
+            $deadline = (Get-Date).AddSeconds(25)
+            while (!(Test-Path $readyPath) -and (Get-Date) -lt $deadline) {
+              Start-Sleep -Milliseconds 250
+              $appProcess.Refresh()
+              if ($appProcess.HasExited) { throw 'Windows app exited during startup' }
+            }
+            if (!(Test-Path $readyPath)) { throw 'First Flutter frame was not reached' }
+            Write-Output 'Windows Firebase/SQLite initialization and first Flutter frame passed'
+          } finally {
+            $appProcess.Refresh()
+            if (!$appProcess.HasExited) { Stop-Process -Id $appProcess.Id }
+            Remove-Item Env:GKII_SMOKE_READY_PATH
+            if (Test-Path $readyPath) { Remove-Item $readyPath }
+          }
+      - name: Package complete portable folder
+        run: |
+          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'GKII-Mobile-Windows-x64.zip' -CompressionLevel Optimal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GKII-Mobile-Windows-x64
+          path: GKII-Mobile-Windows-x64.zip
+      - name: Export generated runner for reproducible review
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-runner-source
+          path: |
+            windows/CMakeLists.txt
+            windows/runner/**
+            windows/flutter/CMakeLists.txt
+            windows/.gitignore

@@ -1,4 +1,6 @@
+import 'mobile_notifications.dart';
 import 'upload_support.dart';
+import 'windows_startup.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -47,13 +49,22 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await initializeAppServices();
   await initializeDateFormatting('id_ID', null);
   _initOneSignal();
   runApp(const MyApp());
+  if (Platform.isWindows) {
+    final smokeReady = Platform.environment['GKII_SMOKE_READY_PATH'];
+    if (smokeReady != null && smokeReady.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await File(smokeReady).writeAsString('ready');
+      });
+    }
+  }
 }
 
 void _initOneSignal() {
+  if (!MobilePush.supported) return;
   OneSignal.Debug.setLogLevel(OSLogLevel.verbose);
   OneSignal.initialize("a9ff250a-56ef-413d-b825-67288008d614");
   OneSignal.Notifications.requestPermission(true);
@@ -475,7 +486,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
           if (data['isBlocked'] == true) {
             await _auth.signOut();
-            OneSignal.logout();
+            MobilePush.logout();
             await userManager.reset();
             _isRefreshingSession = false;
             if (!mounted) return;
@@ -553,16 +564,16 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     final manager = UserManager();
     final churchId = manager.getChurchIdForCurrentView();
     if (user != null) {
-      OneSignal.login(user.uid);
-      OneSignal.User.addTagWithKey("role", manager.userRole ?? "user");
-      OneSignal.User.addTagWithKey("kelompok", manager.userKomisi ?? "Umum");
-      OneSignal.User.addTagWithKey("daerah", UserManager.nonEmpty(manager.userDaerah) ?? "");
-      OneSignal.User.addTagWithKey("admin_daerah_area", UserManager.nonEmpty(manager.adminDaerahArea) ?? "");
+      MobilePush.login(user.uid);
+      MobilePush.tag("role", manager.userRole ?? "user");
+      MobilePush.tag("kelompok", manager.userKomisi ?? "Umum");
+      MobilePush.tag("daerah", UserManager.nonEmpty(manager.userDaerah) ?? "");
+      MobilePush.tag("admin_daerah_area", UserManager.nonEmpty(manager.adminDaerahArea) ?? "");
 
       if (churchId != null && churchId.trim().isNotEmpty) {
-        OneSignal.User.addTagWithKey("active_church", churchId.trim());
+        MobilePush.tag("active_church", churchId.trim());
       } else if (manager.isSuperAdmin()) {
-        OneSignal.User.addTagWithKey("active_church", "SUPERADMIN");
+        MobilePush.tag("active_church", "SUPERADMIN");
       }
     }
   }

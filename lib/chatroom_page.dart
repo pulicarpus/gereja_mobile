@@ -219,6 +219,9 @@ class _ChatroomPageState extends State<ChatroomPage> {
       }
       return;
     }
+    if (Platform.isWindows && source == ImageSource.camera) {
+      _showSnack('Pilih foto dari komputer melalui tombol +.'); return;
+    }
     if (await _checkIfMuted()) return;
 
     final image = await _picker.pickImage(
@@ -1862,7 +1865,7 @@ class _ChatroomPageState extends State<ChatroomPage> {
                             ),
                           ),
                         ),
-                        IconButton(
+                        if (!Platform.isWindows) IconButton(
                           icon: const Icon(
                             Icons.camera_alt,
                             color: Colors.grey,

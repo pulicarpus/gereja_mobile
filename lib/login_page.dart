@@ -1,8 +1,13 @@
+import 'dart:io';
+import 'package:firebase_core/firebase_core.dart';
+import 'desktop_google_login.dart';
+import 'alkitab_page.dart';
+import 'mobile_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:onesignal_flutter/onesignal_flutter.dart';
+
 import 'user_manager.dart';
 
 import 'validasi_gereja_page.dart';
@@ -22,32 +27,36 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
 
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final DesktopGoogleLogin _desktopLogin = DesktopGoogleLogin();
+
+  @override void dispose() { _desktopLogin.cancel(); super.dispose(); }
 
   Future<void> _signInWithGoogle() async {
     if (_isLoading || !mounted) return;
     setState(() => _isLoading = true);
     try {
-      await _googleSignIn.signOut();
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        return;
+      UserCredential userCredential;
+      if (Platform.isWindows) {
+        final config = await DesktopGoogleLogin.readConfig(Firebase.app().options.projectId);
+        if (!mounted) return;
+        final tokens = await _desktopLogin.signIn(clientId: config['client_id']!, clientSecret: config['client_secret']);
+        if (!mounted) return;
+        userCredential = await _auth.signInWithCredential(GoogleAuthProvider.credential(idToken: tokens.idToken, accessToken: tokens.accessToken));
+      } else {
+        await _googleSignIn.signOut();
+        final googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) return;
+        final googleAuth = await googleUser.authentication;
+        userCredential = await _auth.signInWithCredential(GoogleAuthProvider.credential(accessToken: googleAuth.accessToken, idToken: googleAuth.idToken));
       }
-
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-      final AuthCredential credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
       final User? user = userCredential.user;
 
       if (user != null) {
-        OneSignal.login(user.uid);
+        MobilePush.login(user.uid);
         await _checkUserRegistration(user);
       }
     } catch (e) {
-      _showToast("Google Sign-In Gagal: $e");
+      _showToast(e is StateError ? e.message.toString() : "Login belum berhasil. Periksa koneksi atau coba kembali.");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -64,7 +73,7 @@ class _LoginPageState extends State<LoginPage> {
         final data = doc.data() as Map<String, dynamic>;
         if (data['isBlocked'] == true) {
           await _auth.signOut();
-          OneSignal.logout();
+          MobilePush.logout();
           await UserManager().reset();
           if (!mounted) return;
           _showToast("Akun Anda sedang dinonaktifkan. Hubungi administrator gereja.");
@@ -100,19 +109,19 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted || _auth.currentUser?.uid != user.uid) return;
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇
-        OneSignal.User.addTagWithKey("role", role);
-        OneSignal.User.addTagWithKey("kelompok", data['kelompok']?.toString() ?? "Umum");
+        MobilePush.tag("role", role);
+        MobilePush.tag("kelompok", data['kelompok']?.toString() ?? "Umum");
         if (daerah.isNotEmpty) {
-          OneSignal.User.addTagWithKey("daerah", daerah);
+          MobilePush.tag("daerah", daerah);
         }
 
         // Jika Superadmin, beri Tag khusus di OneSignal
         if (role == "superadmin") {
-          OneSignal.User.addTagWithKey("active_church", "SUPERADMIN");
+          MobilePush.tag("active_church", "SUPERADMIN");
           _goToMainActivity(); 
           return;
         } else if (churchId != null && churchId.isNotEmpty) {
-          OneSignal.User.addTagWithKey("active_church", churchId);
+          MobilePush.tag("active_church", churchId);
         }
 
         // LOGIKA SATPAM 3 JALUR SULTAN
@@ -208,6 +217,7 @@ class _LoginPageState extends State<LoginPage> {
             padding: const EdgeInsets.all(30),
             child: Column(
               children: [
+                if (Platform.isWindows) const Text('GKII Mobile untuk Windows — versi uji'),
                 const SizedBox(height: 80),
                 const Icon(Icons.church, size: 80, color: Colors.indigo),
                 const SizedBox(height: 40),
@@ -220,6 +230,12 @@ class _LoginPageState extends State<LoginPage> {
                     label: const Text("Masuk dengan Google"),
                   ),
                 ),
+                if (Platform.isWindows) ...[
+                  const SizedBox(height: 16),
+                  TextButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AlkitabPage())),
+                    icon: const Icon(Icons.menu_book), label: const Text('Buka Alkitab lokal')),
+                  const Text('Login membuka browser. Gunakan akun Google yang sama dengan aplikasi Android.', textAlign: TextAlign.center),
+                ],
               ],
             ),
           ),

@@ -320,7 +320,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                   await checkRegionWrite(widget.namaDaerah);
                   if (!mounted || !dialogContext.mounted) return;
                   String? fileUrl = uploadedUrl;
-                  String? fileNameOriginal;
+                  String? fileNameOriginal = attachedFile?.path.split('/').last;
 
                   if (attachedFile != null && fileUrl == null) {
                     fileNameOriginal = attachedFile!.path.split('/').last;
@@ -352,7 +352,11 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                         !actor.exists || !permitsRegionWrite(actor.data()!, widget.namaDaerah)) {
                       throw StateError('Sesi atau izin daerah berubah.');
                     }
-                    if (!existing.exists) tx.set(postRef, postData);
+                    if (existing.exists) {
+                      assertRetryMatches(existing.data()!, postData);
+                    } else {
+                      tx.set(postRef, postData);
+                    }
                   }).timeout(const Duration(seconds: 20));
                   if (dialogContext.mounted) Navigator.pop(dialogContext);
 

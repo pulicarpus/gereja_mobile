@@ -206,6 +206,9 @@ Future<void> saveRegionChanges(String area,
       if (fresh.exists && legacyText(data['daerah']).trim() != area.trim()) {
         throw StateError('Transaksi bukan milik daerah ini atau daerahnya belum dapat dipastikan.');
       }
+      if (createOnly && fresh.exists && entry.value != null) {
+        assertRetryMatches(data, entry.value!);
+      }
       if (requireExisting && !fresh.exists && entry.value != null) {
         throw StateError('Transaksi telah dihapus. Muat ulang dahulu.');
       }
@@ -240,5 +243,14 @@ Future<void> checkGlobalSongWrite(String? expectedUid) async {
   if (FirebaseAuth.instance.currentUser?.uid != uid || UserManager().userId != uid ||
       !actor.exists || !permitsGlobalSongWrite(actor.data()!)) {
     throw StateError('Izin mengubah Buku Nyanyian sudah berubah.');
+  }
+}
+
+void assertRetryMatches(Map<String, dynamic> existing, Map<String, dynamic> desired) {
+  for (final entry in desired.entries) {
+    if (entry.value is FieldValue) continue;
+    if (existing[entry.key] != entry.value) {
+      throw StateError('Data percobaan sebelumnya sudah tersimpan. Buka ulang data sebelum menyimpan perubahan draf.');
+    }
   }
 }

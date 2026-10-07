@@ -139,4 +139,13 @@ void main() {
     expect(permitsGlobalSongWrite({'role': 'superadmin', 'isBlocked': true}), isFalse);
   });
 
+  test('Retry with same payload acknowledges an already committed create', () {
+    assertRetryMatches({'nominal': 100000, 'nama': 'Gereja', 'extra': 'lama'},
+      {'nominal': 100000, 'nama': 'Gereja'});
+  });
+  test('Edited retry draft cannot be reported saved against the original create', () {
+    expect(() => assertRetryMatches({'nominal': 100000}, {'nominal': 200000}), throwsStateError);
+    expect(() => assertRetryMatches({'judul': 'Awal'}, {'judul': 'Revisi'}), throwsStateError);
+  });
+
 }

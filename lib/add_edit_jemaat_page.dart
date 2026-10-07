@@ -191,7 +191,11 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
             }
           }
           access.assertCurrent();
-          if (!existing.exists) tx.set(docRef, jemaatMap);
+          if (existing.exists) {
+            assertRetryMatches(existing.data()!, jemaatMap);
+          } else {
+            tx.set(docRef, jemaatMap);
+          }
         }).timeout(const Duration(seconds: 20));
       }
 

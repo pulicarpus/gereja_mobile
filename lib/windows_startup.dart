@@ -11,7 +11,7 @@ Future<void> initializeAppServices() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     final support = await getApplicationSupportDirectory();
-    await setDatabasesPath(path.join(support.path, 'bible'));
+    await databaseFactory.setDatabasesPath(path.join(support.path, 'bible'));
     await Firebase.initializeApp(options: windowsFirebaseOptions);
   } else {
     await Firebase.initializeApp();

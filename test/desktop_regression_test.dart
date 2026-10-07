@@ -23,6 +23,22 @@ void main() {
     } finally { await db.close(); }
     expect(sha256.convert(await file.readAsBytes()).toString(), before);
   });
+  test('SQLite desktop cache resolves inside the selected app data directory', () async {
+    sqfliteFfiInit();
+    final folder = await Directory.systemTemp.createTemp('gkii-sqlite-test-');
+    final previous = await databaseFactoryFfi.getDatabasesPath();
+    try {
+      await databaseFactoryFfi.setDatabasesPath(folder.path);
+      expect(await databaseFactoryFfi.getDatabasesPath(), folder.path);
+      final db = await databaseFactoryFfi.openDatabase('${folder.path}${Platform.pathSeparator}fixture.db');
+      try { await db.execute('CREATE TABLE fixture (id INTEGER PRIMARY KEY)'); }
+      finally { await db.close(); }
+      expect(await File('${folder.path}${Platform.pathSeparator}fixture.db').exists(), isTrue);
+    } finally {
+      await databaseFactoryFfi.setDatabasesPath(previous);
+      await folder.delete(recursive: true);
+    }
+  });
   test('desktop mobile push calls do not require unsupported plugins', () {
     if (Platform.isWindows || Platform.isLinux) {
       expect(MobilePush.supported, isFalse);

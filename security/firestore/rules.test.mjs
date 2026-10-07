@@ -67,7 +67,13 @@ describe('Reproduce supplied rules vulnerabilities', () => {
 });
 describe('Transition rules: application contracts and denied attacks', () => {
   let env;
-  const db = uid => uid ? env.authenticatedContext(uid).firestore() : env.unauthenticatedContext().firestore();
+  // A batch/transaction must use references from the SAME SDK instance.
+  const databases = new Map();
+  const db = uid => {
+    if (!databases.has(uid)) databases.set(uid, uid
+      ? env.authenticatedContext(uid).firestore() : env.unauthenticatedContext().firestore());
+    return databases.get(uid);
+  };
   const ref = (uid, path) => doc(db(uid), path);
   before(async () => { env = await setup('demo-gereja-rules', await readFile('firestore.compat.rules', 'utf8')); });
   beforeEach(async () => seed(env));

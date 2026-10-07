@@ -212,7 +212,10 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading 
-        ? LoadingSultan(size: 80)
+        ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            LoadingSultan(size: 80),
+            if (Platform.isWindows) TextButton(onPressed: _desktopLogin.cancel, child: const Text('Batalkan login')),
+          ]))
         : SingleChildScrollView(
             padding: const EdgeInsets.all(30),
             child: Column(

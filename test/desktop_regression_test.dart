@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 import 'package:http/testing.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../lib/desktop_google_login.dart';
@@ -11,7 +12,7 @@ void main() {
   test('SQLite FFI opens bundled Bible read-only on Windows and preserves source', () async {
     sqfliteFfiInit();
     final file = File('assets/TB.SQLite3');
-    final before = await file.length();
+    final before = sha256.convert(await file.readAsBytes()).toString();
     final db = await databaseFactoryFfi.openDatabase(file.absolute.path,
       options: OpenDatabaseOptions(readOnly: true));
     try {
@@ -20,7 +21,7 @@ void main() {
       final table = tables.first['name'] as String;
       expect(await db.rawQuery('SELECT COUNT(*) AS total FROM "$table"'), isNotEmpty);
     } finally { await db.close(); }
-    expect(await file.length(), before);
+    expect(sha256.convert(await file.readAsBytes()).toString(), before);
   });
   test('desktop mobile push calls do not require unsupported plugins', () {
     if (Platform.isWindows || Platform.isLinux) {

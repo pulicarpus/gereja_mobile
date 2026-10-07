@@ -3,7 +3,7 @@ name: Flutter Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [perbaikan-fitur-daerah]
+    branches: [perbaikan-fitur-daerah, fix/profil-sederhana]
     paths:
       - 'lib/**'
       - 'test/**'

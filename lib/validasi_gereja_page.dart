@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 import 'app_safety.dart';
+import 'profile_service.dart';
 
 
 // 👇 IMPORT HALAMAN SINKRONISASI KITA 👇
@@ -31,13 +33,18 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
   final _auth = FirebaseAuth.instance;
   bool _isLoading = false;
 
-  void _kembaliKeLogin() async {
-    await _auth.signOut();
-    OneSignal.logout();
-    await UserManager().reset();
-    // Ganti dengan route login Bos
-    if (mounted) {
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  Future<void> _kembaliKeLogin() async {
+    if (_isLoading || !mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      await _auth.signOut().timeout(const Duration(seconds: 20));
+      try { await Future<void>.sync(OneSignal.logout).timeout(const Duration(seconds: 10)); } catch (_) {}
+      await UserManager().reset().timeout(const Duration(seconds: 10));
+      if (mounted) Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(profileError(e))));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -59,7 +66,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       var query = await _db
           .collection("churches")
           .where("kodeUndangan", isEqualTo: kodeMasukan)
-          .limit(1)
+          .limit(2)
           .get(const GetOptions(source: Source.server))
           .timeout(const Duration(seconds: 20));
       if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
@@ -71,6 +78,8 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
             const SnackBar(content: Text("Kode tidak valid!")),
           );
         }
+      } else if (query.docs.length != 1) {
+        throw StateError('Kode undangan dipakai lebih dari satu gereja. Hubungi Admin Gereja.');
       } else {
         var docGereja = query.docs.first;
         String idGereja = docGereja.id;
@@ -85,13 +94,13 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
             namaGereja = dataGereja['namaGereja'].toString();
         }
 
-        await _simpanUserKeFirestore(idGereja, namaGereja);
+        await _simpanUserKeFirestore(idGereja, namaGereja, kodeMasukan);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error: ${e.toString()}")),
+          SnackBar(content: Text(profileError(e))),
         );
       }
     }
@@ -100,7 +109,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
     }
   }
 
-  Future<void> _simpanUserKeFirestore(String churchId, String churchName) async {
+  Future<void> _simpanUserKeFirestore(String churchId, String churchName, String invitationCode) async {
     try {
       Map<String, dynamic> dataUser = {
         "uid": widget.userUid,
@@ -119,7 +128,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         final existing = await tx.get(ref);
         final church = await tx.get(_db.collection("churches").doc(churchId));
         if (_auth.currentUser?.uid != widget.userUid) throw StateError("Sesi berubah.");
-        if (!church.exists || church.data()?['kodeUndangan'] != _kodeController.text.trim()) {
+        if (!church.exists || church.data()?['kodeUndangan'] != invitationCode) {
           throw StateError("Kode undangan sudah berubah. Periksa kembali.");
         }
         if (existing.exists) {
@@ -135,12 +144,12 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
 
       // --- SINKRONISASI ONESIGNAL (Add Tag) ---
-      OneSignal.User.addTagWithKey("active_church", churchId);
+      try { OneSignal.User.addTagWithKey("active_church", churchId); } catch (_) {}
 
       // Simpan ke SharedPreferences via UserManager
       final userManager = UserManager();
       await userManager.setUser(
-        role: "user",
+        role: saved['role']?.toString() ?? "user",
         churchId: churchId,
         churchName: churchName,
         uId: widget.userUid, 
@@ -149,8 +158,9 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         uKomisi: saved['kelompok']?.toString() ?? "Umum", 
         uAdminDaerahArea: saved['adminDaerahArea']?.toString(),
         uDaerah: saved['daerah']?.toString(),
+        uJemaatId: saved['jemaatId']?.toString(),
         uIsPengurus: saved['isPengurus'] == true, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (mounted && _auth.currentUser?.uid == widget.userUid) {
         setState(() => _isLoading = false);
@@ -168,7 +178,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Gagal simpan: ${e.toString()}")),
+          SnackBar(content: Text(profileError(e))),
         );
       }
     }
@@ -206,6 +216,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
               const SizedBox(height: 30),
               TextField(
                 controller: _kodeController,
+                enabled: !_isLoading,
                 decoration: const InputDecoration(
                   labelText: "Kode Undangan",
                   border: OutlineInputBorder(),

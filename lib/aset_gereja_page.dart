@@ -1,3 +1,4 @@
+import 'upload_support.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -117,7 +118,7 @@ class _AsetGerejaPageState extends State<AsetGerejaPage> {
                       .ref()
                       .child('aset_gereja')
                       .child('${widget.gerejaId}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-                  await uploadedRef.putFile(imageFile!).timeout(const Duration(seconds: 30));
+                  await uploadedRef.putFile(imageFile!, await prepareUpload(imageFile!)).timeout(const Duration(seconds: 30));
                   fotoUrl = await uploadedRef.getDownloadURL().timeout(const Duration(seconds: 20));
                 }
 

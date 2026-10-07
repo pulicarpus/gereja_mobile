@@ -1,3 +1,4 @@
+import 'upload_support.dart';
 import 'dart:io';
 import 'dart:convert'; // 👈 DITAMBAHKAN UNTUK JSON ENCODE NOTIFIKASI
 import 'package:flutter/material.dart';
@@ -324,10 +325,10 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
 
                   if (attachedFile != null && fileUrl == null) {
                     fileNameOriginal = attachedFile!.path.split('/').last;
-                    String ext = attachedFile!.path.split('.').last;
+                    String ext = attachedFile!.path.split('.').last.toLowerCase();
                     String fileName = "doc_${DateTime.now().millisecondsSinceEpoch}.$ext";
                     Reference ref = _storage.ref().child("info_daerah/${widget.namaDaerah}/$fileName");
-                    await ref.putFile(attachedFile!).timeout(const Duration(seconds: 30));
+                    await ref.putFile(attachedFile!, await prepareUpload(attachedFile!, attachment: true)).timeout(const Duration(seconds: 30));
                     fileUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
                     uploadedUrl = fileUrl;
                   }

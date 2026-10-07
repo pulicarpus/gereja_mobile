@@ -1,3 +1,4 @@
+import 'upload_support.dart';
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -663,7 +664,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       File imageFile = File(pickedFile.path);
       String fileName = "header_${DateTime.now().millisecondsSinceEpoch}.jpg";
       Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-      await ref.putFile(imageFile).timeout(const Duration(seconds: 30));
+      await ref.putFile(imageFile, await prepareUpload(imageFile)).timeout(const Duration(seconds: 30));
       String url = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
       await _db.runTransaction((tx) async {
         await access.inTransaction(tx);
@@ -807,7 +808,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
                   if (imageFile != null) {
                     String fileName = "gembala_${DateTime.now().millisecondsSinceEpoch}.jpg";
                     Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-                    await ref.putFile(imageFile!).timeout(const Duration(seconds: 30));
+                    await ref.putFile(imageFile!, await prepareUpload(imageFile!)).timeout(const Duration(seconds: 30));
                     finalFotoUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
                   }
                   await _db.runTransaction((tx) async {

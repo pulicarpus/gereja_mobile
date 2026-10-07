@@ -7,6 +7,7 @@ import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
 import 'kategorial_config.dart';
 import 'profile_support.dart';
+import 'upload_support.dart';
 
 class ProfileAccount {
   final String uid;
@@ -114,7 +115,7 @@ class FirebaseProfileGateway implements ProfileGateway {
         final suffix = _db.collection('users').doc().id;
         uploadedPath = 'users/${account.uid}/profil_${account.uid}_$suffix.jpg';
         final ref = _storage.ref(uploadedPath);
-        final task = ref.putFile(photo, SettableMetadata(contentType: 'image/jpeg'));
+        final task = ref.putFile(photo, await prepareUpload(photo));
         try { await task.timeout(const Duration(seconds: 60)); }
         on TimeoutException { await task.cancel().timeout(const Duration(seconds: 5), onTimeout: () => false); rethrow; }
         changes['photoUrl'] = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
@@ -192,3 +193,4 @@ class FirebaseProfileGateway implements ProfileGateway {
     await _manager.reset().timeout(const Duration(seconds: 10));
   }
 }
+

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'user_manager.dart'; // Pastikan file ini di-import
+import 'user_manager.dart';
+import 'app_safety.dart';
+import 'package:intl/intl.dart'; // Pastikan file ini di-import
 
 class DashboardPage extends StatefulWidget {
   final List<Map<String, dynamic>> allJemaat;
@@ -15,6 +17,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   late List<Map<String, dynamic>> _localJemaat;
+  bool _performingAction = false;
   final UserManager _userManager = UserManager(); // Inisialisasi UserManager
 
   @override
@@ -65,22 +68,20 @@ class _DashboardPageState extends State<DashboardPage> {
                               child: ListTile(
                                 leading: CircleAvatar(
                                   backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                                  child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(j['namaLengkap']?[0] ?? "?") : null,
+                                  child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(nameInitial(j['namaLengkap'])) : null,
                                 ),
                                 title: Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
                                 subtitle: Text("${j['kelompok'] ?? "-"} • ${j['statusKeluarga'] ?? ""}"),
                                 trailing: PopupMenuButton<String>(
                                   onSelected: (value) async {
-                                    if (widget.churchId == null) return;
+                                    if (widget.churchId == null || _performingAction) return;
+                                    _performingAction = true;
+                                    try {
 
                                     if (value == 'batal') {
                                       // 1. Batalkan status meninggal (kembalikan ke aktif)
-                                      await FirebaseFirestore.instance
-                                          .collection("churches")
-                                          .doc(widget.churchId)
-                                          .collection("jemaat")
-                                          .doc(j['id'])
-                                          .update({'status': null});
+                                      await changeJemaatStatus(widget.churchId!, j['id'].toString(), null);
+                                      if (!mounted || !context.mounted) return;
 
                                       setState(() {
                                         int idx = _localJemaat.indexWhere((item) => item['id'] == j['id']);
@@ -110,12 +111,8 @@ class _DashboardPageState extends State<DashboardPage> {
                                         ),
                                       ) ?? false;
                                       if (!yakin) return;
-                                      await FirebaseFirestore.instance
-                                          .collection("churches")
-                                          .doc(widget.churchId)
-                                          .collection("jemaat")
-                                          .doc(j['id'])
-                                          .delete();
+                                      await deleteUnlinkedJemaat(widget.churchId!, j['id'].toString());
+                                      if (!mounted || !context.mounted) return;
 
                                       setState(() {
                                         _localJemaat.removeWhere((item) => item['id'] == j['id']);
@@ -124,6 +121,11 @@ class _DashboardPageState extends State<DashboardPage> {
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         const SnackBar(content: Text("Data berhasil dihapus permanen dari database.")),
                                       );
+                                    }
+                                    } catch (e) {
+                                      if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aksi belum berhasil: $e')));
+                                    } finally {
+                                      _performingAction = false;
                                     }
                                   },
                                   itemBuilder: (context) => [
@@ -180,7 +182,9 @@ class _DashboardPageState extends State<DashboardPage> {
         continue;
       }
 
-      String? tglLahir = j['tanggalLahir'];
+      String? tglLahir = j['tanggalLahir'] is Timestamp
+          ? DateFormat('dd-MM-yyyy').format((j['tanggalLahir'] as Timestamp).toDate())
+          : j['tanggalLahir']?.toString();
       if (tglLahir != null && tglLahir.contains(currentYear)) {
         lahirTahunIni++;
       }

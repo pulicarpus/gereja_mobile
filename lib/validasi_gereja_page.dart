@@ -3,7 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:onesignal_flutter/onesignal_flutter.dart';
 import 'user_manager.dart';
-import 'main.dart'; // Asumsi main.dart berisi MainActivity kita tadi
+import 'app_safety.dart';
+
 
 // 👇 IMPORT HALAMAN SINKRONISASI KITA 👇
 import 'sinkronisasi_jemaat_page.dart'; 
@@ -40,7 +41,8 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
     }
   }
 
-  void _validasiDanSimpan() async {
+  Future<void> _validasiDanSimpan() async {
+    if (_isLoading || !mounted) return;
     String kodeMasukan = _kodeController.text.trim();
 
     if (kodeMasukan.isEmpty) {
@@ -58,7 +60,9 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
           .collection("churches")
           .where("kodeUndangan", isEqualTo: kodeMasukan)
           .limit(1)
-          .get();
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+      if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
 
       if (query.docs.isEmpty) {
         if (mounted) {
@@ -78,10 +82,10 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         // Cek kalau field namaGereja beneran ada, kalau nggak ada otomatis kasih nama "Gereja"
         String namaGereja = "Gereja";
         if (dataGereja.containsKey('namaGereja') && dataGereja['namaGereja'] != null) {
-            namaGereja = dataGereja['namaGereja'];
+            namaGereja = dataGereja['namaGereja'].toString();
         }
 
-        _simpanUserKeFirestore(idGereja, namaGereja);
+        await _simpanUserKeFirestore(idGereja, namaGereja);
       }
     } catch (e) {
       if (mounted) {
@@ -91,9 +95,12 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         );
       }
     }
+    finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
-  void _simpanUserKeFirestore(String churchId, String churchName) async {
+  Future<void> _simpanUserKeFirestore(String churchId, String churchName) async {
     try {
       Map<String, dynamic> dataUser = {
         "uid": widget.userUid,
@@ -107,10 +114,22 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         "isPengurus": false // 👈 DEFAULT USER BIASA
       };
 
-      await _db.collection("users").doc(widget.userUid).set(
-            dataUser,
-            SetOptions(merge: true),
-          );
+      final ref = _db.collection("users").doc(widget.userUid);
+      await _db.runTransaction((tx) async {
+        final existing = await tx.get(ref);
+        final church = await tx.get(_db.collection("churches").doc(churchId));
+        if (_auth.currentUser?.uid != widget.userUid) throw StateError("Sesi berubah.");
+        if (!church.exists || church.data()?['kodeUndangan'] != _kodeController.text.trim()) {
+          throw StateError("Kode undangan sudah berubah. Periksa kembali.");
+        }
+        if (existing.exists) {
+          final account = existing.data()!;
+          tx.update(ref, registrationChurchPatch(account, churchId, churchName));
+        } else {
+          tx.set(ref, dataUser);
+        }
+      }).timeout(const Duration(seconds: 20));
+      if (!mounted || _auth.currentUser?.uid != widget.userUid) return;
 
       // --- SINKRONISASI ONESIGNAL (Add Tag) ---
       OneSignal.User.addTagWithKey("active_church", churchId);
@@ -151,10 +170,16 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
   }
 
   @override
+  void dispose() {
+    _kodeController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        _kembaliKeLogin();
+        if (!_isLoading) _kembaliKeLogin();
         return false;
       },
       child: Scaffold(

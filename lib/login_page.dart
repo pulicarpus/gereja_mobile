@@ -24,12 +24,12 @@ class _LoginPageState extends State<LoginPage> {
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   Future<void> _signInWithGoogle() async {
+    if (_isLoading || !mounted) return;
     setState(() => _isLoading = true);
     try {
       await _googleSignIn.signOut();
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        setState(() => _isLoading = false);
         return;
       }
 
@@ -48,13 +48,17 @@ class _LoginPageState extends State<LoginPage> {
       }
     } catch (e) {
       _showToast("Google Sign-In Gagal: $e");
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _checkUserRegistration(User user) async {
     try {
-      DocumentSnapshot doc = await _db.collection("users").doc(user.uid).get();
+      final doc = await _db.collection("users").doc(user.uid)
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+      if (!mounted || _auth.currentUser?.uid != user.uid) return;
 
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
@@ -68,16 +72,16 @@ class _LoginPageState extends State<LoginPage> {
           return;
         }
 
-        String role = data['role'] ?? "user";
-        String? churchId = data['churchId']; 
-        String? jemaatId = data['jemaatId']; 
-        String churchName = data['churchName'] ?? "";
-        String nama = data['namaLengkap'] ?? user.displayName ?? "Jemaat";
-        String? foto = data['photoUrl'] ?? user.photoURL;
-        bool statusPengurus = data['isPengurus'] ?? false;
+        String role = data['role']?.toString() ?? "user";
+        String? churchId = data['churchId']?.toString(); 
+        String? jemaatId = data['jemaatId']?.toString(); 
+        String churchName = data['churchName']?.toString() ?? "";
+        String nama = data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat";
+        String? foto = data['photoUrl']?.toString() ?? user.photoURL;
+        bool statusPengurus = data['isPengurus'] == true;
         
         // 👇 AMBIL DATA DAERAH DARI FIRESTORE 👇
-        String daerah = data['daerah'] ?? ""; 
+        String daerah = data['daerah']?.toString() ?? ""; 
 
         await UserManager().setUser(
           role: role,
@@ -86,12 +90,14 @@ class _LoginPageState extends State<LoginPage> {
           uId: user.uid,
           uNama: nama,
           uFoto: foto,
-          uKomisi: data['kelompok'] ?? "Umum",
+          uKomisi: data['kelompok']?.toString() ?? "Umum",
           uIsPengurus: statusPengurus, 
           uJemaatId: jemaatId,
           uAdminDaerahArea: data['adminDaerahArea']?.toString(),
           uDaerah: data['daerah']?.toString(),
         );
+
+        if (!mounted || _auth.currentUser?.uid != user.uid) return;
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇
         OneSignal.User.addTagWithKey("role", role);
@@ -119,15 +125,15 @@ class _LoginPageState extends State<LoginPage> {
         }
 
       } else {
-        _saveNewUserAndValidate(user);
+        await _saveNewUserAndValidate(user);
       }
     } catch (e) {
       debugPrint("Error checkUser: $e");
-      _goToValidasiManual(user);
+      _showToast("Akun belum dapat diperiksa. Periksa koneksi lalu coba lagi.");
     }
   }
 
-  void _saveNewUserAndValidate(User user) async {
+  Future<void> _saveNewUserAndValidate(User user) async {
     final newUser = {
       "uid": user.uid,
       "email": user.email,
@@ -143,14 +149,21 @@ class _LoginPageState extends State<LoginPage> {
     };
 
     try {
-      await _db.collection("users").doc(user.uid).set(newUser, SetOptions(merge: true));
-      _goToValidasiManual(user);
+      final ref = _db.collection("users").doc(user.uid);
+      await _db.runTransaction((tx) async {
+        final existing = await tx.get(ref);
+        if (_auth.currentUser?.uid != user.uid) throw StateError("Sesi berubah.");
+        if (!existing.exists) tx.set(ref, newUser);
+      }).timeout(const Duration(seconds: 20));
+      if (!mounted || _auth.currentUser?.uid != user.uid) return;
+      await _checkUserRegistration(user);
     } catch (e) {
-      _goToValidasiManual(user);
+      _showToast("Pendaftaran belum dapat dipastikan. Coba masuk kembali.");
     }
   }
 
   void _goToValidasiManual(User user) {
+    if (!mounted) return;
     setState(() => _isLoading = false);
     _showToast("Silakan masukkan kode undangan gereja Anda.");
     
@@ -167,6 +180,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _goToSinkronisasi() {
+    if (!mounted) return;
     setState(() => _isLoading = false);
     Navigator.pushReplacement(
       context,
@@ -175,11 +189,13 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _goToMainActivity() {
+    if (!mounted) return;
     setState(() => _isLoading = false);
     Navigator.pushReplacementNamed(context, '/home');
   }
 
   void _showToast(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
@@ -210,3 +226,4 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
+

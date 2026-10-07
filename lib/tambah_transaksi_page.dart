@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 
 // --- KELAS BANTUAN UNTUK MODE EDIT ---
@@ -110,7 +111,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
   }
 
   Future<void> _saveTransaction() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isLoading || !_formKey.currentState!.validate()) return;
     
     final user = UserManager();
     final churchId = user.getChurchIdForCurrentView();
@@ -135,6 +136,9 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
     setState(() => _isLoading = true);
 
     try {
+      final access = await ChurchWriteAccess.check(churchId, category: kategori);
+      if (!mounted) return;
+      access.assertCurrent();
       // Pastikan kategori yang disimpan tidak kosong. Jika kosong, default ke "Umum"
       String kategoriSave = (_kategoriAktif == null || _kategoriAktif!.isEmpty) ? "Umum" : _kategoriAktif!;
 
@@ -172,6 +176,7 @@ class _TambahTransaksiPageState extends State<TambahTransaksiPage> {
   }
 
   void _showSnack(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 

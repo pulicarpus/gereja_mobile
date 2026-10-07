@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,25 +22,33 @@ class VideoSplashPage extends StatefulWidget {
 
 class _VideoSplashPageState extends State<VideoSplashPage> {
   late VideoPlayerController _controller;
+  Timer? _timer;
   bool _isNavigating = false; 
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4")
-      ..initialize().then((_) {
-        _controller.setVolume(0.0); 
-        if (mounted) setState(() {});
-        _controller.play(); 
-      });
-
-    // 👇 Splash tampil tepat 2 detik, tidak tergantung durasi video asli
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!_isNavigating) {
+    _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4");
+    _initializeVideo();
+    _timer = Timer(const Duration(seconds: 2), () {
+      if (mounted && !_isNavigating) {
         _isNavigating = true;
         _checkAuthAndNavigate();
       }
     });
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      await _controller.initialize();
+      if (!mounted) return;
+      await _controller.setVolume(0);
+      if (!mounted) return;
+      setState(() {});
+      await _controller.play();
+    } catch (_) {
+      // A failed decorative video must never block session routing.
+    }
   }
 
   // 👇 LOGIKA SATPAM SULTAN DIPASANG DI SINI 👇
@@ -54,11 +63,25 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
 
     // 2. Load cache lokal lebih dulu agar startup tetap ramah kondisi offline.
     final userManager = UserManager();
-    await userManager.loadFromPrefs();
+    try {
+      await userManager.loadFromPrefs();
+      if (userManager.userId != user.uid) await userManager.reset();
+    } catch (_) {
+      _doNavigate(const LoginPage());
+      return;
+    }
+    if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) return;
 
     // Jika jaringan tersedia, segarkan profil dari Firestore sebelum menentukan rute.
     try {
-      final doc = await FirebaseFirestore.instance.collection("users").doc(user.uid).get();
+      final doc = await FirebaseFirestore.instance.collection("users").doc(user.uid)
+          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) return;
+      if (!doc.exists) {
+        await userManager.reset();
+        _doNavigate(const LoginPage());
+        return;
+      }
       if (doc.exists) {
         final data = doc.data() ?? <String, dynamic>{};
 
@@ -88,6 +111,11 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
       debugPrint("Gagal refresh session saat splash: $e");
     }
 
+    if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) return;
+    if (userManager.userId != user.uid) {
+      _doNavigate(const LoginPage());
+      return;
+    }
     String? churchId = userManager.getChurchIdForCurrentView();
     String? jemaatId = userManager.jemaatId;
     String? role = userManager.userRole;
@@ -126,6 +154,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -201,3 +230,4 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
     );
   }
 }
+

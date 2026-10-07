@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 // 👇 IMPORT SUDAH DIAKTIFKAN 👇
 import 'add_edit_jemaat_page.dart';
 import 'pilih_jemaat_page.dart'; 
@@ -27,6 +28,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   final UserManager _userManager = UserManager();
   
   String? _churchId;
+  bool _changingFamily = false;
 
   @override
   void initState() {
@@ -91,6 +93,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
     ));
 
     // Kalau Bos beneran milih orang (tidak pencet tombol back)
+    if (!mounted) return;
     if (selectedJemaat != null) {
       final currentFamily = (selectedJemaat['idKepalaKeluarga'] ?? '').toString();
       if (currentFamily.isNotEmpty && currentFamily != widget.idKepalaKeluarga) {
@@ -136,15 +139,30 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   }
 
   Future<void> _addMemberToFamily(String jemaatId, String namaJemaat, String newStatus) async {
-    if (_churchId == null) return;
+    if (_churchId == null || _changingFamily || !mounted) return;
+    _changingFamily = true;
     try {
-      await _db.collection("churches").doc(_churchId).collection("jemaat").doc(jemaatId).update({
-        "idKepalaKeluarga": widget.idKepalaKeluarga,
-        "statusKeluarga": newStatus
-      });
+      final access = await ChurchWriteAccess.check(_churchId!);
+      final col = _db.collection('churches').doc(_churchId).collection('jemaat');
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final member = await tx.get(col.doc(jemaatId));
+        final head = await tx.get(col.doc(widget.idKepalaKeluarga));
+        if (!member.exists || !head.exists || head.data()?['statusKeluarga'] != 'Kepala Keluarga') {
+          throw StateError('Data keluarga berubah. Muat ulang dahulu.');
+        }
+        if (jemaatId == widget.idKepalaKeluarga || member.data()?['statusKeluarga'] == 'Kepala Keluarga' ||
+            member.data()?['idKepalaKeluarga'] == jemaatId) {
+          throw StateError('Kepala keluarga tidak dapat dijadikan anggota. Atur anggota keluarga asal dahulu.');
+        }
+        access.assertCurrent();
+        tx.update(member.reference, {'idKepalaKeluarga': widget.idKepalaKeluarga, 'statusKeluarga': newStatus});
+      }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$namaJemaat berhasil ditambahkan sebagai $newStatus.")));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menambahkan anggota.")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal menambahkan anggota: $e')));
+    } finally {
+      _changingFamily = false;
     }
   }
 
@@ -196,15 +214,26 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
   }
 
   Future<void> _removeMemberFromFamily(String docId, String nama) async {
-    if (_churchId == null) return;
+    if (_churchId == null || _changingFamily || !mounted) return;
+    _changingFamily = true;
     try {
-      await _db.collection("churches").doc(_churchId).collection("jemaat").doc(docId).update({
-        "idKepalaKeluarga": docId, 
-        "statusKeluarga": "Kepala Keluarga"
-      });
+      final access = await ChurchWriteAccess.check(_churchId!);
+      final ref = _db.collection('churches').doc(_churchId).collection('jemaat').doc(docId);
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final member = await tx.get(ref);
+        if (!member.exists || member.data()?['idKepalaKeluarga'] != widget.idKepalaKeluarga ||
+            member.data()?['statusKeluarga'] == 'Kepala Keluarga') {
+          throw StateError('Anggota keluarga sudah berubah. Muat ulang dahulu.');
+        }
+        access.assertCurrent();
+        tx.update(ref, {'idKepalaKeluarga': docId, 'statusKeluarga': 'Kepala Keluarga'});
+      }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$nama berhasil dikeluarkan.")));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal melakukan aksi.")));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal melakukan aksi: $e')));
+    } finally {
+      _changingFamily = false;
     }
   }
 

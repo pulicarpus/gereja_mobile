@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 
 // --- KELAS BANTUAN UNTUK MODE EDIT ---
 class PerpuluhanEditData {
@@ -95,8 +96,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
 
     try {
       var snap = await _db.collection("churches").doc(churchId).collection("jemaat")
-          .orderBy("namaLengkap")
-          .get();
+          .get().timeout(const Duration(seconds: 20));
           
       List<Map<String, dynamic>> tempList = [];
       for (var doc in snap.docs) {
@@ -108,6 +108,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
         });
       }
       
+      tempList.sort((a, b) => a['namaLengkap'].toString().toLowerCase().compareTo(b['namaLengkap'].toString().toLowerCase()));
       if (mounted) {
         setState(() {
           _jemaatList = tempList;
@@ -146,7 +147,7 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
   }
 
   Future<void> _savePerpuluhan() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isLoading || !_formKey.currentState!.validate()) return;
     
     final user = UserManager();
     final churchId = user.getChurchIdForCurrentView();
@@ -168,6 +169,9 @@ class _TambahPerpuluhanPageState extends State<TambahPerpuluhanPage> {
     setState(() => _isLoading = true);
 
     try {
+      final access = await ChurchWriteAccess.check(churchId, category: null);
+      if (!mounted) return;
+      access.assertCurrent();
       if (widget.perpuluhanEdit != null) {
         // --- MODE UPDATE ---
         String namaUpdate = widget.perpuluhanEdit!.namaJemaat ?? "Amplop Tanpa Nama";

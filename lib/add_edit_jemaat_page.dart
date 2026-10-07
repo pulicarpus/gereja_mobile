@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 
 class AddEditJemaatPage extends StatefulWidget {
@@ -28,6 +29,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   final _db = FirebaseFirestore.instance;
   final _storage = FirebaseStorage.instance;
   bool _isSaving = false;
+  String? _newJemaatId;
 
   // Controllers sesuai aplikasi Kotlin lama Bos
   final _namaController = TextEditingController();
@@ -56,18 +58,20 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   void _setupInitialData() {
     if (widget.jemaatData != null) {
       final d = widget.jemaatData!;
-      _namaController.text = d['namaLengkap'] ?? "";
-      _tglLahirController.text = d['tanggalLahir'] ?? "";
-      _alamatController.text = d['alamat'] ?? "";
-      _noTelpController.text = d['nomorTelepon'] ?? "";
-      _karuniaController.text = d['karuniaPelayanan'] ?? "";
-      _catatanController.text = d['catatanTambahan'] ?? "";
-      _existingPhotoUrl = d['fotoProfil'];
-      _jenisKelamin = d['jenisKelamin'] ?? "Pria";
-      _statusNikah = d['statusPernikahan'] ?? "Belum Menikah";
-      _statusBaptis = d['statusBaptis'] ?? "Belum";
+      _namaController.text = legacyText(d['namaLengkap']);
+      _tglLahirController.text = d['tanggalLahir'] is Timestamp
+          ? DateFormat('dd-MM-yyyy').format((d['tanggalLahir'] as Timestamp).toDate())
+          : legacyText(d['tanggalLahir']);
+      _alamatController.text = legacyText(d['alamat']);
+      _noTelpController.text = legacyText(d['nomorTelepon']);
+      _karuniaController.text = legacyText(d['karuniaPelayanan']);
+      _catatanController.text = legacyText(d['catatanTambahan']);
+      _existingPhotoUrl = d['fotoProfil']?.toString();
+      _jenisKelamin = ['Pria', 'Wanita'].contains(d['jenisKelamin']) ? d['jenisKelamin'].toString() : 'Pria';
+      _statusNikah = ['Belum Menikah', 'Menikah', 'Janda/Duda'].contains(d['statusPernikahan']) ? d['statusPernikahan'].toString() : 'Belum Menikah';
+      _statusBaptis = ['Belum', 'Sudah'].contains(d['statusBaptis']) ? d['statusBaptis'].toString() : 'Belum';
       _kelompok = KategorialConfig.canonicalJemaat(d['kelompok']);
-      _statusKeluarga = d['statusKeluarga'] ?? "Belum Diatur";
+      _statusKeluarga = legacyText(d['statusKeluarga'], 'Belum Diatur');
     } else if (widget.initialKelompok != null) {
       _kelompok = KategorialConfig.canonicalJemaat(widget.initialKelompok);
     }
@@ -82,7 +86,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
 
   Future<void> _pickImage() async {
     final picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 50);
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() => _imageFile = File(picked.path));
     }
   }
@@ -94,13 +98,13 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
-    if (picked != null) {
+    if (picked != null && mounted) {
       _tglLahirController.text = DateFormat('dd-MM-yyyy').format(picked);
     }
   }
 
   Future<void> _validateAndSave() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSaving || !_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
     String? churchId = UserManager().getChurchIdForCurrentView();
@@ -114,25 +118,27 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     }
 
     try {
+      final access = await ChurchWriteAccess.check(churchId);
+      if (!mounted) return;
       // 1. Upload Foto jika ada yang baru
       if (_imageFile != null) {
-        String fileName = widget.jemaatData?['id'] ?? DateTime.now().millisecondsSinceEpoch.toString();
+        String fileName = "${widget.jemaatData?['id'] ?? 'baru'}_${DateTime.now().microsecondsSinceEpoch}";
         Reference ref = _storage.ref().child("churches/$churchId/foto_jemaat/$fileName.jpg");
-        await ref.putFile(_imageFile!);
-        photoUrl = await ref.getDownloadURL();
+        await ref.putFile(_imageFile!).timeout(const Duration(seconds: 30));
+        photoUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
       }
 
       // 2. Siapkan Map Data (Sesuai Firestore Bos)
       final jemaatMap = {
         "namaLengkap": _namaController.text.trim(),
-        "fotoProfil": photoUrl,
-        "photoBase64": null,
+        if (widget.jemaatData == null || _imageFile != null) "fotoProfil": photoUrl,
+        if (_imageFile != null) "photoBase64": null,
         "jenisKelamin": _jenisKelamin,
         "tanggalLahir": _tglLahirController.text,
         "alamat": _alamatController.text.trim(),
         "nomorTelepon": _noTelpController.text.trim(),
         "statusPernikahan": _statusNikah,
-        if (widget.jemaatData != null || widget.idKepalaKeluargaBaru != null) "statusKeluarga": _statusKeluarga,
+        if (widget.jemaatData == null && widget.idKepalaKeluargaBaru != null) "statusKeluarga": _statusKeluarga,
         "statusBaptis": _statusBaptis,
         "kelompok": _kelompok,
         "karuniaPelayanan": _karuniaController.text,
@@ -149,39 +155,43 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         }
 
         final jemaatRef = colRef.doc(jemaatId);
-        final linkedUid = widget.jemaatData!['uid']?.toString().trim() ?? "";
-
-        if (linkedUid.isNotEmpty) {
-          final userRef = _db.collection("users").doc(linkedUid);
-          final userDoc = await userRef.get();
-
-          final batch = _db.batch();
-          batch.update(jemaatRef, jemaatMap);
-          if (userDoc.exists) {
-            batch.update(userRef, {"kelompok": _kelompok});
+        await _db.runTransaction((tx) async {
+          await access.inTransaction(tx);
+          final fresh = await tx.get(jemaatRef);
+          if (!fresh.exists) throw StateError('Data jemaat sudah dihapus.');
+          final book = fresh.data()!;
+          final expected = widget.jemaatData!;
+          for (final key in ['uid', 'kelompok', 'updatedAt']) {
+            if (book[key] != expected[key]) throw StateError('Data jemaat berubah. Muat ulang dahulu.');
           }
-          await batch.commit();
-
-          if (UserManager().userId == linkedUid) {
-            await UserManager().updateKomisi(_kelompok);
+          final linkedUid = legacyText(book['uid']).trim();
+          final userRef = linkedUid.isEmpty ? null : _db.collection('users').doc(linkedUid);
+          final account = userRef == null ? null : await tx.get(userRef);
+          assertBookOwner(book, account?.data(), churchId, jemaatId);
+          access.assertCurrent();
+          tx.update(jemaatRef, jemaatMap);
+          if (userRef != null && !KategorialConfig.same(book['kelompok'], _kelompok)) {
+            tx.update(userRef, {'kelompok': _kelompok, 'isPengurus': false});
           }
-        } else {
-          await jemaatRef.update(jemaatMap);
-        }
+        }).timeout(const Duration(seconds: 20));
       } else {
-        // TAMBAH BARU
+        final docRef = colRef.doc(_newJemaatId ??= colRef.doc().id);
+        jemaatMap['id'] = docRef.id;
         if (widget.idKepalaKeluargaBaru != null) {
-          jemaatMap["idKepalaKeluarga"] = widget.idKepalaKeluargaBaru;
+          jemaatMap['idKepalaKeluarga'] = widget.idKepalaKeluargaBaru;
         }
-
-        DocumentReference docRef = await colRef.add(jemaatMap);
-        String newId = docRef.id;
-        
-        // Update ID dokumen ke dalam field 'id' (Sinkron dengan Kotlin lama)
-        await docRef.update({"id": newId});
-        
-        // Relasi keluarga untuk data baru biasa sengaja belum ditetapkan.
-        // Penetapan Kepala Keluarga/Istri/Anak/Ayah/Ibu dilakukan dari Menu Keluarga.
+        await _db.runTransaction((tx) async {
+          await access.inTransaction(tx);
+          final existing = await tx.get(docRef);
+          if (widget.idKepalaKeluargaBaru != null) {
+            final head = await tx.get(colRef.doc(widget.idKepalaKeluargaBaru));
+            if (!head.exists || head.data()?['statusKeluarga'] != 'Kepala Keluarga') {
+              throw StateError('Kepala keluarga berubah. Buka ulang keluarga.');
+            }
+          }
+          access.assertCurrent();
+          if (!existing.exists) tx.set(docRef, jemaatMap);
+        }).timeout(const Duration(seconds: 20));
       }
 
       if (mounted) Navigator.pop(context, true);
@@ -297,7 +307,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
       child: DropdownButtonFormField<String>(
-        value: current,
+        value: items.contains(current) ? current : items.first,
         decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
         items: items.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
         onChanged: onChanged,

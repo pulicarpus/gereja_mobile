@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:csv/csv.dart';
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 import 'tambah_transaksi_page.dart'; 
 import 'tambah_perpuluhan_page.dart'; 
@@ -145,7 +146,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           .where("tanggal", isLessThan: endDateTahunan);
       tasksToRun.add(trxQueryTahunan.get());
 
-      if (fetchPerpuluhan) {
+      if (isModeUmum) {
         var perpQueryTahunan = churchRef.collection("perpuluhan")
             .where("tanggal", isGreaterThanOrEqualTo: startDateTahunan)
             .where("tanggal", isLessThan: endDateTahunan);
@@ -161,7 +162,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
 
       for (var doc in results[0].docs) {
         var data = doc.data();
-        String kat = (data['kategori'] as String?)?.trim() ?? "";
+        String kat = data['kategori']?.toString().trim() ?? "";
         
         if (isModeUmum) {
           if (kat.isNotEmpty && kat.toLowerCase() != "umum") continue;
@@ -170,9 +171,9 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         }
 
         final rawTanggal = data['tanggal'];
-        final rawJumlah = data['jumlah'];
+        final rawJumlah = legacyAmount(data['jumlah']);
         final jenis = data['jenis']?.toString() ?? "";
-        if (rawTanggal is! Timestamp || rawJumlah is! num) continue;
+        if (rawTanggal is! Timestamp || rawJumlah == null) continue;
         if (jenis != "Pemasukan" && jenis != "Pengeluaran") continue;
         if (widget.tipeFilter != null && jenis != widget.tipeFilter) continue;
 
@@ -199,8 +200,8 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
         for (var doc in results[1].docs) {
           var data = doc.data();
           final rawTanggal = data['tanggal'];
-          final rawJumlah = data['jumlah'];
-          if (rawTanggal is! Timestamp || rawJumlah is! num) continue;
+          final rawJumlah = legacyAmount(data['jumlah']);
+          if (rawTanggal is! Timestamp || rawJumlah == null) continue;
           var trx = TransaksiItem(
             id: doc.id,
             keterangan: "Perpuluhan: ${data['namaJemaat'] ?? 'Tanpa Nama'}",
@@ -220,7 +221,7 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
       var docTahunan = results[1 + offset].docs;
       for (var doc in docTahunan) {
           var data = doc.data();
-          String kat = (data['kategori'] as String?)?.trim() ?? "";
+          String kat = data['kategori']?.toString().trim() ?? "";
           
           if (isModeUmum) {
             if (kat.isNotEmpty && kat.toLowerCase() != "umum") continue;
@@ -228,9 +229,9 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
             if (kat.toLowerCase() != widget.filterKategorial?.trim().toLowerCase()) continue;
           }
 
-          final rawJumlah = data['jumlah'];
+          final rawJumlah = legacyAmount(data['jumlah']);
           final jns = data['jenis']?.toString() ?? "";
-          if (rawJumlah is! num) continue;
+          if (rawJumlah == null) continue;
           final jml = rawJumlah.toInt();
           
           if (jns == "Pemasukan") {
@@ -240,11 +241,11 @@ class _LaporanTransaksiPageState extends State<LaporanTransaksiPage> {
           }
       }
 
-      if (fetchPerpuluhan) {
+      if (isModeUmum) {
          var docPerpTahunan = results[2 + offset].docs;
          for (var doc in docPerpTahunan) {
-            final rawJumlah = doc.data()['jumlah'];
-            if (rawJumlah is num) tempSaldoTahunan += rawJumlah.toInt();
+            final rawJumlah = legacyAmount(doc.data()['jumlah']);
+            if (rawJumlah != null) tempSaldoTahunan += rawJumlah.toInt();
          }
       }
 

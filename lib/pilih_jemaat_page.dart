@@ -80,7 +80,7 @@ class _PilihJemaatPageState extends State<PilihJemaatPage> {
       ),
       body: StreamBuilder<QuerySnapshot>(
         // Mengambil semua jemaat di gereja ini
-        stream: _db.collection("churches").doc(_churchId).collection("jemaat").orderBy("namaLengkap").snapshots(),
+        stream: _db.collection("churches").doc(_churchId).collection("jemaat").snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.indigo));

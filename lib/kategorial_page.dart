@@ -33,13 +33,14 @@ class _KategorialPageState extends State<KategorialPage> {
       final doc = await FirebaseFirestore.instance
           .collection("users")
           .doc(currentUser.uid)
-          .get();
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
       if (!doc.exists) return;
 
       final data = doc.data() ?? <String, dynamic>{};
       final rawKelompok = data['kelompok']?.toString().trim() ?? "";
       var kelompok = rawKelompok.isEmpty ? "Umum" : rawKelompok;
-      final isPengurus = data['isPengurus'] == true;
+      var isPengurus = data['isPengurus'] == true;
 
       final jemaatId = data['jemaatId']?.toString().trim() ?? "";
       final registeredChurchId =
@@ -52,21 +53,27 @@ class _KategorialPageState extends State<KategorialPage> {
               .doc(registeredChurchId)
               .collection("jemaat")
               .doc(jemaatId)
-              .get();
-          if (jemaatDoc.exists) {
+              .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+          if (jemaatDoc.exists && jemaatDoc.data()?['uid']?.toString() == currentUser.uid) {
             final jemaatKelompok = KategorialConfig.canonicalJemaat(
               jemaatDoc.data()?['kelompok'],
             );
             if (!KategorialConfig.same(kelompok, jemaatKelompok)) {
               kelompok = jemaatKelompok;
-              await doc.reference.update({"kelompok": kelompok});
+              isPengurus = false;
             }
+          } else {
+            isPengurus = false;
           }
         } catch (e) {
+          isPengurus = false;
           debugPrint("Gagal sinkron kelompok buku induk: $e");
         }
       }
 
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != currentUser.uid ||
+          UserManager().userId != currentUser.uid) return;
       final manager = UserManager();
       await manager.updateKategorialContext(
         kelompok,
@@ -232,3 +239,4 @@ class _KategorialPageState extends State<KategorialPage> {
     );
   }
 }
+

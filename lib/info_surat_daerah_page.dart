@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;           
 import 'package:open_filex/open_filex.dart';       
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'secrets.dart'; // 👈 WAJIB IMPORT KUNCI RAHASIA ONESIGNAL BOS
 
 class InfoSuratDaerahPage extends StatefulWidget {
@@ -60,8 +61,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
           // LOGIKA FILTER ONESIGNAL SULTAN:
           // (Daerah ini & Admin) ATAU (Daerah ini & Gembala) ATAU (Daerah ini & BPJ)
           "filters": [
-            {"field": "tag", "key": "daerah", "relation": "=", "value": widget.namaDaerah},
-            {"field": "tag", "key": "role", "relation": "=", "value": "admin_daerah"},
+            {"field": "tag", "key": "admin_daerah_area", "relation": "=", "value": widget.namaDaerah},
             {"operator": "OR"},
             {"field": "tag", "key": "daerah", "relation": "=", "value": widget.namaDaerah},
             {"field": "tag", "key": "role", "relation": "=", "value": "gembala"},
@@ -76,10 +76,30 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
              "daerah": widget.namaDaerah
           }
         }),
-      );
+      ).timeout(const Duration(seconds: 15));
       debugPrint("Notif Daerah Response: ${response.body}");
     } catch (e) {
       debugPrint("ERROR FATAL NOTIF DAERAH: $e");
+    }
+  }
+
+  Future<void> _deletePost(String id) async {
+    if (_isLoading) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Hapus postingan?'),
+      content: const Text('Tindakan ini tidak dapat dibatalkan.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+        TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus'))],
+    )) ?? false;
+    if (!confirmed || !mounted || _isLoading) return;
+    setState(() => _isLoading = true);
+    try {
+      await checkRegionWrite(widget.namaDaerah);
+      await _db.collection('info_surat_daerah').doc(id).delete().timeout(const Duration(seconds: 20));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hapus belum berhasil: $e')));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -129,7 +149,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       String isi = data['isi'] ?? "";
       String? link = data['lampiranUrl'];
       String tipe = data['kategori'] ?? "INFO";
-      bool isImage = data['isImage'] ?? false;
+      bool isImage = data['isImage'] == true;
       String namaFile = data['namaFile'] ?? "Dokumen Lampiran";
 
       await _db.collection("churches").doc(churchId).collection("chats").add({
@@ -169,7 +189,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     );
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 30));
       
       if (response.statusCode == 200) {
         final directory = await getTemporaryDirectory();
@@ -205,6 +225,9 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     String kategori = "Pengumuman";
     File? attachedFile;
     bool isImage = false;
+    bool saving = false;
+    String? uploadedUrl;
+    final postRef = _db.collection("info_surat_daerah").doc();
 
     showDialog(
       context: context,
@@ -275,28 +298,32 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text("Batal")),
+            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text("Batal")),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
               onPressed: () async {
-                if (txtJudul.text.trim().isEmpty) return;
+                if (saving || txtJudul.text.trim().isEmpty || !mounted) return;
+                setStateDialog(() => saving = true);
                 setState(() => _isLoading = true);
-                Navigator.pop(dialogContext);
 
                 try {
-                  String? fileUrl;
+                  await checkRegionWrite(widget.namaDaerah);
+                  if (!mounted || !dialogContext.mounted) return;
+                  String? fileUrl = uploadedUrl;
                   String? fileNameOriginal;
 
-                  if (attachedFile != null) {
+                  if (attachedFile != null && fileUrl == null) {
                     fileNameOriginal = attachedFile!.path.split('/').last;
                     String ext = attachedFile!.path.split('.').last;
                     String fileName = "doc_${DateTime.now().millisecondsSinceEpoch}.$ext";
                     Reference ref = _storage.ref().child("info_daerah/${widget.namaDaerah}/$fileName");
-                    await ref.putFile(attachedFile!);
-                    fileUrl = await ref.getDownloadURL();
+                    await ref.putFile(attachedFile!).timeout(const Duration(seconds: 30));
+                    fileUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
+                    uploadedUrl = fileUrl;
                   }
 
-                  await _db.collection("info_surat_daerah").add({
+                  await checkRegionWrite(widget.namaDaerah);
+                  await postRef.set({
                     "daerah": widget.namaDaerah,
                     "kategori": kategori,
                     "judul": txtJudul.text.trim(),
@@ -306,19 +333,21 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                     "namaFile": fileNameOriginal, 
                     "pengirim": _user.userNama ?? "Pengurus",
                     "isImage": isImage,
-                  });
+                  }).timeout(const Duration(seconds: 20));
+                  if (dialogContext.mounted) Navigator.pop(dialogContext);
 
                   // 👇 TEMBAK NOTIFIKASI SETELAH SUKSES POSTING 👇
                   _kirimNotifDaerah(txtJudul.text.trim(), kategori);
 
                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Berhasil diposting!")));
                 } catch (e) {
-                  debugPrint("Error: $e");
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Posting belum berhasil atau belum dapat dipastikan. Draf tetap tersedia: $e")));
                 } finally {
+                  if (dialogContext.mounted) setStateDialog(() => saving = false);
                   if (mounted) setState(() => _isLoading = false);
                 }
               },
-              child: const Text("Posting"),
+              child: Text(saving ? "Menyimpan..." : "Posting"),
             ),
           ],
         ),
@@ -339,11 +368,14 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
           StreamBuilder<QuerySnapshot>(
             stream: _db.collection("info_surat_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
             builder: (context, snapshot) {
+              if (snapshot.hasError) return const Center(child: Text("Postingan belum dapat dimuat. Periksa koneksi dan izin akun."));
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
               var docs = snapshot.data?.docs.toList() ?? [];
               docs.sort((a, b) {
-                Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
-                Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                final rawA = (a.data() as Map<String, dynamic>)['tanggal'];
+                Timestamp tA = rawA is Timestamp ? rawA : Timestamp(0, 0);
+                final rawB = (b.data() as Map<String, dynamic>)['tanggal'];
+                Timestamp tB = rawB is Timestamp ? rawB : Timestamp(0, 0);
                 return tB.compareTo(tA);
               });
 
@@ -355,8 +387,8 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                 itemBuilder: (context, index) {
                   var data = docs[index].data() as Map<String, dynamic>;
                   bool isSurat = data['kategori'] == "Surat Resmi";
-                  bool isImage = data['isImage'] ?? false;
-                  String? url = data['lampiranUrl'];
+                  bool isImage = data['isImage'] == true;
+                  String? url = data['lampiranUrl']?.toString();
                   String fileDisplay = data['namaFile'] ?? "Dokumen Lampiran";
 
                   return Card(
@@ -373,21 +405,21 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(color: isSurat ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(5)),
-                                child: Text(data['kategori'].toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isSurat ? Colors.red : Colors.blue)),
+                                child: Text(legacyText(data['kategori']).toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: isSurat ? Colors.red : Colors.blue)),
                               ),
                               if (_canEdit)
                                 Row(
                                   children: [
                                     IconButton(onPressed: () => _shareToLocalChat(data), icon: const Icon(Icons.share, size: 20, color: Colors.green), tooltip: "Share ke Chatroom Lokal"),
-                                    IconButton(onPressed: () => _db.collection("info_surat_daerah").doc(docs[index].id).delete(), icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red)),
+                                    IconButton(onPressed: () => _deletePost(docs[index].id), icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red)),
                                   ],
                                 )
                             ],
                           ),
                           const SizedBox(height: 10),
-                          Text(data['judul'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text(legacyText(data['judul']), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 5),
-                          Text(data['isi'], style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                          Text(legacyText(data['isi']), style: const TextStyle(fontSize: 13, color: Colors.black54)),
                           
                           if (url != null) ...[
                             const SizedBox(height: 15),

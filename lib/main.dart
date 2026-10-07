@@ -177,6 +177,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed && mounted) {
       setState(_setAyatHariIni);
       _scheduleAyatRefresh();
+      _initSession();
     }
   }
 
@@ -203,14 +204,20 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
   String _homeCacheKey(String suffix) {
     final churchId = UserManager().activeChurchId ?? 'unknown';
-    return 'home_${churchId}_$suffix';
+    return suffix == 'pengumuman_seen'
+        ? 'home_${UserManager().userId ?? 'guest'}_${churchId}_$suffix'
+        : 'home_${churchId}_$suffix';
   }
 
   Future<void> _loadHomeLocalState() async {
+    final church = UserManager().activeChurchId;
+    final uid = _auth.currentUser?.uid;
+    final cacheKey = _homeCacheKey('pengumuman_cache');
+    final seenKey = _homeCacheKey('pengumuman_seen');
     final prefs = await SharedPreferences.getInstance();
-    final cached = prefs.getString(_homeCacheKey('pengumuman_cache'));
-    final seen = prefs.getString(_homeCacheKey('pengumuman_seen'));
-    if (!mounted) return;
+    final cached = prefs.getString(cacheKey);
+    final seen = prefs.getString(seenKey);
+    if (!mounted || UserManager().activeChurchId != church || _auth.currentUser?.uid != uid) return;
     setState(() {
       _cachedPengumuman = cached;
       _lastSeenPengumuman = seen;
@@ -218,22 +225,26 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     });
   }
 
-  Future<void> _cachePengumuman(String text) async {
+  Future<void> _cachePengumuman(String text, String churchId) async {
+    if (!mounted || UserManager().activeChurchId != churchId) return;
     final normalized = text.trim();
-    if (normalized.isEmpty) return;
+    final key = _homeCacheKey('pengumuman_cache');
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_homeCacheKey('pengumuman_cache'), normalized);
-    if (mounted && _cachedPengumuman != normalized) {
+    await prefs.setString(key, normalized);
+    if (mounted && UserManager().activeChurchId == churchId && _cachedPengumuman != normalized) {
       setState(() => _cachedPengumuman = normalized);
     }
   }
 
   Future<void> _markPengumumanSeen(String text) async {
-    final normalized = text.trim();
-    if (normalized.isEmpty) return;
+    final church = UserManager().activeChurchId;
+    final uid = _auth.currentUser?.uid;
+    final key = _homeCacheKey('pengumuman_seen');
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_homeCacheKey('pengumuman_seen'), normalized);
-    if (mounted) setState(() => _lastSeenPengumuman = normalized);
+    await prefs.setString(key, text.trim());
+    if (mounted && church == UserManager().activeChurchId && uid == _auth.currentUser?.uid) {
+      setState(() => _lastSeenPengumuman = text.trim());
+    }
   }
 
   Widget _buildFase5Ringkasan(String? churchId) {
@@ -249,13 +260,16 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
           builder: (context, snapshot) {
             String? text;
             bool fromCache = false;
+            final freshServer = snapshot.hasData && !snapshot.hasError &&
+                !snapshot.data!.metadata.isFromCache;
             if (snapshot.hasData && snapshot.data!.exists) {
               text = snapshot.data!.data()?['teks']?.toString().trim();
-              if (text != null && text.isNotEmpty && text != _cachedPengumuman) {
-                WidgetsBinding.instance.addPostFrameCallback((_) => _cachePengumuman(text!));
-              }
             }
-            if ((text == null || text.isEmpty) && _cachedPengumuman != null && _cachedPengumuman!.isNotEmpty) {
+            if (freshServer && (text ?? '') != (_cachedPengumuman ?? '')) {
+              final value = text ?? '';
+              WidgetsBinding.instance.addPostFrameCallback((_) => _cachePengumuman(value, churchId));
+            }
+            if (!freshServer && (text == null || text.isEmpty) && (_cachedPengumuman?.isNotEmpty ?? false)) {
               text = _cachedPengumuman;
               fromCache = true;
             }
@@ -393,15 +407,30 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     _sessionError = null;
 
     final userManager = UserManager();
+    try {
     await userManager.loadFromPrefs();
+    final uid = _auth.currentUser?.uid;
+    if (uid == null || userManager.userId != uid) {
+      await userManager.reset();
+      if (uid == null) {
+        if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+        return;
+      }
+    }
     if (!mounted) { _isRefreshingSession = false; return; }
 
     final firebaseUser = _auth.currentUser;
     if (firebaseUser != null) {
       try {
-        final userDoc = await _db.collection("users").doc(firebaseUser.uid).get();
+        final userDoc = await _db.collection("users").doc(firebaseUser.uid)
+            .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
         if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) {
           _isRefreshingSession = false;
+          return;
+        }
+        if (!userDoc.exists) {
+          await userManager.reset();
+          if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
           return;
         }
         if (userDoc.exists) {
@@ -441,7 +470,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
           );
 
           // Pertahankan konteks pantau Superadmin yang sedang aktif.
-          if (isMonitoringAnotherChurch) {
+          if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) return;
+          if (isMonitoringAnotherChurch && userManager.isSuperAdmin()) {
             if (monitoredChurchId != null && monitoredChurchId.isNotEmpty) {
               await userManager.enterChurchContext(
                 monitoredChurchId,
@@ -453,7 +483,10 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       } catch (e) {
         debugPrint("Gagal refresh profil pengguna: $e");
         _sessionError = "Profil terbaru belum dapat dimuat. Menampilkan data tersimpan.";
-        // Cache lokal tetap dipakai agar aplikasi lama/offline tetap dapat dibuka.
+        if (userManager.userId != firebaseUser.uid) {
+          if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+          return;
+        }
       }
     }
 
@@ -466,6 +499,12 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     await _loadHomeLocalState();
     _isRefreshingSession = false;
     if (mounted) setState(() {});
+    } catch (_) {
+      _sessionError = "Sesi belum dapat dimuat. Coba lagi.";
+    } finally {
+      _isRefreshingSession = false;
+      if (mounted) setState(() {});
+    }
   }
 
   void _setupOneSignal() {
@@ -476,6 +515,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
       OneSignal.login(user.uid);
       OneSignal.User.addTagWithKey("role", manager.userRole ?? "user");
       OneSignal.User.addTagWithKey("kelompok", manager.userKomisi ?? "Umum");
+      OneSignal.User.addTagWithKey("daerah", UserManager.nonEmpty(manager.userDaerah) ?? "");
+      OneSignal.User.addTagWithKey("admin_daerah_area", UserManager.nonEmpty(manager.adminDaerahArea) ?? "");
 
       if (churchId != null && churchId.trim().isNotEmpty) {
         OneSignal.User.addTagWithKey("active_church", churchId.trim());
@@ -787,7 +828,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     } else {
       // Admin Daerah, Gembala, dan BPJ langsung masuk ke menu daerahnya masing-masing
       halamanPusatKendali = MenuDaerahPage(
-        namaDaerah: user.adminDaerahArea ?? user.userDaerah ?? "Belum Diatur",
+        namaDaerah: user.daerahForCurrentView,
       );
     }
 
@@ -1549,3 +1590,4 @@ class FullScreenImagePage extends StatelessWidget {
     );
   }
 }
+

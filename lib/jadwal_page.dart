@@ -151,7 +151,7 @@ class _JadwalPageState extends State<JadwalPage> {
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: _db.collection('churches').doc(churchId).collection('jadwal')
-            .orderBy('tanggal', descending: false).snapshots(),
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator(color: Colors.indigo));
@@ -168,6 +168,11 @@ class _JadwalPageState extends State<JadwalPage> {
             return _sameCategory(kat, widget.filterKategorial);
           }).toList();
 
+          categoryDocs.sort((a, b) {
+            final ad = _dateFromData(a.data() as Map<String, dynamic>);
+            final bd = _dateFromData(b.data() as Map<String, dynamic>);
+            return (ad ?? DateTime(9999)).compareTo(bd ?? DateTime(9999));
+          });
           final now = DateTime.now();
           final upcoming = categoryDocs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;

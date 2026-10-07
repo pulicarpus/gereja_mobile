@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert'; 
 
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'kategorial_config.dart';
 import 'secrets.dart'; 
 import 'loading_sultan.dart';
@@ -252,7 +253,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
           "Authorization": "Basic $osRestKeySecret" 
         },
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final ok = response.statusCode >= 200 && response.statusCode < 300;
       if (ok) {
@@ -268,7 +269,7 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
   }
 
   Future<void> _saveJadwal() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isLoading || !_formKey.currentState!.validate()) return;
 
     if (!_canManageCurrent) {
       if (mounted) {
@@ -317,6 +318,9 @@ class _AddEditJadwalPageState extends State<AddEditJadwalPage> {
     };
 
     try {
+      final access = await ChurchWriteAccess.check(churchId, category: _isEdit ? _originalKategori : widget.filterKategorial);
+      if (!mounted) return;
+      access.assertCurrent();
       var colRef = _db.collection("churches").doc(churchId).collection("jadwal");
       
       if (_isEdit) {

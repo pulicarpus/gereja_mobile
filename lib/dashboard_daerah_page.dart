@@ -15,6 +15,7 @@ class DashboardDaerahPage extends StatefulWidget {
 class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
   final _db = FirebaseFirestore.instance;
   bool _isLoading = true;
+  String? _loadError;
 
   int totalJemaatDaerah = 0;
   int totalGereja = 0;
@@ -40,12 +41,13 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
   }
 
   Future<void> _hitungDataGlobal() async {
+    if (mounted) setState(() { _isLoading = true; _loadError = null; });
     try {
       Query churchQuery = _db.collection("churches");
       if (widget.namaDaerah != null && widget.namaDaerah != "Belum Diatur") {
         churchQuery = churchQuery.where('daerah', isEqualTo: widget.namaDaerah);
       }
-      var snapGereja = await churchQuery.get();
+      var snapGereja = await churchQuery.get().timeout(const Duration(seconds: 20));
       
       List<QueryDocumentSnapshot> docs = snapGereja.docs;
 
@@ -85,17 +87,19 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
 
         if (isPengerja) tempPengerja++;
 
-        var snapJemaat = await docGereja.reference.collection("jemaat").get();
-        tempTotal += snapJemaat.docs.length;
+        var snapJemaat = await docGereja.reference.collection("jemaat").get().timeout(const Duration(seconds: 20));
+
 
         for (var docJemaat in snapJemaat.docs) {
           var data = docJemaat.data();
+          if (data['status'] == 'Meninggal') continue;
+          tempTotal++;
           
           String jk = (data['jenisKelamin'] ?? "").toString().toLowerCase();
           if (jk == "pria" || jk == "laki-laki" || jk == "l") tempPria++;
           if (jk == "wanita" || jk == "perempuan" || jk == "p") tempWanita++;
 
-          String kat = data['kelompok'] ?? "Lainnya";
+          String kat = data['kelompok']?.toString() ?? "Lainnya";
           if (!tempKat.containsKey(kat)) kat = "Lainnya";
           tempKat[kat] = tempKat[kat]! + 1;
         }
@@ -118,7 +122,7 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       }
     } catch (e) {
       debugPrint("Error Dashboard Daerah: $e");
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _loadError = "Statistik belum dapat dimuat. Periksa koneksi lalu coba lagi."; });
     }
   }
 
@@ -135,7 +139,12 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       ),
       body: _isLoading
           ? const LoadingSultan(size: 80)
-          : SingleChildScrollView(
+          : _loadError != null
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_loadError!, textAlign: TextAlign.center),
+                  TextButton(onPressed: _hitungDataGlobal, child: const Text("Coba lagi")),
+                ]))
+              : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

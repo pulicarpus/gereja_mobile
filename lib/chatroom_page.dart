@@ -676,7 +676,13 @@ class _ChatroomPageState extends State<ChatroomPage> {
       _showSnack("Anda tidak memiliki akses ke ruang chat ini.");
       return false;
     }
+    if (!mounted) return false;
+    setState(() => _isSending = true);
+    try {
+    final sessionUid = _auth.currentUser?.uid;
+    final sessionChurch = _churchId;
     if (await _checkIfMuted()) return false;
+    if (!mounted || _auth.currentUser?.uid != sessionUid || _churchId != sessionChurch) return false;
 
     final churchId = _churchId;
     final currentUser = _auth.currentUser;
@@ -699,8 +705,6 @@ class _ChatroomPageState extends State<ChatroomPage> {
       return false;
     }
 
-    if (mounted) setState(() => _isSending = true);
-    try {
       if (_editingMessageId != null) {
         if (tipe != "text") {
           _showSnack("Lampiran tidak dapat dikirim saat sedang mengedit pesan.");

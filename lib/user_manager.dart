@@ -1,7 +1,13 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserManager {
-  static const String _prefsName = "GerejaAppSession";
+  static String? nonEmpty(String? value) {
+    final text = value?.trim();
+    return text == null || text.isEmpty ? null : text;
+  }
+
+  String get daerahForCurrentView =>
+      nonEmpty(adminDaerahArea) ?? nonEmpty(userDaerah) ?? "Belum Diatur";
   
   // Kunci Penyimpanan (Keys)
   static const String _keyRole = "user_role";
@@ -72,8 +78,8 @@ class UserManager {
     activeChurchName = churchName;
     isPengurus = uIsPengurus; 
     jemaatId = uJemaatId; 
-    adminDaerahArea = uAdminDaerahArea;
-    userDaerah = uDaerah;
+    adminDaerahArea = nonEmpty(uAdminDaerahArea);
+    userDaerah = nonEmpty(uDaerah);
     await saveToPrefs();
   }
 
@@ -100,7 +106,10 @@ class UserManager {
     final prefs = await SharedPreferences.getInstance();
     userRole = prefs.getString(_keyRole);
     
-    if (userRole == null || userRole!.isEmpty) return false;
+    if (userRole == null || userRole!.isEmpty) {
+      await reset();
+      return false;
+    }
 
     userId = prefs.getString(_keyUserId);
     userNama = prefs.getString(_keyUserNama) ?? "Jemaat";
@@ -116,10 +125,10 @@ class UserManager {
     jemaatId = (loadedJemaatId != null && loadedJemaatId.isNotEmpty) ? loadedJemaatId : null;
 
     String? loadedArea = prefs.getString(_keyAdminDaerahArea);
-    adminDaerahArea = (loadedArea != null && loadedArea.isNotEmpty) ? loadedArea : null;
+    adminDaerahArea = nonEmpty(loadedArea);
 
     String? loadedUserDaerah = prefs.getString(_keyUserDaerah);
-    userDaerah = (loadedUserDaerah != null && loadedUserDaerah.isNotEmpty) ? loadedUserDaerah : null;
+    userDaerah = nonEmpty(loadedUserDaerah);
     
     return true;
   }

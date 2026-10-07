@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_safety.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class DetailJemaatPage extends StatelessWidget {
@@ -8,11 +9,12 @@ class DetailJemaatPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String nama = jemaatData['namaLengkap'] ?? "Tanpa Nama";
-    String? fotoUrl = jemaatData['fotoProfil'];
+    String nama = legacyText(jemaatData['namaLengkap'], 'Tanpa Nama');
+    final rawFoto = jemaatData['fotoProfil']?.toString().trim() ?? '';
+    String? fotoUrl = rawFoto.isEmpty ? null : rawFoto;
     String noHp = (jemaatData['nomorTelepon'] ?? jemaatData['noHp'] ?? "-").toString();
-    String alamat = jemaatData['alamat'] ?? "-";
-    String status = jemaatData['statusKeluarga'] ?? "-";
+    String alamat = legacyText(jemaatData['alamat'], '-');
+    String status = legacyText(jemaatData['statusKeluarga'], '-');
     String kategorial = (jemaatData['kelompok'] ?? jemaatData['kategorial'] ?? "Umum").toString();
 
     return Scaffold(

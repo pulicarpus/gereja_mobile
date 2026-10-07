@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'user_manager.dart';
+import 'app_safety.dart';
 import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
 import 'anggota_keluarga_page.dart'; 
@@ -118,6 +119,28 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   // --- DETAIL JEMAAT (BOTTOM SHEET) ---
+  bool _performingAction = false;
+  Future<void> _performJemaatAction(Map<String, dynamic> book, {required bool remove}) async {
+    if (_performingAction || !mounted) return;
+    final church = _userManager.getChurchIdForCurrentView();
+    if (church == null) return;
+    _performingAction = true;
+    try {
+      final id = book['id']?.toString() ?? '';
+      if (id.isEmpty) throw StateError('ID jemaat tidak valid.');
+      if (remove) {
+        await deleteUnlinkedJemaat(church, id);
+      } else {
+        await changeJemaatStatus(church, id, 'Meninggal');
+      }
+      if (mounted) await _loadJemaat();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aksi belum berhasil: $e')));
+    } finally {
+      _performingAction = false;
+    }
+  }
+
   void _showDetailJemaat(Map<String, dynamic> j) {
     showModalBottomSheet(
       context: context,
@@ -388,8 +411,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Navigator.pop(context);
               final ok = await _confirmAksi("Tandai Meninggal", "Yakin menandai ${j['namaLengkap'] ?? 'jemaat ini'} sebagai meninggal?");
               if (!ok) return;
-              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).update({'status': 'Meninggal'});
-              await _loadJemaat(); 
+              await _performJemaatAction(j, remove: false); 
             },
           ),
           ListTile(
@@ -399,8 +421,7 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               Navigator.pop(context);
               final ok = await _confirmAksi("Hapus Permanen", "Data ${j['namaLengkap'] ?? 'jemaat ini'} akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.", danger: true);
               if (!ok) return;
-              await _db.collection("churches").doc(_userManager.getChurchIdForCurrentView()).collection("jemaat").doc(j['id']).delete();
-              await _loadJemaat(); 
+              await _performJemaatAction(j, remove: true); 
             },
           ),
           const SizedBox(height: 20),

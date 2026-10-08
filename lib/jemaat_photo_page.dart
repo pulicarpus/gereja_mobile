@@ -5,7 +5,11 @@ class FullScreenImagePage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;
 
-  const FullScreenImagePage({super.key, required this.imageUrl, required this.heroTag});
+  const FullScreenImagePage({
+    super.key,
+    required this.imageUrl,
+    required this.heroTag,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +32,9 @@ class FullScreenImagePage extends StatelessWidget {
               fit: BoxFit.contain,
               width: double.infinity,
               height: double.infinity,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 100, color: Colors.white),
+              errorBuilder:
+                  (context, error, stackTrace) =>
+                      const Icon(Icons.person, size: 100, color: Colors.white),
             ),
           ),
         ),

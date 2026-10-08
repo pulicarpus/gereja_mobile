@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-
 import 'kategorial_config.dart';
+import 'kategorial_menu_widgets.dart';
 import 'sub_kategorial_page.dart';
 import 'user_manager.dart';
 
@@ -44,8 +44,7 @@ class _KategorialPageState extends State<KategorialPage> {
       var isPengurus = data['isPengurus'] == true && data['isBlocked'] != true;
 
       final jemaatId = data['jemaatId']?.toString().trim() ?? "";
-      final registeredChurchId =
-          data['churchId']?.toString().trim() ?? "";
+      final registeredChurchId = data['churchId']?.toString().trim() ?? "";
 
       if (jemaatId.isNotEmpty && registeredChurchId.isNotEmpty) {
         try {
@@ -55,8 +54,9 @@ class _KategorialPageState extends State<KategorialPage> {
               .collection("jemaat")
               .doc(jemaatId)
               .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 20));
-          if (jemaatDoc.exists && jemaatDoc.data()?['uid']?.toString() == currentUser.uid) {
+              .timeout(const Duration(seconds: 20));
+          if (jemaatDoc.exists &&
+              jemaatDoc.data()?['uid']?.toString() == currentUser.uid) {
             final jemaatKelompok = KategorialConfig.canonicalJemaat(
               jemaatDoc.data()?['kelompok'],
             );
@@ -73,13 +73,12 @@ class _KategorialPageState extends State<KategorialPage> {
         }
       }
 
-      if (!mounted || FirebaseAuth.instance.currentUser?.uid != currentUser.uid ||
-          UserManager().userId != currentUser.uid) return;
+      if (!mounted ||
+          FirebaseAuth.instance.currentUser?.uid != currentUser.uid ||
+          UserManager().userId != currentUser.uid)
+        return;
       final manager = UserManager();
-      await manager.updateKategorialContext(
-        kelompok,
-        pengurus: isPengurus,
-      );
+      await manager.updateKategorialContext(kelompok, pengurus: isPengurus);
       MobilePush.tag("kelompok", kelompok);
 
       if (mounted) setState(() {});
@@ -137,94 +136,66 @@ class _KategorialPageState extends State<KategorialPage> {
       ),
       body: RefreshIndicator(
         onRefresh: _refreshKategorialIdentity,
-        child: GridView.builder(
+        child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(16),
-          itemCount: categories.length,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 15,
-            mainAxisSpacing: 15,
-            childAspectRatio: 1.0,
-          ),
-          itemBuilder: (context, index) {
-            final name = categories[index];
-            final visual = _visual(name);
-            return _buildMenuCard(
-              context,
-              name,
-              visual.icon,
-              visual.color,
-              isMine: own == name,
-            );
-          },
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Bersama dalam pelayanan",
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Pilih kategorial untuk melihat anggota dan kegiatan pelayanan.",
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    KategorialMenuSection(
+                      children: [
+                        for (final name in categories)
+                          _buildMenuRow(
+                            context,
+                            name,
+                            _visual(name).icon,
+                            _visual(name).color,
+                            isMine: own == name,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildMenuCard(
+  Widget _buildMenuRow(
     BuildContext context,
     String nama,
     IconData icon,
     Color color, {
     required bool isMine,
   }) {
-    return Card(
-      elevation: isMine ? 5 : 3,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(15),
-        side: isMine
-            ? BorderSide(color: color.withOpacity(0.6), width: 1.5)
-            : BorderSide.none,
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(15),
-        onTap: () => _bukaSub(context, nama),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (isMine)
-                Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    "KATEGORI SAYA",
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: color,
-                    ),
-                  ),
-                ),
-              Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(icon, size: 40, color: color),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                nama,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return KategorialMenuRow(
+      title: nama,
+      subtitle: isMine ? "Kategori saya" : "Anggota dan kegiatan pelayanan",
+      icon: icon,
+      color: color,
+      highlighted: isMine,
+      onTap: () => _bukaSub(context, nama),
     );
   }
 
@@ -240,4 +211,3 @@ class _KategorialPageState extends State<KategorialPage> {
     );
   }
 }
-

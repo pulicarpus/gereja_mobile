@@ -57,9 +57,8 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
   ImageProvider? get _image {
     final path = _d['image'] as String;
     if (path.isEmpty) return null;
-    return path.startsWith('https://')
-        ? NetworkImage(path)
-        : FileImage(File(path));
+    if (path.startsWith('https://')) return NetworkImage(path);
+    return FileImage(File(path));
   }
 
   void _message(String text) {

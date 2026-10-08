@@ -593,8 +593,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
     } else if (v == 'dictionary') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (c) => const KamusPage()),
-      );
+        MaterialPageRoute(builder: (c) => KamusPage(allBooks: _allBooks)),
+      ).then(_handleNavResult);
     } else if (v == 'offline_audio') {
       try {
         await _stopAudio();

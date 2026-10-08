@@ -71,6 +71,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/dictionary/offline.sqlite
     - assets/TB.SQLite3
     - assets/TJL.SQLite3
     - assets/icon.png

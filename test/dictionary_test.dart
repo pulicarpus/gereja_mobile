@@ -7,7 +7,6 @@ import '../lib/bible_models.dart';
 import '../lib/dictionary_store.dart';
 import '../lib/kamus_page.dart';
 import '../lib/dictionary_definition.dart';
-import 'package:flutter/gestures.dart';
 
 void main() {
   late Database db;
@@ -112,8 +111,19 @@ void main() {
       expect(spans.first.style!.fontWeight, FontWeight.bold);
       final links = spans.where((span) => span.recognizer != null).toList();
       expect(links.map((span) => span.text), ['Mat 22:37', '22:39']);
-      for (final link in links) {
-        (link.recognizer as TapGestureRecognizer).onTap!();
+      final editable = tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable;
+      for (final token in ['Mat 22:37', '22:39']) {
+        final offset = entry.definition.indexOf(token);
+        final boxes = editable.getBoxesForSelection(
+          TextSelection(
+            baseOffset: offset,
+            extentOffset: offset + token.length,
+          ),
+        );
+        await tester.tapAt(editable.localToGlobal(boxes.first.toRect().center));
+        await tester.pump();
       }
       expect(clicked, ['Matius 22:37', 'Matius 22:39']);
     },
@@ -133,7 +143,8 @@ void main() {
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => KamusPage(store: store, allBooks: books, bibleDb: db),
+                      builder: (_) =>
+                          KamusPage(store: store, allBooks: books, bibleDb: db),
                     ),
                   );
                 },

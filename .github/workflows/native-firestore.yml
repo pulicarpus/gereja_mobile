@@ -1,0 +1,54 @@
+name: Native Firestore Settings Regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/windows-n4500]
+    paths: ['windows/firestore_settings_guard.h', 'test/native/firestore_settings_test.cpp', '.github/workflows/native-firestore.yml']
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare verified Firebase SDK and standalone native test
+        run: |
+          $testDir = Join-Path $env:RUNNER_TEMP 'gkii-native-settings'
+          New-Item -ItemType Directory -Force $testDir | Out-Null
+          $archive = Join-Path $testDir 'firebase.zip'
+          Invoke-WebRequest 'https://dl.google.com/firebase/sdk/cpp/firebase_cpp_sdk_windows_12.7.0.zip' -OutFile $archive
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLower() -ne 'a3ba12b7de6a88a1fd53dd9213abff10b6215e5af7e70318bc40370a07c29722') { throw 'SDK checksum mismatch' }
+          Expand-Archive $archive $testDir
+          $cmake = @'
+          cmake_minimum_required(VERSION 3.14)
+          set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+          project(NativeSettings LANGUAGES CXX)
+          set(MSVC_RUNTIME_MODE MD)
+          add_subdirectory(firebase_cpp_sdk_windows sdk)
+          add_executable(settings_test "${REPOSITORY}/test/native/firestore_settings_test.cpp")
+          target_include_directories(settings_test PRIVATE "${REPOSITORY}/windows")
+          target_link_libraries(settings_test PRIVATE firebase_app firebase_auth firebase_firestore advapi32 ws2_32 crypt32 rpcrt4 ole32 icu shell32 bcrypt dbghelp)
+          '@
+          Set-Content (Join-Path $testDir 'CMakeLists.txt') $cmake
+          cmake -S $testDir -B "$testDir/build" -A x64 -DCMAKE_BUILD_TYPE=Release "-DREPOSITORY=$($env:GITHUB_WORKSPACE.Replace('\', '/'))"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build "$testDir/build" --config Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise real SDK without production credentials
+        run: |
+          $exePath = Join-Path $env:RUNNER_TEMP 'gkii-native-settings/build/Release/settings_test.exe'
+          cmd /c "`"$exePath`" > native-settings-result.txt 2>&1"
+          $nativeStatus = $LASTEXITCODE
+          Get-Content native-settings-result.txt | ForEach-Object {
+            Write-Output $_
+            if ($nativeStatus -ne 0) {
+              $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+              Write-Output "::error::$detail"
+            }
+          }
+          if ($nativeStatus -ne 0) { Write-Output "::error::Native test exit code: $nativeStatus" }
+          exit $nativeStatus

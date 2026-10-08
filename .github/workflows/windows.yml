@@ -96,9 +96,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Reproduce and prevent native Firestore settings crash
         run: |
-          $nativeOutput = & 'build/windows/x64/native-tests/Release/gkii_firestore_settings_test.exe' 2>&1
+          cmd /c "build\windows\x64\native-tests\Release\gkii_firestore_settings_test.exe > native-settings-result.txt 2>&1"
           $nativeStatus = $LASTEXITCODE
-          $nativeOutput | ForEach-Object {
+          Get-Content native-settings-result.txt | ForEach-Object {
             Write-Output $_
             if ($nativeStatus -ne 0) {
               $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')

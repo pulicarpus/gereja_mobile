@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
+import 'dictionary_definition.dart';
 import 'bible_models.dart';
 import 'bible_support.dart';
 import 'dictionary_store.dart';
@@ -8,11 +10,13 @@ class KamusPage extends StatefulWidget {
   final String? kataBawaan;
   final List<BibleBook> allBooks;
   final DictionaryStore? store;
+  final Database? bibleDb;
   const KamusPage({
     super.key,
     this.kataBawaan,
     this.allBooks = const [],
     this.store,
+    this.bibleDb,
   });
   @override
   State<KamusPage> createState() => _KamusPageState();
@@ -66,8 +70,11 @@ class _KamusPageState extends State<KamusPage> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) =>
-            DictionaryDetailPage(entry: entry, allBooks: widget.allBooks),
+        builder: (_) => DictionaryDetailPage(
+          entry: entry,
+          allBooks: widget.allBooks,
+          bibleDb: widget.bibleDb,
+        ),
       ),
     );
     if (mounted && result is Map<String, int>) Navigator.pop(context, result);
@@ -157,11 +164,28 @@ class _KamusPageState extends State<KamusPage> {
 class DictionaryDetailPage extends StatelessWidget {
   final DictionaryEntry entry;
   final List<BibleBook> allBooks;
+  final Database? bibleDb;
   const DictionaryDetailPage({
     super.key,
     required this.entry,
     this.allBooks = const [],
+    this.bibleDb,
   });
+
+  Future<void> _showVerse(
+    BuildContext context,
+    String label,
+    BibleReference ref,
+  ) async {
+    final db = bibleDb;
+    if (db == null) return;
+    await showDialog<void>(
+      context: context,
+      builder: (_) =>
+          DictionaryVerseDialog(db: db, label: label, reference: ref),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(entry.term)),
@@ -170,9 +194,12 @@ class DictionaryDetailPage extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SelectableText(
-            entry.definition,
-            style: const TextStyle(fontSize: 17, height: 1.6),
+          DictionaryDefinition(
+            entry: entry,
+            books: allBooks,
+            onReference: bibleDb == null
+                ? null
+                : (label, ref) => _showVerse(context, label, ref),
           ),
           const SizedBox(height: 20),
           Text(
@@ -191,13 +218,9 @@ class DictionaryDetailPage extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 title: Text(text),
                 trailing: ref == null ? null : const Icon(Icons.open_in_new),
-                onTap: ref == null
+                onTap: ref == null || bibleDb == null
                     ? null
-                    : () => Navigator.pop(context, <String, int>{
-                        'book_number': ref.bookId,
-                        'chapter': ref.chapter,
-                        'verse': ref.verses.first,
-                      }),
+                    : () => _showVerse(context, text, ref),
               );
             }),
           ],

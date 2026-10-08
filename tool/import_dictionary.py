@@ -19,17 +19,20 @@ def build_dictionary(source, output):
         refs = entry.get('references', [])
         if not isinstance(refs, list) or any(not isinstance(ref, str) or not ref.strip() for ref in refs):
             raise ValueError('References must be a list of nonempty strings')
+        headings = entry.get('headings', [])
+        if not isinstance(headings, list) or any(not isinstance(h, str) for h in headings):
+            raise ValueError('Headings must be a list of strings')
         term, definition, attribution = [value.strip() for value in values]
-        rows.append((term, term.lower(), definition, attribution, json.dumps(refs, ensure_ascii=False)))
+        rows.append((term, term.lower(), definition, attribution, json.dumps(refs, ensure_ascii=False), json.dumps(headings, ensure_ascii=False)))
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(dir=output.parent, suffix='.sqlite')
     os.close(fd)
     try:
         with closing(sqlite3.connect(temporary)) as db:
-            db.execute('CREATE TABLE entries (id INTEGER PRIMARY KEY, term TEXT NOT NULL, search_term TEXT NOT NULL, definition TEXT NOT NULL, source TEXT NOT NULL, refs TEXT NOT NULL)')
+            db.execute('CREATE TABLE entries (id INTEGER PRIMARY KEY, term TEXT NOT NULL, search_term TEXT NOT NULL, definition TEXT NOT NULL, source TEXT NOT NULL, refs TEXT NOT NULL, headings TEXT NOT NULL)')
             db.execute('CREATE INDEX entry_search ON entries(search_term)')
-            db.executemany('INSERT INTO entries(term,search_term,definition,source,refs) VALUES (?,?,?,?,?)', rows)
+            db.executemany('INSERT INTO entries(term,search_term,definition,source,refs,headings) VALUES (?,?,?,?,?,?)', rows)
             db.execute('PRAGMA user_version=1')
             db.commit()
         os.replace(temporary, output)

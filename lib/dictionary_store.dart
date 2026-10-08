@@ -7,17 +7,22 @@ import 'package:sqflite/sqflite.dart';
 class DictionaryEntry {
   final String term, definition, source;
   final List<String> references;
+  final List<String> headings;
   DictionaryEntry({
     required this.term,
     required this.definition,
     required this.source,
     required this.references,
+    this.headings = const [],
   });
   factory DictionaryEntry.fromRow(Map<String, Object?> row) => DictionaryEntry(
     term: row['term'] as String,
     definition: row['definition'] as String,
     source: row['source'] as String,
     references: (jsonDecode(row['refs'] as String) as List).cast<String>(),
+    headings: row['headings'] == null
+        ? const []
+        : (jsonDecode(row['headings'] as String) as List).cast<String>(),
   );
 }
 

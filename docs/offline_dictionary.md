@@ -2,7 +2,7 @@
 
 Menu Alkitab → Kamus Alkitab membuka database SABDA bawaan tanpa internet atau konfigurasi tambahan. Paket menyertakan 18.386 entri dari APK Kamus Alkitab 2.0.1 yang diberikan pengguna, untuk percobaan di aplikasi gereja. Pencarian AI tetap tersedia lewat ikon bintang dan membutuhkan internet.
 
-Sumber SABDA serta label sumber bagian ditampilkan pada definisi. HTML dikonversi menjadi teks dengan judul bagian; tautan istilah/Strong belum menjadi tombol. Rujukan ayat yang dikenali dipetakan ke database TB dan divalidasi sebelum dijadikan tautan. Rujukan yang tidak dikenali tetap tertulis dalam definisi. Tiga entri dengan offset rusak dilewati: Abadon, Apolion; Abagta; Abana. Versi ini menyertakan 71.905 rujukan yang tervalidasi.
+Sumber SABDA serta label sumber bagian ditampilkan pada definisi. HTML dikonversi menjadi teks dengan judul bagian tebal; rujukan ayat di dalam definisi dan daftar referensi membuka pop-up ayat dari database Alkitab yang sedang dibaca tanpa meninggalkan kamus; tautan istilah/Strong belum menjadi tombol. Rujukan ayat yang dikenali dipetakan ke database TB dan divalidasi sebelum dijadikan tautan. Rujukan yang tidak dikenali tetap tertulis dalam definisi. Tiga entri dengan offset rusak dilewati: Abadon, Apolion; Abagta; Abana. Versi ini menyertakan 71.905 rujukan yang tervalidasi.
 
 Database terpaket: assets/dictionary/offline.sqlite. Data contoh sample.json digunakan untuk tes terisolasi. Tes tambahan memeriksa isi SABDA yang benar-benar dikemas.
 

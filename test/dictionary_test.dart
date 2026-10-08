@@ -6,6 +6,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../lib/bible_models.dart';
 import '../lib/dictionary_store.dart';
 import '../lib/kamus_page.dart';
+import '../lib/dictionary_definition.dart';
+import 'package:flutter/gestures.dart';
 
 void main() {
   late Database db;
@@ -26,6 +28,17 @@ void main() {
         'definition': entry['definition'],
         'source': entry['source'],
         'refs': jsonEncode(entry['references']),
+      });
+    }
+    await db.execute(
+      'CREATE TABLE verses(book_number INTEGER, chapter INTEGER, verse INTEGER, text TEXT)',
+    );
+    for (final verse in [37, 38, 39]) {
+      await db.insert('verses', {
+        'book_number': 470,
+        'chapter': 22,
+        'verse': verse,
+        'text': '<t>Isi ayat $verse</t>',
       });
     }
     store = DictionaryStore(db);
@@ -70,22 +83,57 @@ void main() {
     },
   );
   testWidgets(
-    'Search opens sourced definition and verse returns Bible navigation',
+    'Inline references include inherited chapters and headings are bold',
     (tester) async {
       final books = [
         BibleBook(bookNumber: 470, name: 'Matius', shortName: 'Mat'),
       ];
-      Map<String, int>? result;
+      final clicked = <String>[];
+      final entry = DictionaryEntry(
+        term: 'Kasih',
+        definition: 'Kasih [kamus browning]\n\nMat 22:37; 22:39; 99:1',
+        source: 'SABDA',
+        references: ['Matius 22:37', 'Matius 22:39'],
+        headings: ['Kasih [kamus browning]'],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DictionaryDefinition(
+              entry: entry,
+              books: books,
+              onReference: (label, ref) => clicked.add(label),
+            ),
+          ),
+        ),
+      );
+      final text = tester.widget<SelectableText>(find.byType(SelectableText));
+      final spans = text.textSpan!.children!.cast<TextSpan>();
+      expect(spans.first.style!.fontWeight, FontWeight.bold);
+      final links = spans.where((span) => span.recognizer != null).toList();
+      expect(links.map((span) => span.text), ['Mat 22:37', '22:39']);
+      for (final link in links) {
+        (link.recognizer as TapGestureRecognizer).onTap!();
+      }
+      expect(clicked, ['Matius 22:37', 'Matius 22:39']);
+    },
+  );
+  testWidgets(
+    'Search opens sourced definition and verse popup without leaving dictionary',
+    (tester) async {
+      final books = [
+        BibleBook(bookNumber: 470, name: 'Matius', shortName: 'Mat'),
+      ];
       await tester.pumpWidget(
         MaterialApp(
           home: Builder(
             builder: (context) => Scaffold(
               body: TextButton(
                 onPressed: () async {
-                  result = await Navigator.push<Map<String, int>>(
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => KamusPage(store: store, allBooks: books),
+                      builder: (_) => KamusPage(store: store, allBooks: books, bibleDb: db),
                     ),
                   );
                 },
@@ -111,9 +159,16 @@ void main() {
         findsOneWidget,
       );
       await tester.tap(find.text('Matius 22:37-39'));
+      await tester.pump();
+      await tester.runAsync(() => db.rawQuery('SELECT * FROM verses'));
       await tester.pumpAndSettle();
-      expect(result, {'book_number': 470, 'chapter': 22, 'verse': 37});
-      expect(find.text('Buka kamus'), findsOneWidget);
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('37. Isi ayat 37'), findsOneWidget);
+      expect(find.text('39. Isi ayat 39'), findsOneWidget);
+      await tester.tap(find.text('Tutup'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byType(DictionaryDetailPage), findsOneWidget);
     },
   );
 }

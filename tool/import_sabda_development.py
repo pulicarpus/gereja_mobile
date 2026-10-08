@@ -136,7 +136,7 @@ def convert(root, output, bible):
         sources = list(dict.fromkeys(label for heading in parser.headings for label in re.findall(r'\[([^]]+)\]', heading)))
         source = 'SABDA — Kamus Alkitab 2.0.1 (org.sabda.kamus); salinan APK untuk uji pengembangan'
         if sources: source += '; sumber bagian: ' + ', '.join(sources)
-        entries.append({'term': term, 'definition': text, 'source': source, 'references': refs})
+        entries.append({'term': term, 'definition': text, 'source': source, 'references': refs, 'headings': parser.headings})
     intermediate = output.with_suffix('.development.json')
     intermediate.write_text(json.dumps(entries, ensure_ascii=False), encoding='utf-8')
     try:

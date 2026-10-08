@@ -43,8 +43,8 @@ function(gkii_guard_firestore_settings)
 
   add_executable(gkii_firestore_settings_test "../test/native/firestore_settings_test.cpp")
   target_include_directories(gkii_firestore_settings_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-  target_link_libraries(gkii_firestore_settings_test PRIVATE firebase_app firebase_firestore snappy
-    advapi32 ws2_32 crypt32 rpcrt4 ole32 icu)
+  target_link_libraries(gkii_firestore_settings_test PRIVATE firebase_app firebase_auth firebase_firestore snappy
+    advapi32 ws2_32 crypt32 rpcrt4 ole32 icu shell32 bcrypt dbghelp)
   set_target_properties(gkii_firestore_settings_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/native-tests")
   add_dependencies(${BINARY_NAME} gkii_firestore_settings_test)

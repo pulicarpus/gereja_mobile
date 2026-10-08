@@ -186,8 +186,8 @@ LedgerBalance annualLedgerBalance(Iterable<Map<String, dynamic>> transactions,
 /// Retains the existing regional collections and fields; no backfill/migration.
 Future<void> saveRegionChanges(String area,
     Map<DocumentReference, Map<String, dynamic>?> changes,
-    {bool createOnly = false, bool requireExisting = false}) async {
-  final uid = await checkRegionWrite(area, allowPastors: true);
+    {bool createOnly = false, bool requireExisting = false, bool allowPastors = true}) async {
+  final uid = await checkRegionWrite(area, allowPastors: allowPastors);
   final db = FirebaseFirestore.instance;
   await db.runTransaction((tx) async {
     final actor = await tx.get(db.collection('users').doc(uid));
@@ -196,7 +196,7 @@ Future<void> saveRegionChanges(String area,
       current[ref] = await tx.get(ref);
     }
     if (FirebaseAuth.instance.currentUser?.uid != uid || UserManager().userId != uid ||
-        !actor.exists || !permitsRegionWrite(actor.data()!, area, allowPastors: true)) {
+        !actor.exists || !permitsRegionWrite(actor.data()!, area, allowPastors: allowPastors)) {
       throw StateError('Sesi atau izin daerah berubah.');
     }
     for (final entry in changes.entries) {

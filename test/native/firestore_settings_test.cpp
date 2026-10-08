@@ -20,12 +20,14 @@ void wait_for(const firebase::Future<void>& future) {
 
 int main() {
   try {
+    std::cout << "Phase: create local app" << std::endl;
     firebase::AppOptions options;
     options.set_project_id("gkii-local-regression");
     options.set_app_id("1:123456789:windows:local-regression");
     options.set_api_key("local-regression-unused-api-key");
     auto* app = firebase::App::Create(options, "gkii-settings-test");
     if (!app) throw std::runtime_error("App initialization failed");
+    std::cout << "Phase: get Firestore instance" << std::endl;
     auto* db = firebase::firestore::Firestore::GetInstance(app);
     // No production project, authentication or uploads. Restrict the SDK to a
     // closed loopback port and disable persistence and network before testing.
@@ -33,13 +35,17 @@ int main() {
     settings.set_host("127.0.0.1:1");
     settings.set_ssl_enabled(false);
     settings.set_persistence_enabled(false);
+    std::cout << "Phase: apply initial settings" << std::endl;
     gkii_apply_firestore_settings(db, settings);
     if (db->settings() != settings) throw std::runtime_error("Initial settings not applied");
+    std::cout << "Phase: disable network and start client" << std::endl;
     wait_for(db->DisableNetwork());
+    std::cout << "Phase: reproduce original exception" << std::endl;
     bool reproduced = false;
     try { db->set_settings(settings); }
     catch (const std::logic_error&) { reproduced = true; }
     if (!reproduced) throw std::runtime_error("Expected SDK exception was not reproduced");
+    std::cout << "Phase: verify identical settings guard" << std::endl;
     for (int i = 0; i < 10; ++i) gkii_apply_firestore_settings(db, settings);
     auto different = settings;
     different.set_host("127.0.0.1:2");
@@ -49,6 +55,7 @@ int main() {
     if (!rejected || db->settings() != settings) {
       throw std::runtime_error("Guard allowed late configuration changes");
     }
+    std::cout << "Phase: terminate local client" << std::endl;
     wait_for(db->Terminate());
     delete db;
     delete app;

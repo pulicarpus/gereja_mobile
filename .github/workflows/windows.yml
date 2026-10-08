@@ -96,6 +96,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Reproduce and prevent native Firestore settings crash
         run: ./tool/test_firestore_settings.ps1 'build/windows/x64/native-tests/Release/gkii_firestore_settings_test.exe'
+      - name: Test actual FlutterFire document-reference codec after client startup
+        run: |
+          Copy-Item 'build/windows/x64/runner/Release/flutter_windows.dll' 'build/windows/x64/native-tests/Release/'
+          & 'build/windows/x64/native-tests/Release/gkii_firestore_codec_test.exe'
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output '::error::Actual FlutterFire document-reference codec regression failed'
+            exit $LASTEXITCODE
+          }
       - name: Test delayed native Storage reference lifetime
         run: |
           & 'build/windows/x64/native-tests/Release/gkii_storage_lifetime_test.exe'

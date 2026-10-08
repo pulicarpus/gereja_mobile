@@ -1,5 +1,31 @@
 # Windows save/upload access violation
 
+## Latest matching dump: document-reference decoding
+
+`gereja_mobile.exe.5960.dmp` and its supplied executable have matching RSDS
+identifiers. This later crash is `0xe06d7363` (`std::logic_error`), with the
+Firestore message that settings cannot be changed after the client starts.
+The caller at executable RVA `0x36a56` obtains the default Firestore instance
+and unconditionally calls its settings setter. This matches the separate
+`DATA_TYPE_FIRESTORE_INSTANCE` path in FlutterFire's `firestore_codec.cpp`.
+The earlier guard covered `cloud_firestore_plugin.cpp` but missed this codec.
+
+Pigeon cached instances under `appName-databaseUrl`; the codec searched only
+`appName`, ignored the database name and attempted to configure the same live
+SDK instance again. It also inserted a second owning `unique_ptr`. The patch
+now shares a database-aware key between both paths, returns the cached instance
+before settings assignment, respects named databases and treats an empty
+database identifier as `(default)`. Both remaining setters are guarded.
+
+The Windows regression links the actual patched FlutterFire plugin and decodes
+the wire format for instances and document references after starting the SDK
+client. It checks default/named database identity, empty-default aliases,
+unchanged settings and exactly one owner per database. It uses a fake local
+project with a closed loopback host and disabled network. It does not perform
+an authenticated photo save; that still needs testing on the user's computer.
+
+## Earlier access violation
+
 The later `gereja_mobile.exe.6700.dmp` records `0xc0000005`, reading address
 `0x8`, at executable RVA `0x65e904`. Captured instructions identify Firebase's
 `Mutex::Acquire` with a null owner. The stack includes RVA `0x8a919a`. Matching

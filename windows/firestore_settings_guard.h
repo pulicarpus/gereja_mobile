@@ -1,4 +1,14 @@
 #pragma once
+#include <string>
+
+inline std::string gkii_firestore_database_id(const std::string& database) {
+  return database.empty() ? "(default)" : database;
+}
+
+inline std::string gkii_firestore_cache_key(const std::string& app,
+                                          const std::string& database) {
+  return app + "-" + gkii_firestore_database_id(database);
+}
 
 // Firebase C++ rejects every settings assignment after its client starts,
 // including assignments of identical settings. FlutterFire can encounter an

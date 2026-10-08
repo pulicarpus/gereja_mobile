@@ -95,17 +95,7 @@ jobs:
           & 'build/windows/x64/native-tests/Release/gkii_snappy_test.exe'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Reproduce and prevent native Firestore settings crash
-        run: |
-          cmd /c "build\windows\x64\native-tests\Release\gkii_firestore_settings_test.exe > native-settings-result.txt 2>&1"
-          $nativeStatus = $LASTEXITCODE
-          Get-Content native-settings-result.txt | ForEach-Object {
-            Write-Output $_
-            if ($nativeStatus -ne 0) {
-              $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error::$detail"
-            }
-          }
-          exit $nativeStatus
+        run: ./tool/test_firestore_settings.ps1 'build/windows/x64/native-tests/Release/gkii_firestore_settings_test.exe'
       - name: Verify executable and offline SQLite asset
         run: |
           $releasePath = 'build/windows/x64/runner/Release'

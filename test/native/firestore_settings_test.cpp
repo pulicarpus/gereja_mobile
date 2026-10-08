@@ -18,7 +18,7 @@ void wait_for(const firebase::Future<void>& future) {
   }
 }
 
-int main() {
+int main(int argc, char** argv) {
   try {
     std::cout << "Phase: create local app" << std::endl;
     firebase::AppOptions options;
@@ -40,26 +40,32 @@ int main() {
     if (db->settings() != settings) throw std::runtime_error("Initial settings not applied");
     std::cout << "Phase: disable network and start client" << std::endl;
     wait_for(db->DisableNetwork());
-    std::cout << "Phase: reproduce original exception" << std::endl;
-    bool reproduced = false;
-    try { db->set_settings(settings); }
-    catch (const std::logic_error&) { reproduced = true; }
-    if (!reproduced) throw std::runtime_error("Expected SDK exception was not reproduced");
+    const std::string mode = argc > 1 ? argv[1] : "--guarded";
+    // The prebuilt SDK exception can escape this executable's C++ handlers.
+    // Run deliberate failures in child processes and check their exact Windows
+    // exception exit code in the regression driver instead of crashing the
+    // guarded case before it can execute.
+    if (mode == "--unsafe-settings") {
+      std::cout << "Phase: reproduce original exception" << std::endl;
+      db->set_settings(settings);
+      throw std::runtime_error("Original SDK assignment unexpectedly succeeded");
+    }
+    if (mode == "--late-change") {
+      std::cout << "Phase: reject changed settings" << std::endl;
+      auto different = settings;
+      different.set_host("127.0.0.1:2");
+      gkii_apply_firestore_settings(db, different);
+      throw std::runtime_error("Late settings change unexpectedly succeeded");
+    }
+    if (mode != "--guarded") throw std::runtime_error("Unknown test mode");
     std::cout << "Phase: verify identical settings guard" << std::endl;
     for (int i = 0; i < 10; ++i) gkii_apply_firestore_settings(db, settings);
-    auto different = settings;
-    different.set_host("127.0.0.1:2");
-    bool rejected = false;
-    try { gkii_apply_firestore_settings(db, different); }
-    catch (const std::logic_error&) { rejected = true; }
-    if (!rejected || db->settings() != settings) {
-      throw std::runtime_error("Guard allowed late configuration changes");
-    }
+    if (db->settings() != settings) throw std::runtime_error("Guard changed settings");
     std::cout << "Phase: terminate local client" << std::endl;
     wait_for(db->Terminate());
     delete db;
     delete app;
-    std::cout << "Reproduced SDK exception; repeated identical settings passed; late changes rejected\n";
+    std::cout << "Repeated identical settings passed without native exception\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

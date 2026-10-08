@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [fix/windows-n4500]
-    paths: ['windows/firestore_settings_guard.h', 'test/native/firestore_settings_test.cpp', '.github/workflows/native-firestore.yml']
+    paths: ['windows/firestore_settings_guard.h', 'test/native/firestore_settings_test.cpp', 'tool/test_firestore_settings.ps1', '.github/workflows/native-firestore.yml']
 permissions:
   contents: read
 jobs:
@@ -41,14 +41,4 @@ jobs:
       - name: Exercise real SDK without production credentials
         run: |
           $exePath = Join-Path $env:RUNNER_TEMP 'gkii-native-settings/build/Release/settings_test.exe'
-          cmd /c "`"$exePath`" > native-settings-result.txt 2>&1"
-          $nativeStatus = $LASTEXITCODE
-          Get-Content native-settings-result.txt | ForEach-Object {
-            Write-Output $_
-            if ($nativeStatus -ne 0) {
-              $detail = $_.ToString().Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-              Write-Output "::error::$detail"
-            }
-          }
-          if ($nativeStatus -ne 0) { Write-Output "::error::Native test exit code: $nativeStatus" }
-          exit $nativeStatus
+          ./tool/test_firestore_settings.ps1 $exePath

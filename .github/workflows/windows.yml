@@ -57,8 +57,20 @@ jobs:
           exit $analysisStatus
       - name: Test regressions on Windows
         run: |
-          flutter test
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          flutter test --reporter json 2>&1 | Tee-Object -FilePath flutter-test-results.json
+          $testStatus = $LASTEXITCODE
+          $testNames = @{}
+          Get-Content flutter-test-results.json | ForEach-Object {
+            try {
+              $event = $_ | ConvertFrom-Json -ErrorAction Stop
+              if ($event.type -eq 'testStart') { $testNames[$event.test.id] = $event.test.name }
+              if ($event.type -eq 'error') {
+                $message = ("$($testNames[$event.testID]): $($event.error)").Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Output "::error::$message"
+              }
+            } catch { }
+          }
+          if ($testStatus -ne 0) { exit $testStatus }
           dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Windows x64

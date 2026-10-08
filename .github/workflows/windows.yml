@@ -43,7 +43,18 @@ jobs:
           )
           Set-Content lib/secrets.dart $source
       - name: Analyze application
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: |
+          $analysisOutput = & flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1
+          $analysisStatus = $LASTEXITCODE
+          $analysisOutput | ForEach-Object {
+            $line = $_.ToString()
+            Write-Output $line
+            if ($line -match '\berror\s+[-•]\s+(.*?)\s+[-•]\s+(.+?):(\d+):(\d+)\s+[-•]') {
+              $message = $Matches[1].Replace('%', '%25')
+              Write-Output "::error file=$($Matches[2]),line=$($Matches[3]),col=$($Matches[4])::$message"
+            }
+          }
+          exit $analysisStatus
       - name: Test regressions on Windows
         run: |
           flutter test

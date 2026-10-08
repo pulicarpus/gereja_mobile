@@ -83,6 +83,10 @@ jobs:
         run: |
           & 'build/windows/x64/native-tests/Release/gkii_snappy_test.exe'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Reproduce and prevent native Firestore settings crash
+        run: |
+          & 'build/windows/x64/native-tests/Release/gkii_firestore_settings_test.exe'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify executable and offline SQLite asset
         run: |
           $releasePath = 'build/windows/x64/runner/Release'

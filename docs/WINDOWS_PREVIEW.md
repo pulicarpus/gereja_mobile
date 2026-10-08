@@ -67,6 +67,7 @@ Tidak ada migrasi credential/backend dalam pekerjaan desktop ini.
 ## Build dari source
 
 Windows dengan Flutter dan Visual Studio C++ Desktop workload:
+Python 3 juga diperlukan untuk menyiapkan salinan pustaka native Firebase.
 
 ```powershell
 ./tool/prepare_windows.ps1
@@ -80,3 +81,20 @@ Runner Windows dari build CI yang berhasil sudah disimpan dalam repository.
 Script hanya membuat runner dari template SDK jika folder windows belum ada;
 source Android/pubspec tidak digenerate ulang. Workflow mengekspor runner untuk review. Seluruh bundle Release harus dibagikan,
 bukan hanya EXE. Workflow tidak deploy Firebase atau mengirim Telegram.
+
+## Kompatibilitas CPU Windows
+
+Firebase C++ SDK 12.7.0 membundel objek Snappy dengan instruksi BMI2 (`bzhi`).
+Instruksi ini menyebabkan `c000001d` pada CPU tanpa BMI2 seperti Celeron N4500
+ketika data terkompresi dibaca. Opsi compiler runner tidak mengubah pustaka
+yang sudah dikompilasi. Build mengganti hanya objek Snappy dalam salinan arsip
+Firebase di direktori build, kemudian menautkan Snappy 1.1.10 dari sumber dengan
+BMI2, AVX/AVX2, SSSE3, dan CRC32 hardware dinonaktifkan. API dan format data
+Snappy 1.1 tetap kompatibel; cache paket dan SDK asli tidak dimodifikasi.
+Unduhan sumber dipin dengan SHA256 dan paket menyertakan lisensi Snappy.
+
+CI menjalankan fixture dekompresi dan 21 kasus kompresi/dekompresi native.
+Simbol PDB tersedia sebagai artifact terpisah `GKII-Mobile-Windows-debug-symbols`,
+tanpa memperbesar ZIP portable. Uji startup CI memakai CPU runner GitHub;
+uji login, pemuatan data, dan pembukaan ulang pada N4500 tetap diperlukan.
+Simpan `oauth-desktop.json` lokal dan salin ke folder paket baru untuk pengujian.

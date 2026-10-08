@@ -2,7 +2,7 @@ name: Windows Desktop Preview
 on:
   workflow_dispatch:
   push:
-    branches: [fitur-windows]
+    branches: [fitur-windows, fix/windows-n4500]
     paths: ['lib/**', 'test/**', 'pubspec.yaml', 'tool/**', 'windows/**', '.github/workflows/windows.yml']
 permissions:
   contents: read
@@ -21,6 +21,8 @@ jobs:
           cache: true
       - name: Prepare native Windows runner
         run: ./tool/prepare_windows.ps1
+      - name: Test Firebase archive preparation
+        run: python -m unittest discover -s test/native -p 'test_*.py'
       - name: Get dependencies
         run: flutter pub get
       - name: Generate existing app secret constants
@@ -50,6 +52,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build Windows x64
         run: flutter build windows --release
+      - name: Test baseline Snappy codec
+        run: |
+          & 'build/windows/x64/native-tests/Release/gkii_snappy_test.exe'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify executable and offline SQLite asset
         run: |
           $releasePath = 'build/windows/x64/runner/Release'
@@ -80,7 +86,19 @@ jobs:
           }
       - name: Package complete portable folder
         run: |
-          Compress-Archive -Path 'build/windows/x64/runner/Release/*' -DestinationPath 'GKII-Mobile-Windows-x64.zip' -CompressionLevel Optimal
+          $symbols = Get-ChildItem 'build/windows/x64' -Filter '*.pdb' -Recurse
+          if (!$symbols) { throw 'Native debug symbols missing' }
+          New-Item -ItemType Directory -Path 'windows-debug-symbols' | Out-Null
+          $symbols | ForEach-Object { Copy-Item $_.FullName 'windows-debug-symbols' }
+          $portable = Join-Path $env:RUNNER_TEMP ('gkii-portable-' + [Guid]::NewGuid())
+          Copy-Item 'build/windows/x64/runner/Release' $portable -Recurse
+          Get-ChildItem $portable -Filter '*.pdb' -Recurse | Remove-Item
+          Compress-Archive -Path "$portable/*" -DestinationPath 'GKII-Mobile-Windows-x64.zip' -CompressionLevel Optimal
+          Remove-Item $portable -Recurse -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GKII-Mobile-Windows-debug-symbols
+          path: windows-debug-symbols/*.pdb
       - uses: actions/upload-artifact@v4
         with:
           name: GKII-Mobile-Windows-x64

@@ -20,6 +20,13 @@ add_executable(${BINARY_NAME} WIN32
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})
 
+# Keep native release symbols for diagnosing crashes on user hardware.
+target_compile_options(${BINARY_NAME} PRIVATE "$<$<CONFIG:Release>:/Zi>")
+target_link_options(${BINARY_NAME} PRIVATE
+  "$<$<CONFIG:Release>:/DEBUG>"
+  "$<$<CONFIG:Release>:/OPT:REF>"
+  "$<$<CONFIG:Release>:/OPT:ICF>")
+
 # Add preprocessor definitions for the build version.
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION=\"${FLUTTER_VERSION}\"")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTTER_VERSION_MAJOR}")

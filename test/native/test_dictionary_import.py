@@ -1,3 +1,4 @@
+from contextlib import closing
 import importlib.util
 import json
 from pathlib import Path
@@ -16,7 +17,7 @@ class DictionaryImportTest(unittest.TestCase):
             entries = [{'term': 'Kasih', 'definition': 'Peduli kepada sesama.', 'source': 'Contoh', 'references': ['Matius 22:39']}]
             source.write_text(json.dumps(entries), encoding='utf-8')
             self.assertEqual(module.build_dictionary(source, output), 1)
-            with sqlite3.connect(output) as db:
+            with closing(sqlite3.connect(output)) as db:
                 row = db.execute('SELECT term,source,refs FROM entries').fetchone()
                 self.assertEqual(row, ('Kasih', 'Contoh', '["Matius 22:39"]'))
             original = output.read_bytes()

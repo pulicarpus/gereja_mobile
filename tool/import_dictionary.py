@@ -1,5 +1,6 @@
 """Build an offline dictionary from JSON definitions with explicit attribution."""
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -25,11 +26,12 @@ def build_dictionary(source, output):
     fd, temporary = tempfile.mkstemp(dir=output.parent, suffix='.sqlite')
     os.close(fd)
     try:
-        with sqlite3.connect(temporary) as db:
+        with closing(sqlite3.connect(temporary)) as db:
             db.execute('CREATE TABLE entries (id INTEGER PRIMARY KEY, term TEXT NOT NULL, search_term TEXT NOT NULL, definition TEXT NOT NULL, source TEXT NOT NULL, refs TEXT NOT NULL)')
             db.execute('CREATE INDEX entry_search ON entries(search_term)')
             db.executemany('INSERT INTO entries(term,search_term,definition,source,refs) VALUES (?,?,?,?,?)', rows)
             db.execute('PRAGMA user_version=1')
+            db.commit()
         os.replace(temporary, output)
     finally:
         if os.path.exists(temporary):

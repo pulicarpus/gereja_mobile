@@ -13,7 +13,8 @@ void wait_for(const firebase::Future<void>& future) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   if (future.status() != firebase::kFutureStatusComplete || future.error() != 0) {
-    throw std::runtime_error("SDK operation failed");
+    throw std::runtime_error(std::string("SDK operation failed: ") +
+      (future.error_message() ? future.error_message() : "unknown"));
   }
 }
 

@@ -1,6 +1,26 @@
 bool pengurusValidId(String? id) =>
     id != null && id.trim().isNotEmpty && !id.contains('/');
 
+String pengurusRegionId(String area) {
+  if (area.trim().isEmpty) throw StateError('Daerah belum dipilih.');
+  return Uri.encodeComponent(area.trim());
+}
+
+bool pengurusDaerahCanEdit({
+  required String? userId,
+  required String? signedInId,
+  required String sessionId,
+  required String? role,
+  required String area,
+  required String? adminArea,
+  bool readOnly = false,
+}) =>
+    !readOnly &&
+    area.trim().isNotEmpty &&
+    userId == sessionId &&
+    signedInId == sessionId &&
+    (role == 'superadmin' || adminArea?.trim() == area.trim());
+
 String pengurusText(dynamic value) => value is String
     ? value.trim()
     : value is num

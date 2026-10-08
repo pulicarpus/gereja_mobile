@@ -1,3 +1,8 @@
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'region_photo_upload.dart';
+import 'region_photo_widget.dart';
+import 'upload_support.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -72,6 +77,8 @@ class _DaerahRecordsPageState extends State<DaerahRecordsPage> {
   Future<void> _edit([DocumentSnapshot<Map<String, dynamic>>? record]) async {
     if (!_canEdit) return;
     final ref = record?.reference ?? _collection.doc();
+    File? uploadedFile;
+    String? uploadedUrl;
     await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -85,7 +92,20 @@ class _DaerahRecordsPageState extends State<DaerahRecordsPage> {
                 ? {'jumlah': 1, 'satuan': 'unit', 'kondisi': 'Baik'}
                 : {}),
         inventory: _inventory,
-        onSave: (data) async {
+        onSave: (data, photo, removePhoto) async {
+          if (_inventory && photo != null) {
+            if (!identical(uploadedFile, photo) || uploadedUrl == null) {
+              uploadedUrl = await uploadRegionPhoto(
+                widget.namaDaerah,
+                photo,
+                'inventaris',
+              );
+              uploadedFile = photo;
+            }
+            data['fotoUrl'] = uploadedUrl;
+          } else if (_inventory && removePhoto) {
+            data['fotoUrl'] = '';
+          }
           await saveRegionChanges(
             widget.namaDaerah,
             {
@@ -117,6 +137,10 @@ class _DaerahRecordsPageState extends State<DaerahRecordsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_inventory && pengurusPhoto(data['fotoUrl']) != null) ...[
+                  regionPhoto(url: pengurusText(data['fotoUrl'])),
+                  const SizedBox(height: 16),
+                ],
                 for (final field in _fields.entries)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -297,15 +321,22 @@ class _DaerahRecordsPageState extends State<DaerahRecordsPage> {
                             horizontal: 16,
                             vertical: 8,
                           ),
-                          leading: CircleAvatar(
-                            backgroundColor: Colors.indigo.shade50,
-                            child: Icon(
-                              _inventory
-                                  ? Icons.inventory_2_outlined
-                                  : Icons.person_outline,
-                              color: Colors.indigo,
-                            ),
-                          ),
+                          leading:
+                              _inventory &&
+                                  pengurusPhoto(data['fotoUrl']) != null
+                              ? regionPhoto(
+                                  url: pengurusText(data['fotoUrl']),
+                                  thumbnail: true,
+                                )
+                              : CircleAvatar(
+                                  backgroundColor: Colors.indigo.shade50,
+                                  child: Icon(
+                                    _inventory
+                                        ? Icons.inventory_2_outlined
+                                        : Icons.person_outline,
+                                    color: Colors.indigo,
+                                  ),
+                                ),
                           title: Text(
                             legacyText(data['nama']),
                             style: const TextStyle(fontWeight: FontWeight.w600),
@@ -336,7 +367,7 @@ class _DaerahRecordDialog extends StatefulWidget {
   final Map<String, String> fields;
   final Map<String, dynamic> initial;
   final bool inventory;
-  final Future<void> Function(Map<String, dynamic>) onSave;
+  final Future<void> Function(Map<String, dynamic>, File?, bool) onSave;
   const _DaerahRecordDialog({
     required this.title,
     required this.fields,
@@ -351,7 +382,8 @@ class _DaerahRecordDialog extends StatefulWidget {
 class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
   final _form = GlobalKey<FormState>();
   late final Map<String, TextEditingController> _controllers;
-  bool _saving = false;
+  bool _saving = false, _picking = false, _removePhoto = false;
+  File? _photo;
   String? _error;
   @override
   void initState() {
@@ -368,8 +400,37 @@ class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
     super.dispose();
   }
 
+  Future<void> _pickPhoto() async {
+    if (_saving || _picking) return;
+    setState(() {
+      _picking = true;
+      _error = null;
+    });
+    try {
+      final picked = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 75,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (picked != null) {
+        final file = File(picked.path);
+        await prepareUpload(file);
+        if (mounted)
+          setState(() {
+            _photo = file;
+            _removePhoto = false;
+          });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = pengurusError(error));
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
   Future<void> _save() async {
-    if (_saving || !_form.currentState!.validate()) return;
+    if (_saving || _picking || !_form.currentState!.validate()) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -380,7 +441,7 @@ class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
           entry.key: entry.value.text.trim(),
       };
       if (widget.inventory) data['jumlah'] = int.parse(data['jumlah']);
-      await widget.onSave(data);
+      await widget.onSave(data, _photo, _removePhoto);
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (mounted) setState(() => _error = pengurusError(error));
@@ -391,7 +452,7 @@ class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    canPop: !_saving,
+    canPop: !_saving && !_picking,
     child: AlertDialog(
       title: Text(widget.title),
       content: SizedBox(
@@ -402,6 +463,40 @@ class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (widget.inventory) ...[
+                  regionPhoto(
+                    file: _photo,
+                    url: _removePhoto
+                        ? null
+                        : pengurusText(widget.initial['fotoUrl']),
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      TextButton.icon(
+                        onPressed: _saving || _picking ? null : _pickPhoto,
+                        icon: const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          _picking ? 'Memilih…' : 'Pilih foto barang',
+                        ),
+                      ),
+                      if (_photo != null ||
+                          (!_removePhoto &&
+                              pengurusPhoto(widget.initial['fotoUrl']) != null))
+                        TextButton.icon(
+                          onPressed: _saving || _picking
+                              ? null
+                              : () => setState(() {
+                                  _photo = null;
+                                  _removePhoto = true;
+                                }),
+                          icon: const Icon(Icons.hide_image_outlined),
+                          label: const Text('Hapus foto'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 for (final field in widget.fields.entries)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 14),
@@ -452,11 +547,11 @@ class _DaerahRecordDialogState extends State<_DaerahRecordDialog> {
       ),
       actions: [
         TextButton(
-          onPressed: _saving ? null : () => Navigator.pop(context),
+          onPressed: _saving || _picking ? null : () => Navigator.pop(context),
           child: const Text('Batal'),
         ),
         FilledButton(
-          onPressed: _saving ? null : _save,
+          onPressed: _saving || _picking ? null : _save,
           child: Text(_saving ? 'Menyimpan…' : 'Simpan'),
         ),
       ],

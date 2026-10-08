@@ -420,21 +420,28 @@ Future<bool> confirmPengurusDelete(
 Future<void> showPengurusNameEditor(
   BuildContext context, {
   required String initialName,
+  String kind = 'seksi',
   required Future<void> Function(String) save,
   Future<void> Function()? delete,
 }) => showDialog<void>(
   context: context,
   barrierDismissible: false,
-  builder: (_) =>
-      _NameEditor(initialName: initialName, save: save, delete: delete),
+  builder: (_) => _NameEditor(
+    initialName: initialName,
+    kind: kind,
+    save: save,
+    delete: delete,
+  ),
 );
 
 class _NameEditor extends StatefulWidget {
   final String initialName;
+  final String kind;
   final Future<void> Function(String) save;
   final Future<void> Function()? delete;
   const _NameEditor({
     required this.initialName,
+    required this.kind,
     required this.save,
     this.delete,
   });
@@ -457,14 +464,14 @@ class _NameEditorState extends State<_NameEditor> {
   Future<void> _submit({bool deleting = false}) async {
     if (_busy || _uncertain) return;
     if (!deleting && _name.text.trim().isEmpty) {
-      setState(() => _error = 'Nama seksi wajib diisi.');
+      setState(() => _error = 'Nama ${widget.kind} wajib diisi.');
       return;
     }
     if (deleting) {
       setState(() => _busy = true);
       final confirmed = await confirmPengurusDelete(
         context,
-        'Hapus seksi ${widget.initialName} beserta struktur dan daftar anggotanya?',
+        'Hapus ${widget.kind} ${widget.initialName} beserta struktur dan daftar anggotanya?',
       );
       if (!mounted) return;
       if (!confirmed) {
@@ -499,7 +506,11 @@ class _NameEditorState extends State<_NameEditor> {
   Widget build(BuildContext context) => PopScope(
     canPop: !_busy,
     child: AlertDialog(
-      title: Text(widget.delete == null ? 'Tambah seksi' : 'Edit nama seksi'),
+      title: Text(
+        widget.delete == null
+            ? 'Tambah ${widget.kind}'
+            : 'Edit nama ${widget.kind}',
+      ),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -508,7 +519,7 @@ class _NameEditorState extends State<_NameEditor> {
               controller: _name,
               enabled: !_busy,
               maxLength: 100,
-              decoration: const InputDecoration(labelText: 'Nama seksi/komisi'),
+              decoration: InputDecoration(labelText: 'Nama ${widget.kind}'),
             ),
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),

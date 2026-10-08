@@ -9,12 +9,14 @@ import 'pengurus_widgets.dart';
 class DetailSeksiPage extends StatefulWidget {
   final String docId, namaSeksi;
   final String? churchId;
+  final String? namaDaerah;
   final bool readOnly;
   const DetailSeksiPage({
     super.key,
     required this.docId,
     required this.namaSeksi,
     this.churchId,
+    this.namaDaerah,
     this.readOnly = false,
   });
   @override
@@ -30,17 +32,26 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
   void initState() {
     super.initState();
     final user = UserManager();
-    final id = (widget.churchId ?? user.getChurchIdForCurrentView())?.trim();
+    final id = widget.namaDaerah != null
+        ? Uri.encodeComponent(widget.namaDaerah!.trim())
+        : (widget.churchId ?? user.getChurchIdForCurrentView())?.trim();
     if (id != null &&
         pengurusValidId(id) &&
         user.userId != null &&
         pengurusValidId(widget.docId)) {
-      _repo = PengurusRepository(
-        id,
-        user.userId!,
-        readOnly: widget.readOnly || id != user.getChurchIdForCurrentView(),
-      );
-      _doc = _repo!.church.collection('bpj_seksi').doc(widget.docId);
+      _repo = widget.namaDaerah != null
+          ? PengurusRepository.daerah(
+              widget.namaDaerah!,
+              user.userId!,
+              readOnly: widget.readOnly,
+            )
+          : PengurusRepository(
+              id,
+              user.userId!,
+              readOnly:
+                  widget.readOnly || id != user.getChurchIdForCurrentView(),
+            );
+      _doc = _repo!.church.collection(_repo!.seksiCollection).doc(widget.docId);
       _stream = _doc!.snapshots();
     }
   }
@@ -98,7 +109,10 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     final data = index == null
         ? <String, dynamic>{}
         : pengurusMember(original[index]);
-    final operationId = _repo!.church.collection('bpj_seksi').doc().id;
+    final operationId = _repo!.church
+        .collection(_repo!.seksiCollection)
+        .doc()
+        .id;
     await showPengurusPersonEditor(
       context,
       title: index == null ? 'Tambah anggota' : 'Edit anggota',
@@ -135,12 +149,14 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     try {
       await _repo!.changeMember(_doc!, original, index, null, operationId: '');
       if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Anggota dihapus.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Anggota dihapus.')));
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(pengurusError(e))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(pengurusError(e))));
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
@@ -194,7 +210,7 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
     stream: _stream,
     builder: (context, snapshot) {
       final data = snapshot.data?.data() ?? <String, dynamic>{};
-      final liveName = pengurusText(data['namaSeksi']);
+      final liveName = pengurusText(data[_repo?.sectionNameKey ?? 'namaSeksi']);
       final name = liveName.isEmpty ? widget.namaSeksi : liveName;
       Widget body;
       if (_repo == null) {

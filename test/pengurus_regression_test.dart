@@ -7,6 +7,43 @@ import '../lib/pengurus_support.dart';
 import '../lib/pengurus_widgets.dart';
 
 void main() {
+  test('Regional storage IDs cannot confuse separators and escaped names', () {
+    expect(pengurusRegionId(' Belitang '), 'Belitang');
+    expect(pengurusRegionId('Area/A'), isNot(pengurusRegionId('Area%2FA')));
+    expect(pengurusRegionId('Area/A'), isNot(contains('/')));
+    expect(() => pengurusRegionId('  '), throwsStateError);
+  });
+  test(
+    'Regional editors require the same live session and the selected area',
+    () {
+      bool access({
+        String? signedIn = 'A',
+        String? manager = 'A',
+        String role = 'user',
+        String? adminArea = 'Belitang',
+        String area = 'Belitang',
+        bool readOnly = false,
+      }) => pengurusDaerahCanEdit(
+        userId: manager,
+        signedInId: signedIn,
+        sessionId: 'A',
+        role: role,
+        area: area,
+        adminArea: adminArea,
+        readOnly: readOnly,
+      );
+      expect(access(), isTrue);
+      expect(access(adminArea: 'Lainnya'), isFalse);
+      expect(access(signedIn: 'B'), isFalse);
+      expect(access(manager: 'B'), isFalse);
+      expect(access(signedIn: null), isFalse);
+      expect(access(readOnly: true), isFalse);
+      expect(access(role: 'gembala', adminArea: null), isFalse);
+      expect(access(role: 'superadmin', adminArea: null), isTrue);
+      expect(access(role: 'superadmin', area: ''), isFalse);
+    },
+  );
+
   test('Only the signed in administrator in the same church may edit', () {
     bool access({
       String? uid = 'u',
@@ -109,38 +146,41 @@ void main() {
       );
     },
   );
-  test('Adding preserves legacy entries and retry does not duplicate identical save', () {
-    const person = {'nama': 'Budi', 'wa': '', 'img': ''};
-    final first = changePengurusMember(
-      latest: ['Ana', 'Cici'],
-      original: ['Ana'],
-      index: null,
-      replacement: person,
-    );
-    expect(first, ['Ana', 'Cici', person]);
-    expect(
-      changePengurusMember(
-        latest: first,
+  test(
+    'Adding preserves legacy entries and retry does not duplicate identical save',
+    () {
+      const person = {'nama': 'Budi', 'wa': '', 'img': ''};
+      final first = changePengurusMember(
+        latest: ['Ana', 'Cici'],
         original: ['Ana'],
         index: null,
         replacement: person,
-      ),
-      first,
-    );
-    expect(
-      samePengurusData(
-        {
-          'a': 1,
-          'b': [2],
-        },
-        {
-          'b': [2],
-          'a': 1,
-        },
-      ),
-      isTrue,
-    );
-  });
+      );
+      expect(first, ['Ana', 'Cici', person]);
+      expect(
+        changePengurusMember(
+          latest: first,
+          original: ['Ana'],
+          index: null,
+          replacement: person,
+        ),
+        first,
+      );
+      expect(
+        samePengurusData(
+          {
+            'a': 1,
+            'b': [2],
+          },
+          {
+            'b': [2],
+            'a': 1,
+          },
+        ),
+        isTrue,
+      );
+    },
+  );
 
   Future<void> openEditor(
     WidgetTester tester,

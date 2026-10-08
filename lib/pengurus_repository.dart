@@ -8,17 +8,43 @@ import 'package:firebase_storage/firebase_storage.dart';
 
 import 'user_manager.dart';
 import 'pengurus_support.dart';
+import 'app_safety.dart';
+import 'region_photo_upload.dart';
 
 class PengurusRepository {
   final String churchId;
   final String sessionId;
   final bool readOnly;
+  final String? regionName;
   final FirebaseFirestore db = FirebaseFirestore.instance;
-  PengurusRepository(this.churchId, this.sessionId, {this.readOnly = false});
-  DocumentReference<Map<String, dynamic>> get church =>
-      db.collection('churches').doc(churchId);
+  PengurusRepository(this.churchId, this.sessionId, {this.readOnly = false})
+    : regionName = null;
+  PengurusRepository.daerah(
+    String area,
+    this.sessionId, {
+    this.readOnly = false,
+  }) : regionName = area.trim(),
+       churchId = pengurusRegionId(area);
+  bool get isRegion => regionName != null;
+  String get seksiCollection => isRegion ? 'komisi' : 'bpj_seksi';
+  String get sectionNameKey => isRegion ? 'namaKomisi' : 'namaSeksi';
+  String get corePrefix => isRegion ? 'bphd' : 'bpj';
+  DocumentReference<Map<String, dynamic>> get church => db
+      .collection(isRegion ? 'struktur_pengurus_daerah' : 'churches')
+      .doc(churchId);
   bool get canEdit {
     final user = UserManager();
+    if (isRegion) {
+      return pengurusDaerahCanEdit(
+        userId: user.userId,
+        signedInId: FirebaseAuth.instance.currentUser?.uid,
+        sessionId: sessionId,
+        role: user.userRole,
+        area: regionName!,
+        adminArea: user.adminDaerahArea,
+        readOnly: readOnly,
+      );
+    }
     return user.userId == sessionId &&
         pengurusCanEdit(
           userId: user.userId,
@@ -39,6 +65,12 @@ class PengurusRepository {
 
   Future<void> checkAccess() async {
     checkSession();
+    if (isRegion) {
+      final uid = await checkRegionWrite(regionName!);
+      if (uid != sessionId) throw StateError('Sesi pengurus daerah berubah.');
+      checkSession();
+      return;
+    }
     final user = await db
         .collection('users')
         .doc(sessionId)
@@ -67,16 +99,32 @@ class PengurusRepository {
     String? mirrorPhotoKey,
   }) async {
     await checkAccess();
+    if (isRegion) {
+      final payload = {...data, 'daerah': regionName};
+      if (photo != null) {
+        payload[photoKey] = await uploadRegionPhoto(
+          regionName!,
+          photo,
+          'pengurus',
+        );
+      } else if (removePhoto) {
+        payload[photoKey] = '';
+      }
+      await saveRegionChanges(
+        regionName!,
+        {doc: payload},
+        requireExisting: doc.path != church.path,
+        allowPastors: false,
+      );
+      return;
+    }
     String? uploadedPath;
     try {
       if (photo != null) {
         uploadedPath =
             'gereja/$churchId/pengurus/${church.collection('bpj_seksi').doc().id}.jpg';
         final ref = FirebaseStorage.instance.ref(uploadedPath);
-        final task = ref.putFile(
-          photo,
-          await prepareUpload(photo),
-        );
+        final task = ref.putFile(photo, await prepareUpload(photo));
         try {
           await task.timeout(const Duration(seconds: 60));
         } on TimeoutException {
@@ -134,14 +182,31 @@ class PengurusRepository {
       return;
     }
     await checkAccess();
+    if (isRegion) {
+      final payload = {
+        ...data,
+        'daerah': regionName,
+        'fotoUrl': photo == null
+            ? ''
+            : await uploadRegionPhoto(regionName!, photo, 'pengurus'),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+      await saveRegionChanges(
+        regionName!,
+        {
+          church: {'daerah': regionName},
+          doc: payload,
+        },
+        createOnly: true,
+        allowPastors: false,
+      );
+      return;
+    }
     if (photo != null) {
       final ref = FirebaseStorage.instance.ref(
         'gereja/$churchId/pengurus/${church.collection('bpj_seksi').doc().id}.jpg',
       );
-      final task = ref.putFile(
-        photo,
-        await prepareUpload(photo),
-      );
+      final task = ref.putFile(photo, await prepareUpload(photo));
       try {
         await task.timeout(const Duration(seconds: 60));
       } on TimeoutException {
@@ -181,22 +246,27 @@ class PengurusRepository {
     await checkAccess();
     if (person != null) {
       if (photo != null) {
-        final ref = FirebaseStorage.instance.ref(
-          'gereja/$churchId/pengurus/$operationId.jpg',
-        );
-        final task = ref.putFile(
-          photo,
-          await prepareUpload(photo),
-        );
-        try {
-          await task.timeout(const Duration(seconds: 60));
-        } on TimeoutException {
-          await task.cancel();
-          rethrow;
+        if (isRegion) {
+          person['img'] = await uploadRegionPhoto(
+            regionName!,
+            photo,
+            'pengurus',
+          );
+        } else {
+          final ref = FirebaseStorage.instance.ref(
+            'gereja/$churchId/pengurus/$operationId.jpg',
+          );
+          final task = ref.putFile(photo, await prepareUpload(photo));
+          try {
+            await task.timeout(const Duration(seconds: 60));
+          } on TimeoutException {
+            await task.cancel();
+            rethrow;
+          }
+          person['img'] = await ref.getDownloadURL().timeout(
+            const Duration(seconds: 20),
+          );
         }
-        person['img'] = await ref.getDownloadURL().timeout(
-          const Duration(seconds: 20),
-        );
       } else {
         person['img'] = removePhoto ? '' : oldPhoto ?? '';
       }
@@ -204,9 +274,19 @@ class PengurusRepository {
     await checkAccess();
     await db
         .runTransaction((tx) async {
+          if (isRegion) {
+            final actor = await tx.get(db.collection('users').doc(sessionId));
+            if (!actor.exists ||
+                !permitsRegionWrite(actor.data()!, regionName!)) {
+              throw StateError('Izin pengurus daerah berubah.');
+            }
+          }
           final snapshot = await tx.get(doc);
           checkSession();
           if (!snapshot.exists) throw StateError('Seksi sudah dihapus.');
+          if (isRegion && snapshot.data()?['daerah'] != regionName) {
+            throw StateError('Komisi bukan milik daerah ini.');
+          }
           final raw = snapshot.data()?['anggota'];
           if (raw != null && raw is! List)
             throw StateError(
@@ -224,4 +304,3 @@ class PengurusRepository {
         .timeout(const Duration(seconds: 30));
   }
 }
-

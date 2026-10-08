@@ -6,10 +6,13 @@ import 'detail_seksi_page.dart';
 import 'pengurus_repository.dart';
 import 'pengurus_support.dart';
 import 'pengurus_widgets.dart';
+import 'daerah_records_page.dart';
+import 'app_safety.dart';
 
 class PengurusPage extends StatefulWidget {
   final String? churchId;
-  const PengurusPage({super.key, this.churchId});
+  final String? namaDaerah;
+  const PengurusPage({super.key, this.churchId, this.namaDaerah});
   @override
   State<PengurusPage> createState() => _PengurusPageState();
 }
@@ -20,23 +23,33 @@ class _PengurusPageState extends State<PengurusPage> {
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _churchStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _seksiStream,
       _penasehatStream,
-      _bpkStream;
+      _bpkStream,
+      _mkdpStream;
   String _search = '';
+  bool get _isRegion => widget.namaDaerah != null;
+  String get _sectionLabel => _isRegion ? 'komisi' : 'seksi';
   @override
   void initState() {
     super.initState();
     final user = UserManager();
-    final id = (widget.churchId ?? user.getChurchIdForCurrentView())?.trim();
-    _churchName = id == user.getChurchIdForCurrentView()
+    final id = _isRegion
+        ? Uri.encodeComponent(widget.namaDaerah!.trim())
+        : (widget.churchId ?? user.getChurchIdForCurrentView())?.trim();
+    _churchName = _isRegion
+        ? widget.namaDaerah!
+        : id == user.getChurchIdForCurrentView()
         ? user.activeChurchName ?? user.originalChurchName ?? 'Gereja'
         : 'Gereja pilihan';
     if (id != null && pengurusValidId(id) && user.userId != null) {
-      _repo = PengurusRepository(
-        id,
-        user.userId!,
-        readOnly:
-            widget.churchId != null && id != user.getChurchIdForCurrentView(),
-      );
+      _repo = _isRegion
+          ? PengurusRepository.daerah(widget.namaDaerah!, user.userId!)
+          : PengurusRepository(
+              id,
+              user.userId!,
+              readOnly:
+                  widget.churchId != null &&
+                  id != user.getChurchIdForCurrentView(),
+            );
       _connect();
     }
   }
@@ -44,10 +57,13 @@ class _PengurusPageState extends State<PengurusPage> {
   void _connect() {
     final church = _repo!.church;
     _churchStream = church.snapshots();
-    _seksiStream = church.collection('bpj_seksi').snapshots();
+    _seksiStream = church.collection(_repo!.seksiCollection).snapshots();
     // Sort locally so legacy records without createdAt remain visible.
-    _penasehatStream = church.collection('bpj_penasehat').snapshots();
-    _bpkStream = church.collection('bpj_bpk').snapshots();
+    _penasehatStream = church
+        .collection(_isRegion ? 'penasehat' : 'bpj_penasehat')
+        .snapshots();
+    _bpkStream = church.collection(_isRegion ? 'bpk' : 'bpj_bpk').snapshots();
+    if (_isRegion) _mkdpStream = church.collection('mkdp').snapshots();
   }
 
   void _retry() {
@@ -61,13 +77,27 @@ class _PengurusPageState extends State<PengurusPage> {
     final repo = _repo;
     if (repo == null || !repo.canEdit) return;
     final doc = docId == null
-        ? repo.church.collection('bpj_seksi').doc()
-        : repo.church.collection('bpj_seksi').doc(docId);
+        ? repo.church.collection(_repo!.seksiCollection).doc()
+        : repo.church.collection(_repo!.seksiCollection).doc(docId);
     await showPengurusNameEditor(
       context,
       initialName: name,
+      kind: _sectionLabel,
       save: (value) async {
         await repo.checkAccess();
+        if (repo.isRegion) {
+          await saveRegionChanges(
+            repo.regionName!,
+            {
+              if (docId == null) repo.church: {'daerah': repo.regionName},
+              doc: {repo.sectionNameKey: value, 'daerah': repo.regionName},
+            },
+            createOnly: docId == null,
+            requireExisting: docId != null,
+            allowPastors: false,
+          );
+          return;
+        }
         if (docId == null) {
           await repo.db
               .runTransaction((tx) async {
@@ -89,7 +119,13 @@ class _PengurusPageState extends State<PengurusPage> {
           ? null
           : () async {
               await repo.checkAccess();
-              await doc.delete().timeout(const Duration(seconds: 30));
+              if (repo.isRegion) {
+                await saveRegionChanges(repo.regionName!, {
+                  doc: null,
+                }, allowPastors: false);
+              } else {
+                await doc.delete().timeout(const Duration(seconds: 30));
+              }
             },
     );
     if (mounted) setState(() {});
@@ -105,12 +141,12 @@ class _PengurusPageState extends State<PengurusPage> {
     await showPengurusPersonEditor(
       context,
       title: 'Edit $role',
-      name: pengurusText(data['bpj_$roleId']),
+      name: pengurusText(data['${repo.corePrefix}_$roleId']),
       wa: pengurusText(data['wa_$roleId']),
       photo: pengurusPhoto(data['img_$roleId']),
       save: (input) => repo.savePerson(
         repo.church,
-        {'bpj_$roleId': input.name, 'wa_$roleId': input.wa},
+        {'${repo.corePrefix}_$roleId': input.name, 'wa_$roleId': input.wa},
         photoKey: 'img_$roleId',
         photo: input.photo,
         oldPhoto: pengurusText(data['img_$roleId']),
@@ -148,7 +184,13 @@ class _PengurusPageState extends State<PengurusPage> {
           ? null
           : () async {
               await repo.checkAccess();
-              await doc.delete().timeout(const Duration(seconds: 30));
+              if (repo.isRegion) {
+                await saveRegionChanges(repo.regionName!, {
+                  doc: null,
+                }, allowPastors: false);
+              } else {
+                await doc.delete().timeout(const Duration(seconds: 30));
+              }
             },
     );
     if (mounted) setState(() {});
@@ -164,6 +206,7 @@ class _PengurusPageState extends State<PengurusPage> {
           namaSeksi: name,
           churchId: repo.churchId,
           readOnly: !repo.canEdit,
+          namaDaerah: widget.namaDaerah,
         ),
       ),
     );
@@ -191,7 +234,7 @@ class _PengurusPageState extends State<PengurusPage> {
           onTap: open,
           trailing: edit != null && _canEdit
               ? IconButton(
-                  tooltip: 'Edit seksi',
+                  tooltip: 'Edit $_sectionLabel',
                   onPressed: edit,
                   icon: const Icon(Icons.edit),
                 )
@@ -296,7 +339,23 @@ class _PengurusPageState extends State<PengurusPage> {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFF5F7FA),
     appBar: AppBar(
-      title: const Text('Badan Pengurus Jemaat'),
+      title: Text(_isRegion ? 'Pengurus Daerah' : 'Badan Pengurus Jemaat'),
+      actions: [
+        if (_isRegion)
+          IconButton(
+            tooltip: 'Data pengurus sebelumnya',
+            icon: const Icon(Icons.list_alt),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DaerahRecordsPage(
+                  namaDaerah: widget.namaDaerah!,
+                  type: DaerahRecordType.pengurus,
+                ),
+              ),
+            ),
+          ),
+      ],
       backgroundColor: Colors.indigo[900],
       foregroundColor: Colors.white,
     ),
@@ -317,7 +376,7 @@ class _PengurusPageState extends State<PengurusPage> {
                     );
                   if (!snapshot.hasData)
                     return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.data!.exists)
+                  if (!snapshot.data!.exists && !_isRegion)
                     return pengurusMessage(
                       snapshot.data!.metadata.isFromCache
                           ? 'Data gereja belum tersedia di perangkat. Sambungkan internet dan coba lagi.'
@@ -334,11 +393,13 @@ class _PengurusPageState extends State<PengurusPage> {
                   ) => _card(title, [
                     for (final entry in roles.entries)
                       if (_matches(
-                        '${entry.value} ${pengurusText(data['bpj_${entry.key}'])}',
+                        '${entry.value} ${pengurusText(data['${_repo!.corePrefix}_${entry.key}'])}',
                       ))
                         _person(
                           entry.value,
-                          pengurusText(data['bpj_${entry.key}']),
+                          pengurusText(
+                            data['${_repo!.corePrefix}_${entry.key}'],
+                          ),
                           pengurusPhoto(data['img_${entry.key}']),
                           pengurusText(data['wa_${entry.key}']),
                           edit: _canEdit
@@ -368,35 +429,55 @@ class _PengurusPageState extends State<PengurusPage> {
                         onChanged: (value) => setState(
                           () => _search = value.trim().toLowerCase(),
                         ),
-                        decoration: const InputDecoration(
-                          prefixIcon: Icon(Icons.search),
-                          labelText: 'Cari pengurus atau seksi',
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search),
+                          labelText: 'Cari pengurus atau $_sectionLabel',
                         ),
                       ),
                       const SizedBox(height: 16),
-                      group('Pimpinan', {
-                        'ketua': 'KETUA BPJ',
-                        'wakil': 'WAKIL KETUA',
-                      }),
-                      group('Sekretariat', {
-                        'sek1': 'SEKRETARIS 1',
-                        'sek2': 'SEKRETARIS 2',
-                      }),
-                      group('Kebendaharaan', {
-                        'bend1': 'BENDAHARA 1',
-                        'bend2': 'BENDAHARA 2',
-                      }),
+                      if (_isRegion)
+                        group('BPHD', {
+                          'ketua': 'KETUA BPHD',
+                          'wakil': 'WAKIL KETUA',
+                          'sek1': 'SEKRETARIS 1',
+                          'sek2': 'SEKRETARIS 2',
+                          'bend1': 'BENDAHARA 1',
+                          'bend2': 'BENDAHARA 2',
+                        })
+                      else ...[
+                        group('Pimpinan', {
+                          'ketua': 'KETUA BPJ',
+                          'wakil': 'WAKIL KETUA',
+                        }),
+                        group('Sekretariat', {
+                          'sek1': 'SEKRETARIS 1',
+                          'sek2': 'SEKRETARIS 2',
+                        }),
+                        group('Kebendaharaan', {
+                          'bend1': 'BENDAHARA 1',
+                          'bend2': 'BENDAHARA 2',
+                        }),
+                      ],
                     ],
                   );
                 },
               ),
-              _dynamic('Penasehat', 'bpj_penasehat', _penasehatStream),
-              _dynamic('Badan Pemeriksa Keuangan (BPK)', 'bpj_bpk', _bpkStream),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+              if (_isRegion) _dynamic('MKDP', 'mkdp', _mkdpStream),
+              _dynamic(
+                'Penasehat',
+                _isRegion ? 'penasehat' : 'bpj_penasehat',
+                _penasehatStream,
+              ),
+              _dynamic(
+                'Badan Pemeriksa Keuangan (BPK)',
+                _isRegion ? 'bpk' : 'bpj_bpk',
+                _bpkStream,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
-                  'SEKSI & KOMISI',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                  _isRegion ? 'KOMISI DAERAH' : 'SEKSI & KOMISI',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -411,23 +492,25 @@ class _PengurusPageState extends State<PengurusPage> {
                     return const Center(child: CircularProgressIndicator());
                   final docs = snapshot.data!.docs.toList()
                     ..sort(
-                      (a, b) => pengurusText(a.data()['namaSeksi'])
+                      (a, b) => pengurusText(a.data()[_repo!.sectionNameKey])
                           .toLowerCase()
                           .compareTo(
-                            pengurusText(b.data()['namaSeksi']).toLowerCase(),
+                            pengurusText(
+                              b.data()[_repo!.sectionNameKey],
+                            ).toLowerCase(),
                           ),
                     );
                   final rows = <Widget>[];
                   for (final doc in docs) {
                     final data = doc.data();
-                    final name = pengurusText(data['namaSeksi']);
+                    final name = pengurusText(data[_repo!.sectionNameKey]);
                     final chair = pengurusText(
                       data['ketua_nama'] ?? data['namaPengurus'],
                     );
                     if (!_matches('$name $chair')) continue;
                     rows.add(
                       _card(
-                        name.isEmpty ? 'Seksi' : name,
+                        name.isEmpty ? _sectionLabel : name,
                         [
                           _person(
                             'KETUA',
@@ -445,8 +528,8 @@ class _PengurusPageState extends State<PengurusPage> {
                   return rows.isEmpty
                       ? pengurusMessage(
                           _search.isEmpty
-                              ? 'Belum ada data seksi.'
-                              : 'Tidak ada seksi yang cocok.',
+                              ? 'Belum ada data $_sectionLabel.'
+                              : 'Tidak ada $_sectionLabel yang cocok.',
                         )
                       : Column(children: rows);
                 },
@@ -458,7 +541,7 @@ class _PengurusPageState extends State<PengurusPage> {
         ? FloatingActionButton.extended(
             onPressed: _editSeksi,
             icon: const Icon(Icons.add_business),
-            label: const Text('Tambah seksi'),
+            label: Text('Tambah $_sectionLabel'),
           )
         : null,
   );

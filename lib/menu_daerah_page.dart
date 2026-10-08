@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'daerah_records_page.dart';
+import 'pengurus_page.dart';
 import 'data_gereja_daerah_page.dart';
 import 'dashboard_daerah_page.dart';
 import 'keuangan_daerah_page.dart';
@@ -136,10 +137,7 @@ class MenuDaerahPage extends StatelessWidget {
                         Colors.orange,
                         () => _open(
                           context,
-                          DaerahRecordsPage(
-                            namaDaerah: namaDaerah,
-                            type: DaerahRecordType.pengurus,
-                          ),
+                          PengurusPage(namaDaerah: namaDaerah),
                         ),
                       ),
                       _menu(

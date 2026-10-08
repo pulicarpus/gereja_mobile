@@ -56,6 +56,9 @@ function(gkii_use_baseline_snappy)
     URL https://github.com/google/snappy/archive/refs/tags/1.1.10.tar.gz
     URL_HASH SHA256=49d831bffcc5f3d01482340fe5af59852ca2fe76c3e05df0e67203ebbe0f1d90)
   FetchContent_MakeAvailable(gkii_snappy)
+  # Firebase renames bundled dependency namespaces to avoid collisions.
+  # Match its binary ABI, including LevelDB's f_b_snappy references.
+  target_compile_definitions(snappy PUBLIC snappy=f_b_snappy)
   target_compile_definitions(snappy PRIVATE
     SNAPPY_HAVE_BMI2=0 SNAPPY_HAVE_SSSE3=0 SNAPPY_HAVE_X86_CRC32=0)
   target_link_libraries(${BINARY_NAME} PRIVATE snappy)

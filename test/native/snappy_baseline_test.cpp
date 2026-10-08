@@ -2,7 +2,29 @@
 #include <string>
 #include "snappy.h"
 
+// Declare the exact namespace used by the prebuilt Firebase/LevelDB objects.
+// A codec built in the default namespace must fail to link this test.
+namespace f_b_snappy {
+void RawCompress(const char*, size_t, char*, size_t*);
+size_t MaxCompressedLength(size_t);
+bool RawUncompress(const char*, size_t, char*);
+bool GetUncompressedLength(const char*, size_t, size_t*);
+}
+
 int main() {
+  const std::string abi_input = "Firebase LevelDB namespace compatibility";
+  std::string abi_compressed(f_b_snappy::MaxCompressedLength(abi_input.size()), '\0');
+  size_t compressed_size = 0;
+  f_b_snappy::RawCompress(abi_input.data(), abi_input.size(),
+                         &abi_compressed[0], &compressed_size);
+  size_t decoded_size = 0;
+  if (!f_b_snappy::GetUncompressedLength(abi_compressed.data(), compressed_size,
+                                        &decoded_size) ||
+      decoded_size != abi_input.size()) return 4;
+  std::string abi_decoded(decoded_size, '\0');
+  if (!f_b_snappy::RawUncompress(abi_compressed.data(), compressed_size,
+                                &abi_decoded[0]) ||
+      abi_decoded != abi_input) return 5;
   // Known raw Snappy stream: length=5, literal length=5, "hello".
   const std::string fixture("\x05\x10hello", 7);
   std::string decoded;
@@ -25,6 +47,6 @@ int main() {
           compressed.data(), compressed.size() - 1)) return 3;
     }
   }
-  std::cout << "Snappy fixture and 21 compression/decompression cases passed\n";
+  std::cout << "Firebase namespace ABI, Snappy fixture and 21 codec cases passed\n";
   return 0;
 }

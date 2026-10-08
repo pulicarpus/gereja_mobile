@@ -30,7 +30,13 @@ class DictionaryStore {
         _shared = null;
         throw error;
       });
+  static const developmentPath = String.fromEnvironment('DICTIONARY_PATH');
   static Future<DictionaryStore> _open() async {
+    if (developmentPath.isNotEmpty) {
+      return DictionaryStore(
+        await openDatabase(developmentPath, readOnly: true),
+      );
+    }
     final data = await rootBundle.load('assets/dictionary/offline.sqlite');
     final folder = await getDatabasesPath();
     await Directory(folder).create(recursive: true);

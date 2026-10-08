@@ -95,7 +95,7 @@ class _KamusPageState extends State<KamusPage> {
         const Padding(
           padding: EdgeInsets.all(16),
           child: Text(
-            'Kamus offline · Data contoh\nKetik istilah untuk mencari definisi.',
+            'Kamus offline · SABDA\nKetik istilah untuk mencari definisi.',
             textAlign: TextAlign.center,
           ),
         ),

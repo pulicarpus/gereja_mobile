@@ -61,6 +61,8 @@ jobs:
           $releasePath = 'build/windows/x64/runner/Release'
           if (!(Test-Path "$releasePath/gereja_mobile.exe")) { throw 'Executable missing' }
           if (!(Test-Path "$releasePath/data/flutter_assets/assets/TB.SQLite3")) { throw 'Bible database missing' }
+          if (!(Test-Path "$releasePath/data/flutter_assets/assets/dictionary/offline.sqlite")) { throw 'Offline dictionary database missing' }
+          if ((Get-FileHash "$releasePath/data/flutter_assets/assets/dictionary/offline.sqlite").Hash -ne (Get-FileHash 'assets/dictionary/offline.sqlite').Hash) { throw 'Packaged dictionary differs from tested dictionary' }
           if (!(Test-Path "$releasePath/sqlite3.dll")) { throw 'SQLite runtime missing' }
           Copy-Item docs/WINDOWS_PREVIEW.md "$releasePath/BACA_DULU.md"
           Get-FileHash "$releasePath/gereja_mobile.exe" -Algorithm SHA256

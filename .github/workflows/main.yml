@@ -3,10 +3,13 @@ name: Flutter Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [perbaikan-fitur-daerah, fix/profil-sederhana]
+    branches: [perbaikan-fitur-daerah, fix/profil-sederhana, fix/windows-n4500]
     paths:
       - 'lib/**'
       - 'test/**'
+      - 'assets/**'
+      - 'android/**'
+      - 'pubspec.yaml'
       - '.github/workflows/main.yml'
 
 jobs:
@@ -40,13 +43,16 @@ jobs:
           cache: true 
 
       - name: Decode Keystore
-        run: echo "${{ secrets.APP_KEYSTORE_BASE64 }}" | base64 --decode > android/app/gereja-app.jks
-
-      # JURUS SAPU JAGAT: Bersihkan memori mesin GitHub sampai ke akar
-      - name: Bersihkan Ingatan Server
+        env:
+          APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
         run: |
-          flutter clean
-          flutter pub cache clean -f
+          python - <<'PY'
+          import base64, os, pathlib
+          value = os.environ['APP_KEYSTORE_BASE64'].strip()
+          if not value:
+              raise SystemExit('APP_KEYSTORE_BASE64 is required for a signed APK')
+          pathlib.Path('android/app/gereja-app.jks').write_bytes(base64.b64decode(value))
+          PY
 
       - name: Get Dependencies
         run: flutter pub get
@@ -60,12 +66,21 @@ jobs:
 
       # JURUS SAKTI PENYUNTIK BRANKAS LENGKAP
       - name: Create Secrets File
+        env:
+          APP_GEMINI: ${{ secrets.GEMINI_API_KEY }}
+          APP_TELEGRAM: ${{ secrets.TELE_BOT_TOKEN }}
+          APP_ONESIGNAL: ${{ secrets.ONESIGNAL_REST_KEY }}
+          APP_PIXABAY: ${{ secrets.PIXABAY_API_KEY }}
         run: |
-          mkdir -p lib
-          echo "const String geminiApiKey = '${{ secrets.GEMINI_API_KEY }}';" > lib/secrets.dart
-          echo "const String teleBotTokenSecret = '${{ secrets.TELE_BOT_TOKEN }}';" >> lib/secrets.dart
-          echo "const String osRestKeySecret = '${{ secrets.ONESIGNAL_REST_KEY }}';" >> lib/secrets.dart
-          echo "const String pixabayApiKey = '${{ secrets.PIXABAY_API_KEY }}';" >> lib/secrets.dart
+          python - <<'PY'
+          import json, os, pathlib
+          bindings = {'geminiApiKey': 'APP_GEMINI', 'teleBotTokenSecret': 'APP_TELEGRAM',
+                      'osRestKeySecret': 'APP_ONESIGNAL', 'pixabayApiKey': 'APP_PIXABAY'}
+          source = '\n'.join('const String ' + key + ' = ' +
+                             json.dumps(os.environ.get(env, ''), ensure_ascii=True).replace('$', '\\$') + ';'
+                             for key, env in bindings.items())
+          pathlib.Path('lib/secrets.dart').write_text(source + '\n')
+          PY
         
       - name: Analyze all application code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -76,8 +91,23 @@ jobs:
           dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
 
       - name: Build APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: flutter build apk --release --build-name=1.1.0 --build-number=${{ github.run_number }}
         working-directory: .
+
+      - name: Verify signed APK and bundled offline dictionary
+        run: |
+          python - <<'PY'
+          import hashlib, pathlib, zipfile
+          apk = pathlib.Path('build/app/outputs/flutter-apk/app-release.apk')
+          with zipfile.ZipFile(apk) as package:
+              for asset in ('assets/dictionary/offline.sqlite', 'assets/TB.SQLite3'):
+                  packed = package.read('assets/flutter_assets/' + asset)
+                  expected = pathlib.Path(asset).read_bytes()
+                  assert hashlib.sha256(packed).digest() == hashlib.sha256(expected).digest(), asset
+          print('APK contains the tested offline dictionary and Bible data')
+          PY
+          apksigner_path=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$apksigner_path" verify build/app/outputs/flutter-apk/app-release.apk
 
       # =========================================================
       # 📦 3. KOMPRES APK MENJADI FILE ZIP (HEMAT PENYIMPANAN)
@@ -94,6 +124,7 @@ jobs:
         with:
           name: app-release-zip
           path: build/app/outputs/flutter-apk/app-release.zip
+          if-no-files-found: error
 
       # =========================================================
       # 🚀 4. KIRIM FILE ZIP LANGSUNG KE TELEGRAM

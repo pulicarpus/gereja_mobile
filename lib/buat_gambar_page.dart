@@ -229,6 +229,14 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                 : box.localToGlobal(Offset.zero) & box.size,
           );
         } else {
+          if (!await Gal.hasAccess()) {
+            await Gal.requestAccess();
+            if (!await Gal.hasAccess()) {
+              _message('Izinkan akses galeri untuk menyimpan gambar.');
+              return;
+            }
+          }
+          if (!mounted) return;
           await Gal.putImage(file.path);
           _message('Gambar berhasil disimpan ke galeri.');
         }

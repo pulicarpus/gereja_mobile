@@ -56,6 +56,7 @@ void main() {
         ),
       );
       await tester.tap(find.text('Buka kamus'));
+    await tester.pump();
     await tester.runAsync(() => store.search(''));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'kas');

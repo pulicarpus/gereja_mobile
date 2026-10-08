@@ -95,7 +95,17 @@ void main() {
   testWidgets(
     'Export renderer produces a 1080px PNG at the selected aspect ratio',
     (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      late BuildContext exportContext;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              exportContext = context;
+              return const SizedBox();
+            },
+          ),
+        ),
+      );
       for (final ratio in [1.0, 9 / 16, 16 / 9]) {
         final design = initialVerseImageDesign('Kasih Allah', 'Yohanes 3:16')
           ..['ratio'] = ratio;
@@ -109,6 +119,7 @@ void main() {
                 child: VerseImageCanvas(design: design),
               ),
             ),
+            context: exportContext,
             targetSize: Size(360, 360 / ratio),
             pixelRatio: 3,
             delay: const Duration(milliseconds: 1),

@@ -195,6 +195,7 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
             ),
           ),
         ),
+        context: context,
         targetSize: Size(360, 360 / (_d['ratio'] as double)),
         pixelRatio: 3,
         delay: const Duration(milliseconds: 30),

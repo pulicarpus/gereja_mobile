@@ -580,7 +580,7 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                           Expanded(child: _preview()),
                           SizedBox(
                             width: 350,
-                            child: ColoredBox(
+                            child: Material(
                               color: Colors.white,
                               child: _tools(),
                             ),
@@ -595,7 +595,7 @@ class _BuatGambarPageState extends State<BuatGambarPage> {
                               0.0,
                               300.0,
                             ),
-                            child: ColoredBox(
+                            child: Material(
                               color: Colors.white,
                               child: _tools(),
                             ),

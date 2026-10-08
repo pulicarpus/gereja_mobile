@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'user_manager.dart';
 import 'app_safety.dart';
 import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
-import 'anggota_keluarga_page.dart'; 
+import 'detail_jemaat_page.dart'; 
 import 'daftar_keluarga_page.dart';
 import 'loading_sultan.dart';
 import 'kategorial_config.dart';
@@ -152,117 +151,9 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 
   void _showDetailJemaat(Map<String, dynamic> j) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.8,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (context, scrollController) => Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-          ),
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
-              const SizedBox(height: 20),
-              
-              // FOTO PROFIL KLIK FULL SCREEN
-              GestureDetector(
-                onTap: () {
-                  if (j['fotoProfil'] != null && j['fotoProfil'] != "") {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => FullScreenImagePage(
-                          imageUrl: j['fotoProfil'],
-                          heroTag: 'foto_${j['id']}',
-                        ),
-                      ),
-                    );
-                  }
-                },
-                child: Hero(
-                  tag: 'foto_${j['id']}',
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundImage: (j['fotoProfil'] != null && j['fotoProfil'] != "") ? NetworkImage(j['fotoProfil']) : null,
-                    child: (j['fotoProfil'] == null || j['fotoProfil'] == "") ? Text(_initial(j), style: const TextStyle(fontSize: 30)) : null,
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-              Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              Text("${j['statusKeluarga']} • ${j['kelompok']}", style: const TextStyle(color: Colors.grey)),
-              const Divider(height: 40),
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  children: [
-                    _buildTile(Icons.wc, "Jenis Kelamin", j['jenisKelamin'] ?? "-"),
-                    _buildTile(Icons.water_drop, "Status Baptis", j['statusBaptis'] ?? "Belum"),
-                    _buildTile(Icons.phone, "Nomor Telepon", j['nomorTelepon'] ?? "-"),
-                    _buildTile(Icons.location_on, "Alamat", j['alamat'] ?? "-"),
-                    _buildTile(Icons.cake, "Tanggal Lahir", j['tanggalLahir'] ?? "-"),
-                    const SizedBox(height: 25),
-                    ElevatedButton.icon(
-                      onPressed: () => _showKeluarga(j['idKepalaKeluarga'], j['namaLengkap']),
-                      icon: const Icon(Icons.people_alt_rounded),
-                      label: const Text("Lihat Anggota Keluarga"),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                      ),
-                    ),
-                    if (j['nomorTelepon'] != null && j['nomorTelepon'] != "-") ...[
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () => launchUrl(Uri.parse("tel:${j['nomorTelepon']}")),
-                        icon: const Icon(Icons.call),
-                        label: const Text("Hubungi Jemaat"),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 50),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                        ),
-                      ),
-                    ]
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTile(IconData icon, String label, String val) => ListTile(
-    leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.indigo.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: Colors.indigo)),
-    title: Text(val, style: const TextStyle(fontWeight: FontWeight.w500)),
-    subtitle: Text(label),
-  );
-
-  void _showKeluarga(String? idKK, String? nama) {
-    if (idKK == null || idKK.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data Keluarga tidak ditemukan")));
-      return;
-    }
-    
-    Navigator.pop(context);
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AnggotaKeluargaPage(
-          idKepalaKeluarga: idKK,
-          namaKepalaKeluarga: nama ?? "Keluarga",
-        ),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(
+      builder: (_) => DetailJemaatPage(jemaatData: j),
+    ));
   }
 
   @override
@@ -442,39 +333,3 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
   }
 }
 
-// HALAMAN FOTO FULL SCREEN
-class FullScreenImagePage extends StatelessWidget {
-  final String imageUrl;
-  final String heroTag;
-
-  const FullScreenImagePage({super.key, required this.imageUrl, required this.heroTag});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          panEnabled: true,
-          minScale: 0.5,
-          maxScale: 4,
-          child: Hero(
-            tag: heroTag,
-            child: Image.network(
-              imageUrl,
-              fit: BoxFit.contain,
-              width: double.infinity,
-              height: double.infinity,
-              errorBuilder: (context, error, stackTrace) => const Icon(Icons.person, size: 100, color: Colors.white),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

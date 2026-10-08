@@ -1,3 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'anggota_keluarga_page.dart';
+import 'jemaat_photo_page.dart';
 import 'package:flutter/material.dart';
 import 'app_safety.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,7 +10,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 class DetailJemaatPage extends StatelessWidget {
   final Map<String, dynamic> jemaatData;
 
-  const DetailJemaatPage({super.key, required this.jemaatData});
+  final bool showBirthdayGreeting;
+
+  const DetailJemaatPage({super.key, required this.jemaatData, this.showBirthdayGreeting = false});
 
   @override
   Widget build(BuildContext context) {
@@ -16,6 +23,12 @@ class DetailJemaatPage extends StatelessWidget {
     String alamat = legacyText(jemaatData['alamat'], '-');
     String status = legacyText(jemaatData['statusKeluarga'], '-');
     String kategorial = (jemaatData['kelompok'] ?? jemaatData['kategorial'] ?? "Umum").toString();
+
+    final rawBirth = jemaatData['tanggalLahir'];
+    final birthDate = rawBirth is Timestamp ? rawBirth.toDate() : rawBirth is DateTime ? rawBirth : null;
+    final birthText = birthDate == null ? legacyText(rawBirth, '-') : DateFormat('dd-MM-yyyy').format(birthDate);
+    final familyId = legacyText(jemaatData['idKepalaKeluarga']).trim();
+    final hasPhone = noHp.trim().isNotEmpty && noHp.trim() != '-';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -31,7 +44,11 @@ class DetailJemaatPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 20),
-            CircleAvatar(
+            GestureDetector(
+              onTap: fotoUrl == null ? null : () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => FullScreenImagePage(imageUrl: fotoUrl, heroTag: 'foto_${jemaatData['id']}'),
+              )),
+              child: CircleAvatar(
               radius: 60,
               backgroundColor: Colors.indigo.shade50,
               child: fotoUrl == null
@@ -41,6 +58,7 @@ class DetailJemaatPage extends StatelessWidget {
                       placeholder: (context, imageUrl) => const Icon(Icons.person, size: 60, color: Colors.indigo),
                       errorWidget: (context, imageUrl, error) => const Icon(Icons.person, size: 60, color: Colors.indigo),
                     )),
+            ),
             ),
             const SizedBox(height: 20),
             Text(nama, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
@@ -52,9 +70,40 @@ class DetailJemaatPage extends StatelessWidget {
             ),
             const SizedBox(height: 30),
             const Divider(),
-            _buildInfoRow(Icons.phone, "Nomor HP", noHp),
+            _buildInfoRow(Icons.wc, "Jenis Kelamin", legacyText(jemaatData['jenisKelamin'], '-')),
+            _buildInfoRow(Icons.water_drop, "Status Baptis", legacyText(jemaatData['statusBaptis'], 'Belum')),
+            _buildInfoRow(Icons.phone, "Nomor Telepon", noHp),
             _buildInfoRow(Icons.location_on, "Alamat", alamat),
             _buildInfoRow(Icons.category, "Kategorial", kategorial),
+            _buildInfoRow(Icons.cake, "Tanggal Lahir", birthText),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.people_alt_rounded),
+              label: const Text('Lihat Anggota Keluarga'),
+              onPressed: () {
+                if (familyId.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Data Keluarga tidak ditemukan')));
+                  return;
+                }
+                Navigator.push(context, MaterialPageRoute(builder: (_) => AnggotaKeluargaPage(
+                  idKepalaKeluarga: familyId, namaKepalaKeluarga: nama,
+                )));
+              },
+            ),
+            if (hasPhone) OutlinedButton.icon(
+              icon: const Icon(Icons.call), label: const Text('Hubungi Jemaat'),
+              onPressed: () => launchUrl(Uri(scheme: 'tel', path: noHp.trim())),
+            ),
+            if (hasPhone && showBirthdayGreeting) OutlinedButton.icon(
+              icon: const Icon(Icons.cake), label: const Text('Ucapkan Selamat Ulang Tahun'),
+              onPressed: () {
+                final clean = noHp.replaceAll(RegExp(r'[^0-9+]'), '');
+                final number = clean.startsWith('0') ? '62${clean.substring(1)}' : clean.replaceFirst('+', '');
+                return launchUrl(Uri.https('wa.me', '/$number', {
+                  'text': 'Selamat ulang tahun, $nama! Tuhan Yesus memberkati.',
+                }), mode: LaunchMode.externalApplication);
+              },
+            ),
           ],
         ),
       ),

@@ -23,6 +23,7 @@ import 'kategorial_config.dart';
 import 'info_surat_daerah_page.dart';
 import 'login_page.dart';
 import 'data_jemaat_page.dart';
+import 'detail_jemaat_page.dart';
 import 'jadwal_page.dart';
 import 'alkitab_page.dart';    
 import 'renungan_page.dart';   
@@ -1347,6 +1348,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
           if (lahir == null || lahir.month != now.month) continue;
 
           final data = Map<String, dynamic>.from(source);
+          data['id'] = doc.id;
           data['_lahirDate'] = lahir;
           data['isHariIni'] = lahir.day == now.day;
           ultahList.add(data);
@@ -1391,20 +1393,11 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
               final lahir = jemaat['_lahirDate'] as DateTime?;
               final tglSingkat = lahir == null ? "-" : DateFormat('dd-MM').format(lahir);
 
-              final nomorTelepon = jemaat['nomorTelepon']?.toString().trim() ?? '';
-
               return InkWell(
                 borderRadius: BorderRadius.circular(15),
-                onTap: isHariIni && nomorTelepon.isNotEmpty
-                    ? () async {
-                        final clean = nomorTelepon.replaceAll(RegExp(r'[^0-9+]'), '');
-                        final waNumber = clean.startsWith('0') ? '62${clean.substring(1)}' : clean.replaceFirst('+', '');
-                        final uri = Uri.parse('https://wa.me/$waNumber?text=${Uri.encodeComponent('Selamat ulang tahun, $namaPendek! Tuhan Yesus memberkati.')}');
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        }
-                      }
-                    : null,
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => DetailJemaatPage(jemaatData: jemaat, showBirthdayGreeting: isHariIni),
+                )),
                 child: Container(
                 width: 100,
                 margin: const EdgeInsets.only(right: 12),

@@ -94,6 +94,34 @@ void main() {
     expect(find.text('123'), findsOneWidget);
     expect(find.byIcon(Icons.person), findsOneWidget);
   });
+  testWidgets('Shared member detail includes complete fields and birthday action', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: DetailJemaatPage(
+      showBirthdayGreeting: true,
+      jemaatData: {
+        'namaLengkap': 'Maria', 'jenisKelamin': 'Wanita',
+        'statusBaptis': 'Sudah', 'nomorTelepon': '08123456789',
+        'alamat': 'Jalan Gereja', 'kelompok': 'PW',
+        'tanggalLahir': '08-10-1990', 'statusKeluarga': 'Istri',
+      },
+    )));
+    for (final value in ['Maria', 'Wanita', 'Sudah', '08123456789', 'Jalan Gereja', 'PW', '08-10-1990', 'Istri']) {
+      expect(find.text(value), findsOneWidget);
+    }
+    expect(find.text('Lihat Anggota Keluarga'), findsOneWidget);
+    expect(find.text('Hubungi Jemaat'), findsOneWidget);
+    expect(find.text('Ucapkan Selamat Ulang Tahun'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('Shared detail formats dates and does not offer contact without a phone', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: DetailJemaatPage(
+      showBirthdayGreeting: true,
+      jemaatData: {'tanggalLahir': DateTime(1990, 10, 8)},
+    )));
+    expect(find.text('08-10-1990'), findsOneWidget);
+    expect(find.text('Hubungi Jemaat'), findsNothing);
+    expect(find.text('Ucapkan Selamat Ulang Tahun'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   test('Annual total includes tithes even on expense-only report', () {
     final balance = annualLedgerBalance([
       {'jenis': 'Pemasukan', 'jumlah': 200000},

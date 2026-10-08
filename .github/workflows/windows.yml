@@ -122,8 +122,10 @@ jobs:
         run: |
           $readyPath = Join-Path $env:RUNNER_TEMP ('gkii-ready-' + [Guid]::NewGuid() + '.txt')
           $env:GKII_SMOKE_READY_PATH = $readyPath
-          $appProcess = Start-Process -FilePath 'build/windows/x64/runner/Release/gereja_mobile.exe' -PassThru
+          $appProcess = $null
+          $launchTime = Get-Date
           try {
+            $appProcess = Start-Process -FilePath 'build/windows/x64/runner/Release/gereja_mobile.exe' -PassThru
             $deadline = (Get-Date).AddSeconds(25)
             while (!(Test-Path $readyPath) -and (Get-Date) -lt $deadline) {
               Start-Sleep -Milliseconds 250
@@ -132,9 +134,28 @@ jobs:
             }
             if (!(Test-Path $readyPath)) { throw 'First Flutter frame was not reached' }
             Write-Output 'Windows Firebase/SQLite initialization and first Flutter frame passed'
+          } catch {
+            $detail = $_.Exception.Message
+            if ($null -ne $appProcess) {
+              $appProcess.Refresh()
+              if ($appProcess.HasExited) {
+                $hexCode = '{0:X8}' -f ($appProcess.ExitCode -band 0xffffffffL)
+                $detail += " (exit $($appProcess.ExitCode), 0x$hexCode)"
+              }
+            }
+            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error::Startup check: $detail"
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $launchTime } -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'gereja_mobile.exe' } | ForEach-Object {
+                $eventDetail = $_.Message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+                Write-Output "::error::Windows crash event: $eventDetail"
+              }
+            throw
           } finally {
-            $appProcess.Refresh()
-            if (!$appProcess.HasExited) { Stop-Process -Id $appProcess.Id }
+            if ($null -ne $appProcess) {
+              $appProcess.Refresh()
+              if (!$appProcess.HasExited) { Stop-Process -Id $appProcess.Id }
+            }
             Remove-Item Env:GKII_SMOKE_READY_PATH
             if (Test-Path $readyPath) { Remove-Item $readyPath }
           }

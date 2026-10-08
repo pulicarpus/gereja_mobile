@@ -16,6 +16,9 @@ def patch(filename, source):
         source = replace_once(source,
             'pigeonApp.app_name() + "-" + pigeonApp.database_u_r_l()',
             'gkii_firestore_cache_key(pigeonApp.app_name(), pigeonApp.database_u_r_l())')
+        source = replace_once(source,
+            'Firestore::GetInstance(app, pigeonApp.database_u_r_l().c_str());',
+            'Firestore::GetInstance(app, gkii_firestore_database_id(pigeonApp.database_u_r_l()).c_str());')
     elif filename == "firestore_codec.cpp":
         source = replace_once(source,
             'if (CloudFirestorePlugin::firestoreInstances_.find(appName) !=',

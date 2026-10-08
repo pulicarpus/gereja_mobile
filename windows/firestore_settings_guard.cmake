@@ -4,6 +4,8 @@ function(gkii_guard_firestore_settings)
   get_target_property(source_dir cloud_firestore_plugin SOURCE_DIR)
   set(found 0)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tool/patch_windows_firestore.py")
   set(patched_sources "")
   foreach(source IN LISTS sources)
     if(source MATCHES "(^|/)(cloud_firestore_plugin|firestore_codec)\\.cpp$")
@@ -52,7 +54,7 @@ function(gkii_guard_firestore_settings)
   target_include_directories(gkii_firestore_codec_test PRIVATE
     "${source_dir}" "${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries(gkii_firestore_codec_test PRIVATE cloud_firestore_plugin
-    flutter_wrapper_plugin firebase_app firebase_auth firebase_firestore snappy
+    flutter_wrapper_plugin firebase_core_plugin firebase_app firebase_auth firebase_firestore snappy
     advapi32 ws2_32 crypt32 rpcrt4 ole32 icu shell32 bcrypt dbghelp)
   set_target_properties(gkii_firestore_codec_test PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/native-tests")

@@ -27,6 +27,7 @@ class FirestorePatchTests(unittest.TestCase):
     def test_pigeon_uses_same_key(self):
         result = patcher.patch("cloud_firestore_plugin.cpp",
             'pigeonApp.app_name() + "-" + pigeonApp.database_u_r_l();\n'
+            'Firestore::GetInstance(app, pigeonApp.database_u_r_l().c_str());\n'
             'firestore->set_settings(settings);')
         self.assertIn("gkii_firestore_cache_key(pigeonApp.app_name(), pigeonApp.database_u_r_l())", result)
         self.assertNotIn("firestore->set_settings", result)

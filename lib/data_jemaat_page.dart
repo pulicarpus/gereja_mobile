@@ -4,7 +4,7 @@ import 'user_manager.dart';
 import 'app_safety.dart';
 import 'add_edit_jemaat_page.dart';
 import 'dashboard_page.dart'; 
-import 'detail_jemaat_page.dart'; 
+import 'detail_jemaat_page.dart';
 import 'daftar_keluarga_page.dart';
 import 'loading_sultan.dart';
 import 'kategorial_config.dart';
@@ -332,4 +332,3 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
     );
   }
 }
-

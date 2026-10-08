@@ -889,6 +889,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                tooltip: 'Kembali',
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.maybePop(context),
+              )
+            : null,
         title: Row(
           children: [
             IconButton(

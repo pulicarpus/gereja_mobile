@@ -9,6 +9,13 @@ class UserManager {
   String get daerahForCurrentView =>
       nonEmpty(adminDaerahArea) ?? nonEmpty(userDaerah) ?? "Belum Diatur";
   
+  bool canEditRegion(String area) => userId != null && area.trim().isNotEmpty &&
+      (isSuperAdmin() || adminDaerahArea?.trim() == area.trim());
+
+  bool canViewRegion(String area) => canEditRegion(area) ||
+      (isGembala() && isLinked() && nonEmpty(originalChurchId) != null &&
+       nonEmpty(userDaerah) != null && userDaerah?.trim() == area.trim());
+
   // Kunci Penyimpanan (Keys)
   static const String _keyRole = "user_role";
   static const String _keyUserId = "user_id";

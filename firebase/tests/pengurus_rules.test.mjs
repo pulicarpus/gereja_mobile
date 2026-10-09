@@ -19,7 +19,15 @@ try {
       blocked: { role: 'superadmin', isBlocked: true },
       super: { role: 'superadmin' },
       ordinary: { role: 'user' },
+      pastor: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'member', daerah: 'Stale' },
+      unlinked: { role: 'gembala', churchId: 'pastorChurch' },
+      dangling: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'gone' },
+      mismatched: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'member' },
+      blockedPastor: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'blocked', isBlocked: true },
     })) await setDoc(doc(db, 'users', id), account);
+    await setDoc(doc(db, 'churches/pastorChurch'), { daerah: 'Belitang' });
+    await setDoc(doc(db, 'churches/pastorChurch/jemaat/member'), { uid: 'pastor' });
+    await setDoc(doc(db, 'churches/pastorChurch/jemaat/blocked'), { uid: 'blockedPastor' });
   });
   const own = env.authenticatedContext('own').firestore();
   const root = 'struktur_pengurus_daerah/Belitang';
@@ -70,7 +78,7 @@ try {
     await assertFails(setDoc(doc(superDb, `${path}/komisi/salah`), { daerah: 'Lain' }));
   }
   await assertFails(setDoc(doc(superDb, 'struktur_pengurus_daerah/empty'), { daerah: '' }));
-  for (const name of ['inventaris_daerah', 'pengurus_daerah']) {
+  for (const name of ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']) {
     const ownRecord = doc(own, `${name}/own`);
     await assertSucceeds(getDocs(query(collection(own, name), where('daerah', '==', 'Belitang'))));
     await assertSucceeds(runTransaction(own, async tx => {
@@ -97,9 +105,34 @@ try {
     await assertFails(setDoc(doc(superDb, `${name}/empty`), { daerah: '' }));
     await assertSucceeds(deleteDoc(ownRecord));
   }
+  const pastor = env.authenticatedContext('pastor').firestore();
+  await assertSucceeds(getDoc(doc(pastor, root)));
+  for (const section of sections) {
+    await assertSucceeds(getDocs(collection(pastor, `${root}/${section}`)));
+    await assertFails(setDoc(doc(pastor, `${root}/${section}/bad`), { daerah: 'Belitang' }));
+  }
+  await assertFails(updateDoc(doc(pastor, root), { bphd_ketua: 'Ubah' }));
+  await assertFails(getDoc(doc(pastor, 'struktur_pengurus_daerah/Daerah%20Ketungau')));
+  for (const name of ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']) {
+    await assertSucceeds(setDoc(doc(superDb, `${name}/readOnly`), { daerah: 'Belitang', nama: 'Contoh' }));
+    await assertSucceeds(getDoc(doc(pastor, `${name}/readOnly`)));
+    await assertSucceeds(getDocs(query(collection(pastor, name), where('daerah', '==', 'Belitang'))));
+    await assertFails(getDocs(query(collection(pastor, name), where('daerah', '==', 'Daerah Baru'))));
+    await assertFails(setDoc(doc(pastor, `${name}/new`), { daerah: 'Belitang' }));
+    await assertFails(updateDoc(doc(pastor, `${name}/readOnly`), { nama: 'Ubah' }));
+    await assertFails(deleteDoc(doc(pastor, `${name}/readOnly`)));
+    for (const id of ['unlinked', 'dangling', 'mismatched', 'blockedPastor']) {
+      const db = env.authenticatedContext(id).firestore();
+      await assertFails(getDocs(query(collection(db, name), where('daerah', '==', 'Belitang'))));
+      await assertFails(getDoc(doc(db, root)));
+    }
+  }
+  await assertFails(updateDoc(doc(pastor, 'users/pastor'), { role: 'superadmin' }));
+  await assertFails(updateDoc(doc(pastor, 'users/pastor'), { adminDaerahArea: 'Belitang' }));
+  await assertSucceeds(updateDoc(doc(pastor, 'users/pastor'), { namaLengkap: 'Gembala' }));
   // Existing module permissions from the supplied rules remain intact.
   const ordinary = env.authenticatedContext('ordinary').firestore();
-  for (const path of ['prayers/a', 'songs/a', 'kamus_global/a', 'keuangan_daerah/a', 'perpuluhan_daerah/a', 'info_surat_daerah/a', 'churches/a/gallery/a']) {
+  for (const path of ['prayers/a', 'songs/a', 'kamus_global/a', 'churches/a/gallery/a']) {
     await assertSucceeds(setDoc(doc(ordinary, path), { contoh: true }));
     await assertSucceeds(getDoc(doc(ordinary, path)));
   }

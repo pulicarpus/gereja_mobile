@@ -1,3 +1,4 @@
+import 'region_access.dart';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'desktop_google_login.dart';
@@ -90,7 +91,9 @@ class _LoginPageState extends State<LoginPage> {
         bool statusPengurus = data['isPengurus'] == true;
         
         // 👇 AMBIL DATA DAERAH DARI FIRESTORE 👇
-        String daerah = data['daerah']?.toString() ?? ""; 
+        final linkedArea = await linkedPastorRegion(data, user.uid);
+        if (!mounted || _auth.currentUser?.uid != user.uid) return;
+        String daerah = linkedArea ?? "";
 
         await UserManager().setUser(
           role: role,
@@ -103,7 +106,7 @@ class _LoginPageState extends State<LoginPage> {
           uIsPengurus: statusPengurus, 
           uJemaatId: jemaatId,
           uAdminDaerahArea: data['adminDaerahArea']?.toString(),
-          uDaerah: data['daerah']?.toString(),
+          uDaerah: linkedArea,
         );
 
         if (!mounted || _auth.currentUser?.uid != user.uid) return;

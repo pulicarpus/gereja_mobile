@@ -57,3 +57,26 @@ lain/tanpa login/diblokir, dan izin modul lama yang diuji.
 Tes inventaris mencakup transaksi pembuatan barang pertama, query daerah,
 edit/hapus oleh admin daerah sendiri, penolakan query tanpa filter dan akses
 daerah lain, serta metadata URL foto (izin upload Storage tetap terpisah).
+
+## Gembala tertaut: hanya lihat
+
+Gembala dapat membaca pengurus, inventaris, kas, perpuluhan, dan info/surat
+milik daerah gerejanya. Rules memeriksa role `gembala`, akun aktif, `churchId`,
+`jemaatId`, keberadaan gereja/jemaat, dan `jemaat.uid` sama dengan UID akun.
+Daerah diperoleh dari dokumen gereja; field daerah akun yang lama tidak menjadi
+sumber izin. Aplikasi menyegarkan daerah ini saat login dan penyegaran sesi.
+
+Tombol tambah/edit/hapus keuangan disembunyikan dari gembala, dan semua penulisan
+koleksi daerah tersebut tetap ditolak server kecuali akun juga ditugaskan
+sebagai admin daerah atau superadmin. Gembala tidak bisa mengubah role,
+penugasan admin daerah, atau status blokir sendiri lewat profil. Pengeditan
+profil biasa dan alur penautan jemaat tetap memakai izin yang ada.
+
+Daerah di dokumen struktur pengurus perlu diinisialisasi superadmin terlebih
+dahulu. Pengaturan Daerah masih merupakan menu placeholder yang sudah ada;
+perubahan ini tidak membuat fungsi pengaturan baru. Data Gereja & Pengerja
+serta Dashboard memakai halaman baca yang sudah tersedia.
+
+Tes emulator juga mencakup gembala tertaut dengan daerah akun yang kedaluwarsa,
+query daerah sendiri, larangan tambah/edit/hapus, akun belum tertaut/tautan
+hilang/UID jemaat tidak cocok/diblokir, dan larangan meningkatkan izin sendiri.

@@ -64,7 +64,29 @@ void main() {
     expect(permitsRegionWrite({'role': 'user', 'adminDaerahArea': 'Utara'}, 'Utara'), isTrue);
     expect(permitsRegionWrite({'role': 'admin', 'adminDaerahArea': 'Utara'}, 'Selatan'), isFalse);
     expect(permitsRegionWrite({'role': 'gembala', 'daerah': 'Utara'}, 'Utara'), isFalse);
-    expect(permitsRegionWrite({'role': 'gembala', 'daerah': 'Utara'}, 'Utara', allowPastors: true), isTrue);
+    expect(permitsRegionWrite({'role': 'gembala', 'daerah': 'Utara'}, 'Utara', allowPastors: true), isFalse);
+  });
+  test('Linked pastors view their own region without regional edit privileges', () async {
+    SharedPreferences.setMockInitialValues({});
+    final manager = UserManager();
+    await manager.setUser(role: 'gembala', churchId: 'A', churchName: 'Gereja',
+      uId: 'pastor', uNama: 'Nama', uJemaatId: 'J', uDaerah: 'Daerah Belitang');
+    expect(manager.canViewRegion('Daerah Belitang'), isTrue);
+    expect(manager.canViewRegion('Daerah Ketungau'), isFalse);
+    expect(manager.canEditRegion('Daerah Belitang'), isFalse);
+    await manager.loadFromPrefs();
+    expect(manager.canViewRegion('Daerah Belitang'), isTrue);
+    manager.jemaatId = null;
+    expect(manager.canViewRegion('Daerah Belitang'), isFalse);
+    manager.jemaatId = 'J';
+    manager.originalChurchId = null;
+    expect(manager.canViewRegion('Daerah Belitang'), isFalse);
+    manager.originalChurchId = 'A';
+    manager.adminDaerahArea = 'Daerah Belitang';
+    expect(manager.canEditRegion('Daerah Belitang'), isTrue);
+    expect(manager.canEditRegion('Daerah Ketungau'), isFalse);
+    await manager.reset();
+    expect(manager.canViewRegion('Daerah Belitang'), isFalse);
   });
   test('Revoked regional role falls back to ordinary region immediately and after restart', () async {
     SharedPreferences.setMockInitialValues({});

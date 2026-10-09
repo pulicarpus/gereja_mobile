@@ -15,7 +15,15 @@ service cloud.firestore {
     }
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (request.auth.uid == userId || isPrivilegedUser());
+      // A linked pastor must not grant themselves regional editing privileges.
+      allow create: if isSignedIn() && (isPrivilegedUser() ||
+        (request.auth.uid == userId && request.resource.data.get('role', 'user') == 'user'
+          && request.resource.data.get('adminDaerahArea', '') == ''
+          && request.resource.data.get('isBlocked', false) == false));
+      allow update: if isSignedIn() && (isPrivilegedUser() ||
+        (request.auth.uid == userId && !request.resource.data.diff(resource.data)
+          .affectedKeys().hasAny(['role', 'adminDaerahArea', 'isBlocked'])));
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isPrivilegedUser());
       match /notes/{noteId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
@@ -29,20 +37,11 @@ service cloud.firestore {
     match /kamus_global/{wordId} {
       allow read, write: if isSignedIn();
     }
-    match /keuangan_daerah/{docId} {
-      allow read, write: if isSignedIn();
-    }
-    match /perpuluhan_daerah/{docId} {
-      allow read, write: if isSignedIn();
-    }
     match /chats_daerah/{daerahId} {
       allow read, write: if isSignedIn();
       match /{allPaths=**} {
         allow read, write: if isSignedIn();
       }
-    }
-    match /info_surat_daerah/{docId} {
-      allow read, write: if isSignedIn();
     }
     match /aset_gereja/{docId} {
       allow read: if isSignedIn();
@@ -90,6 +89,28 @@ service cloud.firestore {
           .data.get('adminDaerahArea', '') == area;
     }
 
+    function pdLinkedPastor(area) {
+      let account = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      let churchId = account.get('churchId', '');
+      let memberId = account.get('jemaatId', '');
+      return pdAccountActive() && account.get('role', '') == 'gembala'
+        && churchId is string && churchId != ''
+        && memberId is string && memberId != ''
+        && exists(/databases/$(database)/documents/churches/$(churchId))
+        && exists(/databases/$(database)/documents/churches/$(churchId)/jemaat/$(memberId))
+        && get(/databases/$(database)/documents/churches/$(churchId)/jemaat/$(memberId)).data.get('uid', '') == request.auth.uid
+        && get(/databases/$(database)/documents/churches/$(churchId)).data.get('daerah', '') == area;
+    }
+
+    function pdRead(area) {
+      return pdSuper() || pdOwn(area) || (request.auth != null && pdLinkedPastor(area));
+    }
+
+    function pdParentReadable(idDaerah) {
+      return exists(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
+        && pdRead(get(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah)).data.daerah);
+    }
+
     function pdParentOwned(idDaerah) {
       return exists(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
         && pdOwn(get(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah)).data.daerah);
@@ -97,28 +118,28 @@ service cloud.firestore {
 
     // Inventaris dan daftar pengurus daerah format lama memakai koleksi datar.
     match /{koleksi}/{recordId} {
-      allow get: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
-        && (pdSuper() || pdOwn(resource.data.daerah)
+      allow get: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
+        && (pdRead(resource.data.daerah)
           || (!exists(/databases/$(database)/documents/$(koleksi)/$(recordId))
             && pdAccountActive()
             && get(/databases/$(database)/documents/users/$(request.auth.uid))
               .data.get('adminDaerahArea', '') != ''));
-      allow list: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
-        && (pdSuper() || pdOwn(resource.data.daerah));
-      allow create: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+      allow list: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
+        && pdRead(resource.data.daerah);
+      allow create: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
         && request.resource.data.daerah is string
         && request.resource.data.daerah.size() > 0
         && (pdSuper() || pdOwn(request.resource.data.daerah));
-      allow update: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+      allow update: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
         && (pdSuper() || pdOwn(resource.data.daerah))
         && request.resource.data.daerah == resource.data.daerah;
-      allow delete: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+      allow delete: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
         && (pdSuper() || pdOwn(resource.data.daerah));
     }
 
     match /struktur_pengurus_daerah/{idDaerah} {
       // Superadmin dapat membuka daerah baru tanpa daftar nama dalam Rules.
-      allow get: if pdSuper() || pdParentOwned(idDaerah);
+      allow get: if pdSuper() || pdParentReadable(idDaerah);
       // Dokumen induk daerah baru dibuat superadmin melalui pengisian pengurus.
       allow create: if pdSuper()
         && request.resource.data.daerah is string
@@ -129,7 +150,7 @@ service cloud.firestore {
 
       match /{bagian}/{anggotaId} {
         allow read: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-          && (pdSuper() || pdParentOwned(idDaerah));
+          && (pdSuper() || pdParentReadable(idDaerah));
         allow create, update: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
           && (pdSuper() || pdParentOwned(idDaerah))
           && request.resource.data.daerah ==

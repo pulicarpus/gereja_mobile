@@ -137,8 +137,7 @@ bool permitsRegionWrite(Map<String, dynamic> actor, String area,
   if (actor['isBlocked'] == true || area.trim().isEmpty) return false;
   if (actor['role'] == 'superadmin') return true;
   if (legacyText(actor['adminDaerahArea']).trim() == area.trim()) return true;
-  return allowPastors && (actor['role'] == 'gembala' || actor['role'] == 'bpj') &&
-      legacyText(actor['daerah']).trim() == area.trim();
+  return false; // Regional writes are reserved for assigned administrators.
 }
 
 Future<String> checkRegionWrite(String area, {bool allowPastors = false}) async {
@@ -186,7 +185,7 @@ LedgerBalance annualLedgerBalance(Iterable<Map<String, dynamic>> transactions,
 /// Retains the existing regional collections and fields; no backfill/migration.
 Future<void> saveRegionChanges(String area,
     Map<DocumentReference, Map<String, dynamic>?> changes,
-    {bool createOnly = false, bool requireExisting = false, bool allowPastors = true}) async {
+    {bool createOnly = false, bool requireExisting = false, bool allowPastors = false}) async {
   final uid = await checkRegionWrite(area, allowPastors: allowPastors);
   final db = FirebaseFirestore.instance;
   await db.runTransaction((tx) async {

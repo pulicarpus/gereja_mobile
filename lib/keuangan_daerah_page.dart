@@ -36,9 +36,8 @@ class KeuanganDaerahPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = UserManager();
     final target = namaDaerah.trim();
-    final hasAreaAccess = user.isSuperAdmin() ||
-        (user.isAdminDaerah() && user.adminDaerahArea?.trim() == target) ||
-        ((user.isGembala() || user.isBPJ()) && user.userDaerah?.trim() == target);
+    final hasAreaAccess = user.canViewRegion(target) ||
+        (user.isBPJ() && user.userDaerah?.trim() == target);
     if (!hasAreaAccess) {
       return const Scaffold(body: Center(child: Text("Anda tidak memiliki akses ke keuangan daerah ini.")));
     }
@@ -86,6 +85,7 @@ class _KasDaerahTab extends StatefulWidget {
 }
 
 class _KasDaerahTabState extends State<_KasDaerahTab> {
+  bool get _canEdit => UserManager().canEditRegion(widget.namaDaerah);
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
@@ -239,6 +239,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
   }
 
   void _showTransactionForm({required bool isPemasukan, String? docId, String? initialNominal, String? initialKeterangan, DateTime? initialDate}) {
+    if (!_canEdit) return;
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
       formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
@@ -331,7 +332,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                 if (saving) return;
                 setStateDialog(() => saving = true);
                 try {
-                  await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+                  await checkRegionWrite(widget.namaDaerah, allowPastors: false);
                   if (!mounted || !dialogContext.mounted) return;
                   Map<String, dynamic> payload = {
                     "daerah": widget.namaDaerah,
@@ -364,6 +365,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
   }
 
   void _showOptionsBottomSheet(String docId, Map<String, dynamic> data) {
+    if (!_canEdit) return;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -392,6 +394,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
   }
 
   void _showDeleteDialog(String docId, String keterangan) {
+    if (!_canEdit) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -404,7 +407,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+                await checkRegionWrite(widget.namaDaerah, allowPastors: false);
                 final linkedRef = _db.collection("perpuluhan_daerah").doc(docId);
                 final linked = await linkedRef.get();
                 final changes = <DocumentReference, Map<String, dynamic>?>{};
@@ -570,7 +573,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                     ),
                     const SizedBox(height: 25),
 
-                    Row(
+                    if (_canEdit) Row(
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
@@ -633,7 +636,7 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                               isPemasukan ? "+ ${_currencyFormat.format(data['nominal'])}" : "- ${_currencyFormat.format(data['nominal'])}",
                               style: TextStyle(fontWeight: FontWeight.bold, color: isPemasukan ? Colors.green : Colors.red),
                             ),
-                            onLongPress: () => _showOptionsBottomSheet(doc.id, data), 
+                            onLongPress: _canEdit ? () => _showOptionsBottomSheet(doc.id, data) : null,
                           ),
                         );
                       }),
@@ -660,6 +663,7 @@ class _PerpuluhanTab extends StatefulWidget {
 }
 
 class _PerpuluhanTabState extends State<_PerpuluhanTab> {
+  bool get _canEdit => UserManager().canEditRegion(widget.namaDaerah);
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
 
@@ -818,6 +822,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   }
 
   void _showPerpuluhanForm({String? docId, String? initialTipe, String? initialNama, String? initialNominal, DateTime? initialDate}) {
+    if (!_canEdit) return;
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
       formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
@@ -957,7 +962,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                 if (saving) return;
                 setStateDialog(() => saving = true);
                 try {
-                  await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+                  await checkRegionWrite(widget.namaDaerah, allowPastors: false);
                   if (!mounted || !dialogContext.mounted) return;
                   final changes = <DocumentReference, Map<String, dynamic>?>{};
 
@@ -1006,6 +1011,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   }
 
   void _showOptionsBottomSheet(String docId, Map<String, dynamic> data) {
+    if (!_canEdit) return;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -1034,6 +1040,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   }
 
   void _showDeleteDialog(String docId, String nama) {
+    if (!_canEdit) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1046,7 +1053,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-              await checkRegionWrite(widget.namaDaerah, allowPastors: true);
+              await checkRegionWrite(widget.namaDaerah, allowPastors: false);
               final changes = <DocumentReference, Map<String, dynamic>?>{};
               changes[_db.collection("perpuluhan_daerah").doc(docId)] = null;
               changes[_db.collection("keuangan_daerah").doc(docId)] = null;
@@ -1201,7 +1208,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                             title: Text((data['nama'] ?? "Tanpa Nama").toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
                             subtitle: Text("${data['tipe']} • ${DateFormat('dd MMM yyyy').format(ts.toDate())}", style: const TextStyle(fontSize: 11)),
                             trailing: Text(_currencyFormat.format(data['nominal']), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)),
-                            onLongPress: () => _showOptionsBottomSheet(doc.id, data), 
+                            onLongPress: _canEdit ? () => _showOptionsBottomSheet(doc.id, data) : null,
                           ),
                         );
                       }),
@@ -1213,13 +1220,13 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
         ],
       ),
       // 👇 DAN INILAH TEMPAT TOMBOL MELAYANG ITU SEHARUSNYA BERADA 👇
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: _canEdit ? FloatingActionButton.extended(
         onPressed: _showAddPerpuluhanDialog,
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add),
         label: const Text("Input Perpuluhan"),
-      ),
+      ) : null,
     );
   }
 }

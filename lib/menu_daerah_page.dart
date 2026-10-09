@@ -1,3 +1,4 @@
+import 'user_manager.dart';
 import 'package:flutter/material.dart';
 
 import 'daerah_records_page.dart';
@@ -27,7 +28,9 @@ class MenuDaerahPage extends StatelessWidget {
       foregroundColor: Colors.white,
       elevation: 0,
     ),
-    body: SingleChildScrollView(
+    body: !UserManager().canViewRegion(namaDaerah) && !UserManager().isBPJ()
+        ? const Center(child: Text('Akun belum tertaut atau daerah tidak sesuai.'))
+        : SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Center(
         child: ConstrainedBox(
@@ -64,9 +67,11 @@ class MenuDaerahPage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          const Text(
-                            'Informasi dan administrasi daerah',
-                            style: TextStyle(
+                          Text(
+                            UserManager().canEditRegion(namaDaerah)
+                                ? 'Informasi dan administrasi daerah'
+                                : 'Hanya lihat • data daerah Anda',
+                            style: const TextStyle(
                               color: Colors.white70,
                               fontSize: 12,
                             ),

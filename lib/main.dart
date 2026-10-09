@@ -1,3 +1,4 @@
+import 'region_access.dart';
 import 'mobile_notifications.dart';
 import 'upload_support.dart';
 import 'windows_startup.dart';
@@ -92,7 +93,7 @@ void _openPendingNotification() {
   if (type == 'info_daerah') {
     final area = data['daerah']?.toString().trim() ?? '';
     if (area.isEmpty || !(manager.isSuperAdmin() || manager.adminDaerahArea == area ||
-        ((manager.isGembala() || manager.isBPJ()) && manager.userDaerah == area))) return;
+        manager.canViewRegion(area))) return;
     nav.push(MaterialPageRoute(builder: (_) => InfoSuratDaerahPage(namaDaerah: area)));
     return;
   }
@@ -504,6 +505,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
               monitoredChurchId.isNotEmpty &&
               monitoredChurchId != userManager.originalChurchId;
 
+          final linkedArea = await linkedPastorRegion(data, firebaseUser.uid);
+          if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) return;
           await userManager.setUser(
             role: data['role']?.toString() ?? "user",
             churchId: firestoreChurchId,
@@ -515,7 +518,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
             uIsPengurus: data['isPengurus'] == true,
             uJemaatId: data['jemaatId']?.toString(),
             uAdminDaerahArea: data['adminDaerahArea']?.toString(),
-            uDaerah: data['daerah']?.toString(),
+            uDaerah: linkedArea,
           );
 
           // Pertahankan konteks pantau Superadmin yang sedang aktif.
@@ -886,7 +889,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     bool isBPJ = user.isBPJ();         
     
     // 👇 SEKARANG GEMBALA & BPJ JUGA PUNYA AKSES GESER KE KANAN 👇
-    bool hasSwipeAccess = isSuperAdmin || isAdminDaerah || isGembala || isBPJ;
+    bool hasSwipeAccess = isSuperAdmin || isAdminDaerah ||
+        (isGembala && user.canViewRegion(user.daerahForCurrentView)) || isBPJ;
     
     bool isMemantau = isSuperAdmin && (user.activeChurchId != user.originalChurchId);
 

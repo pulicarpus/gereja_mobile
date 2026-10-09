@@ -78,39 +78,43 @@ service cloud.firestore {
              .data.get('isBlocked', false) != true;
     }
     
-    function pdArea(idDaerah) {
-      // Tambahkan pemetaan ID/nama daerah yang benar di sini bila diperlukan.
-      return idDaerah == 'Belitang' ? 'Belitang' : '';
+    function pdSuper() {
+      return pdAccountActive()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.get('role', '') == 'superadmin';
     }
-    
-    function pdAuthorized(idDaerah) {
-      return pdAccountActive() && pdArea(idDaerah) != ''
-        && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid))
-            .data.get('role', '') == 'superadmin'
-          || get(/databases/$(database)/documents/users/$(request.auth.uid))
-            .data.get('adminDaerahArea', '') == pdArea(idDaerah)
-        );
+
+    function pdOwn(area) {
+      return pdAccountActive() && area is string && area != ''
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+          .data.get('adminDaerahArea', '') == area;
     }
-    
+
+    function pdParentOwned(idDaerah) {
+      return exists(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
+        && pdOwn(get(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah)).data.daerah);
+    }
+
     match /struktur_pengurus_daerah/{idDaerah} {
-      // Mengizinkan pembacaan dokumen yang belum dibuat agar posisi kosong tampil.
-      allow get: if pdAuthorized(idDaerah);
-      allow create, update: if pdAuthorized(idDaerah)
-        && request.resource.data.daerah == pdArea(idDaerah);
-      // Aplikasi tidak menghapus dokumen utama; subkoleksi harus tetap bertaut.
-    
+      // Superadmin dapat membuka daerah baru tanpa daftar nama dalam Rules.
+      allow get: if pdSuper() || pdParentOwned(idDaerah);
+      // Dokumen induk daerah baru dibuat superadmin melalui pengisian pengurus.
+      allow create: if pdSuper()
+        && request.resource.data.daerah is string
+        && request.resource.data.daerah.size() > 0;
+      allow update: if (pdSuper() || pdOwn(resource.data.daerah))
+        && request.resource.data.daerah == resource.data.daerah;
+      // Tidak menghapus induk atau memindahkan daerah beserta subkoleksinya.
+
       match /{bagian}/{anggotaId} {
         allow read: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-          && pdAuthorized(idDaerah);
+          && (pdSuper() || pdParentOwned(idDaerah));
         allow create, update: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-          && pdAuthorized(idDaerah)
-          && request.resource.data.daerah == pdArea(idDaerah)
-          && getAfter(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
-            .data.daerah == pdArea(idDaerah);
+          && (pdSuper() || pdParentOwned(idDaerah))
+          && request.resource.data.daerah ==
+            getAfter(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah)).data.daerah;
         allow delete: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-          && pdAuthorized(idDaerah)
-          && resource.data.daerah == pdArea(idDaerah);
+          && (pdSuper() || pdParentOwned(idDaerah));
       }
     }
   }

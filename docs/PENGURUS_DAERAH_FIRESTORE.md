@@ -1,93 +1,47 @@
 # Akses Pengurus Daerah
 
-Halaman pengurus memakai `struktur_pengurus_daerah/{idDaerah}` dan subkoleksi
-`penasehat`, `mkdp`, `bpk`, serta `komisi`. Aturan Firebase yang hanya mengenali
-`pengurus_daerah` (format daftar lama) belum tentu mengizinkan jalur baru ini.
-Galat `permission-denied` tidak dapat diperbaiki hanya dengan memasang APK baru.
+Halaman memakai `struktur_pengurus_daerah/{idDaerah}` dan subkoleksi
+`penasehat`, `mkdp`, `bpk`, serta `komisi`. ID daerah di aplikasi adalah
+`Uri.encodeComponent(namaDaerah.trim())`.
 
-`firebase/firestore.rules` berisi aturan lengkap yang dikirim pengguna pada
-9 Oktober 2026, dengan tambahan blok Pengurus Daerah di bawah. Izin lama
-dipertahankan. File ini belum diterapkan ke Firebase produksi. Untuk Belitang,
-salin seluruh isi file ke tab Rules lalu Publish setelah pemeriksaan emulator.
+`firebase/firestore.rules` menggabungkan aturan lengkap yang dikirim pengguna
+pada 9 Oktober 2026 dengan tambahan untuk jalur tersebut. Izin modul lama
+dipertahankan. File belum diterapkan ke Firebase produksi.
 
-## Tambahan aturan untuk Belitang
+## Daerah dinamis
 
-Ini **draf tambahan**, bukan pengganti seluruh Rules produksi. Gabungkan blok
-berikut **di dalam** `match /databases/{database}/documents` pada Firebase
-Console → Firestore Database → Rules. Pertahankan semua aturan fitur lain.
-Periksa aturan produksi terlebih dahulu: aturan `allow` yang lebih luas tetap
-berlaku karena Firestore menggabungkan izin dengan OR.
+Tidak ada daftar nama daerah di Rules. Superadmin yang tidak diblokir dapat
+membaca semua daerah, termasuk dokumen yang belum dibuat dan subkoleksi kosong.
+Ini berlaku juga untuk nama dengan spasi seperti `Daerah Belitang`, nama daerah
+baru, dan nama Unicode. Superadmin membuat dokumen utama dengan menyimpan
+pengurus inti atau komisi pertama melalui aplikasi.
 
-Contoh ini menggunakan nama daerah persis `Belitang` dan ID `Belitang`.
-Pastikan nilai `users/{uid}.adminDaerahArea` sesuai sebelum menerapkannya.
-ID dalam aplikasi adalah `Uri.encodeComponent(namaDaerah.trim())`; nama dengan
-spasi atau karakter khusus menghasilkan ID yang berbeda. Tambahkan pasangan
-ID/nama yang sesuai untuk daerah lain, jangan membuka akses umum.
+Setelah dokumen utama dibuat, admin dengan `users/{uid}.adminDaerahArea` sama
+persis dengan `daerah` pada dokumen utama dapat membaca dan mengubah pengurus
+serta komisi. Pembuatan dokumen utama pertama dibatasi ke superadmin agar admin
+tidak dapat mengambil ID daerah lain. Admin tidak harus menunggu perubahan
+Rules saat daerah baru ditambahkan; superadmin cukup mengisi pengurus awal.
 
-```text
-function pdAccountActive() {
-  return request.auth != null
-    && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-    && get(/databases/$(database)/documents/users/$(request.auth.uid))
-         .data.get('isBlocked', false) != true;
-}
+Nama `daerah` pada induk tidak dapat dipindahkan melalui pembaruan. Data baru
+pada subkoleksi harus menunjuk daerah yang sama dengan induk. Menghapus induk
+melalui fitur pengurus tidak diizinkan agar subkoleksi tetap bertaut.
 
-function pdArea(idDaerah) {
-  // Tambahkan pemetaan ID/nama daerah yang benar di sini bila diperlukan.
-  return idDaerah == 'Belitang' ? 'Belitang' : '';
-}
+## Menerapkan
 
-function pdAuthorized(idDaerah) {
-  return pdAccountActive() && pdArea(idDaerah) != ''
-    && (
-      get(/databases/$(database)/documents/users/$(request.auth.uid))
-        .data.get('role', '') == 'superadmin'
-      || get(/databases/$(database)/documents/users/$(request.auth.uid))
-        .data.get('adminDaerahArea', '') == pdArea(idDaerah)
-    );
-}
+1. Buka `firebase/firestore.rules` di GitHub, klik Raw, dan salin seluruh isinya.
+2. Buka Firebase Console → Firestore Database → Rules, tempel isi file, lalu Publish.
+3. Pada aplikasi dengan akun superadmin, tekan Coba lagi di Pengurus Daerah.
 
-match /struktur_pengurus_daerah/{idDaerah} {
-  // Mengizinkan pembacaan dokumen yang belum dibuat agar posisi kosong tampil.
-  allow get: if pdAuthorized(idDaerah);
-  allow create, update: if pdAuthorized(idDaerah)
-    && request.resource.data.daerah == pdArea(idDaerah);
-  // Aplikasi tidak menghapus dokumen utama; subkoleksi harus tetap bertaut.
-
-  match /{bagian}/{anggotaId} {
-    allow read: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-      && pdAuthorized(idDaerah);
-    allow create, update: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-      && pdAuthorized(idDaerah)
-      && request.resource.data.daerah == pdArea(idDaerah)
-      && getAfter(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
-        .data.daerah == pdArea(idDaerah);
-    allow delete: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
-      && pdAuthorized(idDaerah)
-      && resource.data.daerah == pdArea(idDaerah);
-  }
-}
-```
-
-## Pemeriksaan sebelum Publish
-
-Dengan Rules Playground/emulator, pastikan akun admin Belitang dapat membaca
-dokumen utama yang belum ada dan menanyakan keempat subkoleksi; penambahan
-pengurus inti berhasil; komisi beserta anggota dapat dibuat dan diubah.
-Akun tanpa login, akun diblokir, dan admin daerah lain harus ditolak.
-Penulisan `daerah` yang tidak sesuai dengan ID juga harus ditolak.
-
-Rules Storage untuk foto adalah aturan terpisah. Blok di atas memperbaiki akses
-data Firestore, bukan izin upload foto. Jangan mengganti seluruh aturan Storage
-tanpa memeriksa aturan yang sudah berlaku.
-
-Setelah Rules digabungkan dan dipublikasikan, tekan **Coba lagi** pada halaman
-Pengurus Daerah. Perubahan Rules belum dipublikasikan oleh perubahan kode ini.
+Galat `permission-denied` membutuhkan perbaikan Rules di server; memasang APK
+saja tidak mengubah Rules. Aturan foto Firebase Storage terpisah dan tidak
+diubah oleh file ini. Tidak ada kebutuhan memasang APK baru untuk pembaruan
+aturan ini.
 
 ## Pengujian lokal
 
 Dengan Node.js 22+ dan Java 21+, jalankan `npm install` lalu `npm test` dari
 folder `firebase`. Tes memakai proyek emulator `demo-gkii-pengurus` dan tidak
-mengakses Firebase produksi. Tes ini sudah lulus: pembacaan saat dokumen utama
-belum ada, query subkoleksi kosong, pembuatan induk/komisi atomik, edit anggota,
-penolakan akun daerah lain/tanpa login/diblokir, dan izin modul lama yang diuji.
+mengakses Firebase produksi. Tes meliputi daerah baru/nama berspasi/Unicode,
+pembacaan dokumen belum ada dan subkoleksi kosong oleh superadmin, pembuatan
+induk/komisi atomik, edit anggota oleh admin sendiri, penolakan akun daerah
+lain/tanpa login/diblokir, dan izin modul lama yang diuji.

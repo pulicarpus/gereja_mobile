@@ -24,11 +24,13 @@ try {
   const own = env.authenticatedContext('own').firestore();
   const root = 'struktur_pengurus_daerah/Belitang';
   const sections = ['penasehat', 'mkdp', 'bpk', 'komisi'];
-  await assertSucceeds(getDoc(doc(own, root))); // Missing root must be readable.
-  for (const section of sections) await assertSucceeds(getDocs(collection(own, `${root}/${section}`)));
-  const batch = writeBatch(own);
-  batch.set(doc(own, root), { daerah: 'Belitang', bphd_ketua: 'Ketua' });
-  batch.set(doc(own, `${root}/komisi/anak`), { daerah: 'Belitang', namaKomisi: 'Anak', anggota: [] });
+  const superDb = env.authenticatedContext('super').firestore();
+  await assertSucceeds(getDoc(doc(superDb, root))); // Superadmin can open a new area.
+  for (const section of sections) await assertSucceeds(getDocs(collection(superDb, `${root}/${section}`)));
+  await assertFails(setDoc(doc(own, root), { daerah: 'Belitang' }));
+  const batch = writeBatch(superDb);
+  batch.set(doc(superDb, root), { daerah: 'Belitang', bphd_ketua: 'Ketua' });
+  batch.set(doc(superDb, `${root}/komisi/anak`), { daerah: 'Belitang', namaKomisi: 'Anak', anggota: [] });
   await assertSucceeds(batch.commit()); // getAfter permits atomic parent/child creation.
   for (const section of sections) {
     const ref = doc(own, `${root}/${section}/person`);
@@ -51,10 +53,23 @@ try {
     }
     await assertFails(setDoc(doc(db, root), { daerah: 'Belitang' }));
   }
-  const superDb = env.authenticatedContext('super').firestore();
   await assertSucceeds(getDoc(doc(superDb, root)));
   await assertSucceeds(updateDoc(doc(superDb, root), { bphd_ketua: 'Ketua baru' }));
   await assertFails(getDoc(doc(own, 'struktur_pengurus_daerah/Daerah%20lain')));
+  // Real region labels and future regions require no Rules name mapping.
+  for (const area of ['Daerah Belitang', 'Daerah Ketungau', 'Daerah Pontianak', 'Daerah Baru', 'Daerah/Unicode é']) {
+    const path = `struktur_pengurus_daerah/${encodeURIComponent(area)}`;
+    await assertSucceeds(getDoc(doc(superDb, path)));
+    for (const section of sections) await assertSucceeds(getDocs(collection(superDb, `${path}/${section}`)));
+    const create = writeBatch(superDb);
+    create.set(doc(superDb, path), { daerah: area, bphd_ketua: 'Ketua' });
+    create.set(doc(superDb, `${path}/komisi/anak`), { daerah: area, namaKomisi: 'Anak' });
+    await assertSucceeds(create.commit());
+    await assertFails(getDoc(doc(own, path)));
+    await assertFails(updateDoc(doc(superDb, path), { daerah: 'Lain' }));
+    await assertFails(setDoc(doc(superDb, `${path}/komisi/salah`), { daerah: 'Lain' }));
+  }
+  await assertFails(setDoc(doc(superDb, 'struktur_pengurus_daerah/empty'), { daerah: '' }));
   // Existing module permissions from the supplied rules remain intact.
   const ordinary = env.authenticatedContext('ordinary').firestore();
   for (const path of ['prayers/a', 'songs/a', 'kamus_global/a', 'keuangan_daerah/a', 'perpuluhan_daerah/a', 'info_surat_daerah/a', 'churches/a/gallery/a']) {

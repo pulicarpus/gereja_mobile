@@ -369,11 +369,40 @@ class _PengurusPageState extends State<PengurusPage> {
               StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
                 stream: _churchStream,
                 builder: (context, snapshot) {
-                  if (snapshot.hasError)
-                    return pengurusMessage(
-                      pengurusError(snapshot.error!),
-                      retry: _retry,
+                  if (snapshot.hasError) {
+                    if (!_isRegion) {
+                      return pengurusMessage(
+                        pengurusError(snapshot.error!),
+                        retry: _retry,
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        pengurusMessage(
+                          snapshot.error is FirebaseException &&
+                                  (snapshot.error as FirebaseException).code ==
+                                      'permission-denied'
+                              ? 'Data Pengurus Daerah belum dapat dibaca. Administrator perlu memeriksa aturan akses Firestore untuk struktur_pengurus_daerah.'
+                              : pengurusError(snapshot.error!),
+                          retry: _retry,
+                        ),
+                        for (final group in const {
+                          'Pimpinan': ['KETUA BPHD', 'WAKIL KETUA'],
+                          'Sekretariat': ['SEKRETARIS 1', 'SEKRETARIS 2'],
+                          'Kebendaharaan': ['BENDAHARA 1', 'BENDAHARA 2'],
+                        }.entries)
+                          _card(group.key, [
+                            for (final role in group.value)
+                              ListTile(
+                                leading: pengurusAvatar(null),
+                                title: const Text('Data belum dapat dimuat'),
+                                subtitle: Text(role),
+                              ),
+                          ]),
+                      ],
                     );
+                  }
                   if (!snapshot.hasData)
                     return const Center(child: CircularProgressIndicator());
                   if (!snapshot.data!.exists && !_isRegion)

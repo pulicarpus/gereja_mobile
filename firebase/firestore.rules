@@ -95,6 +95,27 @@ service cloud.firestore {
         && pdOwn(get(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah)).data.daerah);
     }
 
+    // Inventaris dan daftar pengurus daerah format lama memakai koleksi datar.
+    match /{koleksi}/{recordId} {
+      allow get: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+        && (pdSuper() || pdOwn(resource.data.daerah)
+          || (!exists(/databases/$(database)/documents/$(koleksi)/$(recordId))
+            && pdAccountActive()
+            && get(/databases/$(database)/documents/users/$(request.auth.uid))
+              .data.get('adminDaerahArea', '') != ''));
+      allow list: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+        && (pdSuper() || pdOwn(resource.data.daerah));
+      allow create: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+        && request.resource.data.daerah is string
+        && request.resource.data.daerah.size() > 0
+        && (pdSuper() || pdOwn(request.resource.data.daerah));
+      allow update: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+        && (pdSuper() || pdOwn(resource.data.daerah))
+        && request.resource.data.daerah == resource.data.daerah;
+      allow delete: if koleksi in ['inventaris_daerah', 'pengurus_daerah']
+        && (pdSuper() || pdOwn(resource.data.daerah));
+    }
+
     match /struktur_pengurus_daerah/{idDaerah} {
       // Superadmin dapat membuka daerah baru tanpa daftar nama dalam Rules.
       allow get: if pdSuper() || pdParentOwned(idDaerah);

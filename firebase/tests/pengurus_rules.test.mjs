@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, query, where, runTransaction } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
   projectId: 'demo-gkii-pengurus',
@@ -70,6 +70,33 @@ try {
     await assertFails(setDoc(doc(superDb, `${path}/komisi/salah`), { daerah: 'Lain' }));
   }
   await assertFails(setDoc(doc(superDb, 'struktur_pengurus_daerah/empty'), { daerah: '' }));
+  for (const name of ['inventaris_daerah', 'pengurus_daerah']) {
+    const ownRecord = doc(own, `${name}/own`);
+    await assertSucceeds(getDocs(query(collection(own, name), where('daerah', '==', 'Belitang'))));
+    await assertSucceeds(runTransaction(own, async tx => {
+      const missing = await tx.get(ownRecord);
+      if (!missing.exists()) tx.set(ownRecord, { daerah: 'Belitang', nama: 'Barang', fotoUrl: '' });
+    }));
+    await assertSucceeds(updateDoc(ownRecord, { nama: 'Barang baru', fotoUrl: 'https://example.com/a.jpg' }));
+    await assertSucceeds(getDoc(ownRecord));
+    await assertFails(updateDoc(ownRecord, { daerah: 'Daerah lain' }));
+    for (const area of ['Daerah Belitang', 'Daerah Ketungau', 'Daerah Baru']) {
+      await assertSucceeds(setDoc(doc(superDb, name, encodeURIComponent(area)), { daerah: area, nama: 'Barang' }));
+      await assertSucceeds(getDocs(query(collection(superDb, name), where('daerah', '==', area))));
+      await assertFails(getDocs(query(collection(own, name), where('daerah', '==', area))));
+    }
+    await assertFails(getDocs(collection(own, name))); // Unscoped query rejected.
+    for (const id of ['other', 'blocked', 'ordinary', null]) {
+      const db = id ? env.authenticatedContext(id).firestore() : env.unauthenticatedContext().firestore();
+      await assertFails(getDoc(doc(db, `${name}/own`)));
+      await assertFails(getDocs(query(collection(db, name), where('daerah', '==', 'Belitang'))));
+      await assertFails(setDoc(doc(db, `${name}/bad`), { daerah: 'Belitang', nama: 'Barang' }));
+      await assertFails(updateDoc(doc(db, `${name}/own`), { nama: 'Ubah' }));
+      await assertFails(deleteDoc(doc(db, `${name}/own`)));
+    }
+    await assertFails(setDoc(doc(superDb, `${name}/empty`), { daerah: '' }));
+    await assertSucceeds(deleteDoc(ownRecord));
+  }
   // Existing module permissions from the supplied rules remain intact.
   const ordinary = env.authenticatedContext('ordinary').firestore();
   for (const path of ['prayers/a', 'songs/a', 'kamus_global/a', 'keuangan_daerah/a', 'perpuluhan_daerah/a', 'info_surat_daerah/a', 'churches/a/gallery/a']) {

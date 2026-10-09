@@ -435,39 +435,28 @@ class _PengurusPageState extends State<PengurusPage> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      if (_isRegion)
-                        group('BPHD', {
-                          'ketua': 'KETUA BPHD',
-                          'wakil': 'WAKIL KETUA',
-                          'sek1': 'SEKRETARIS 1',
-                          'sek2': 'SEKRETARIS 2',
-                          'bend1': 'BENDAHARA 1',
-                          'bend2': 'BENDAHARA 2',
-                        })
-                      else ...[
-                        group('Pimpinan', {
-                          'ketua': 'KETUA BPJ',
-                          'wakil': 'WAKIL KETUA',
-                        }),
-                        group('Sekretariat', {
-                          'sek1': 'SEKRETARIS 1',
-                          'sek2': 'SEKRETARIS 2',
-                        }),
-                        group('Kebendaharaan', {
-                          'bend1': 'BENDAHARA 1',
-                          'bend2': 'BENDAHARA 2',
-                        }),
-                      ],
+                      group('Pimpinan', {
+                        'ketua': _isRegion ? 'KETUA BPHD' : 'KETUA BPJ',
+                        'wakil': 'WAKIL KETUA',
+                      }),
+                      group('Sekretariat', {
+                        'sek1': 'SEKRETARIS 1',
+                        'sek2': 'SEKRETARIS 2',
+                      }),
+                      group('Kebendaharaan', {
+                        'bend1': 'BENDAHARA 1',
+                        'bend2': 'BENDAHARA 2',
+                      }),
                     ],
                   );
                 },
               ),
-              if (_isRegion) _dynamic('MKDP', 'mkdp', _mkdpStream),
               _dynamic(
                 'Penasehat',
                 _isRegion ? 'penasehat' : 'bpj_penasehat',
                 _penasehatStream,
               ),
+              if (_isRegion) _dynamic('MKDP', 'mkdp', _mkdpStream),
               _dynamic(
                 'Badan Pemeriksa Keuangan (BPK)',
                 _isRegion ? 'bpk' : 'bpj_bpk',

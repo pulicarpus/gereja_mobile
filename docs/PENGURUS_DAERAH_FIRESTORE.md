@@ -5,6 +5,11 @@ Halaman pengurus memakai `struktur_pengurus_daerah/{idDaerah}` dan subkoleksi
 `pengurus_daerah` (format daftar lama) belum tentu mengizinkan jalur baru ini.
 Galat `permission-denied` tidak dapat diperbaiki hanya dengan memasang APK baru.
 
+`firebase/firestore.rules` berisi aturan lengkap yang dikirim pengguna pada
+9 Oktober 2026, dengan tambahan blok Pengurus Daerah di bawah. Izin lama
+dipertahankan. File ini belum diterapkan ke Firebase produksi. Untuk Belitang,
+salin seluruh isi file ke tab Rules lalu Publish setelah pemeriksaan emulator.
+
 ## Tambahan aturan untuk Belitang
 
 Ini **draf tambahan**, bukan pengganti seluruh Rules produksi. Gabungkan blok
@@ -78,3 +83,11 @@ tanpa memeriksa aturan yang sudah berlaku.
 
 Setelah Rules digabungkan dan dipublikasikan, tekan **Coba lagi** pada halaman
 Pengurus Daerah. Perubahan Rules belum dipublikasikan oleh perubahan kode ini.
+
+## Pengujian lokal
+
+Dengan Node.js 22+ dan Java 21+, jalankan `npm install` lalu `npm test` dari
+folder `firebase`. Tes memakai proyek emulator `demo-gkii-pengurus` dan tidak
+mengakses Firebase produksi. Tes ini sudah lulus: pembacaan saat dokumen utama
+belum ada, query subkoleksi kosong, pembuatan induk/komisi atomik, edit anggota,
+penolakan akun daerah lain/tanpa login/diblokir, dan izin modul lama yang diuji.

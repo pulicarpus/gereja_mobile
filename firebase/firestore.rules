@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isPrivilegedUser() {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin'
+      );
+    }
+    match /pending_notifications/{docId} {
+      allow read, write: if isSignedIn();
+    }
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isPrivilegedUser());
+      match /notes/{noteId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+    match /prayers/{prayerId} {
+      allow read, write: if isSignedIn();
+    }
+    match /songs/{songId} {
+      allow read, write: if isSignedIn();
+    }
+    match /kamus_global/{wordId} {
+      allow read, write: if isSignedIn();
+    }
+    match /keuangan_daerah/{docId} {
+      allow read, write: if isSignedIn();
+    }
+    match /perpuluhan_daerah/{docId} {
+      allow read, write: if isSignedIn();
+    }
+    match /chats_daerah/{daerahId} {
+      allow read, write: if isSignedIn();
+      match /{allPaths=**} {
+        allow read, write: if isSignedIn();
+      }
+    }
+    match /info_surat_daerah/{docId} {
+      allow read, write: if isSignedIn();
+    }
+    match /aset_gereja/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isPrivilegedUser();
+    }
+    match /churches/{churchId} {
+      allow read, write: if isSignedIn();
+      match /{allPaths=**} {
+        allow read, write: if isSignedIn();
+      }
+      match /aset/{asetId} {
+        allow read: if isSignedIn();
+        allow write: if isPrivilegedUser();
+      }
+      match /chats/{chatId} {
+        allow read, write: if isSignedIn();
+        allow delete: if isPrivilegedUser();
+      }
+      match /jemaat/{jemaatId} {
+        allow read: if isSignedIn();
+        allow write: if isPrivilegedUser();
+      }
+    }
+    match /{path=**}/jemaat/{document} {
+      allow read: if isSignedIn();
+    }
+
+    // Tambahan khusus Pengurus Daerah; aturan sebelumnya dipertahankan.
+    function pdAccountActive() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.get('isBlocked', false) != true;
+    }
+    
+    function pdArea(idDaerah) {
+      // Tambahkan pemetaan ID/nama daerah yang benar di sini bila diperlukan.
+      return idDaerah == 'Belitang' ? 'Belitang' : '';
+    }
+    
+    function pdAuthorized(idDaerah) {
+      return pdAccountActive() && pdArea(idDaerah) != ''
+        && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid))
+            .data.get('role', '') == 'superadmin'
+          || get(/databases/$(database)/documents/users/$(request.auth.uid))
+            .data.get('adminDaerahArea', '') == pdArea(idDaerah)
+        );
+    }
+    
+    match /struktur_pengurus_daerah/{idDaerah} {
+      // Mengizinkan pembacaan dokumen yang belum dibuat agar posisi kosong tampil.
+      allow get: if pdAuthorized(idDaerah);
+      allow create, update: if pdAuthorized(idDaerah)
+        && request.resource.data.daerah == pdArea(idDaerah);
+      // Aplikasi tidak menghapus dokumen utama; subkoleksi harus tetap bertaut.
+    
+      match /{bagian}/{anggotaId} {
+        allow read: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
+          && pdAuthorized(idDaerah);
+        allow create, update: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
+          && pdAuthorized(idDaerah)
+          && request.resource.data.daerah == pdArea(idDaerah)
+          && getAfter(/databases/$(database)/documents/struktur_pengurus_daerah/$(idDaerah))
+            .data.daerah == pdArea(idDaerah);
+        allow delete: if bagian in ['penasehat', 'mkdp', 'bpk', 'komisi']
+          && pdAuthorized(idDaerah)
+          && resource.data.daerah == pdArea(idDaerah);
+      }
+    }
+  }
+}

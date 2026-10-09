@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore --project demo-gkii-pengurus \"node tests/pengurus_rules.test.mjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "firebase": "13.0.0",
+    "firebase-tools": "15.33.0"
+  }
+}

@@ -80,3 +80,25 @@ serta Dashboard memakai halaman baca yang sudah tersedia.
 Tes emulator juga mencakup gembala tertaut dengan daerah akun yang kedaluwarsa,
 query daerah sendiri, larangan tambah/edit/hapus, akun belum tertaut/tautan
 hilang/UID jemaat tidak cocok/diblokir, dan larangan meningkatkan izin sendiri.
+
+## Diskusi info dan surat
+
+Setiap postingan memiliki subkoleksi `info_surat_daerah/{postId}/komentar`.
+Tombol Diskusi & pertanyaan membuka percakapan real-time per postingan.
+Semua akun yang diizinkan membaca postingan dapat mengirim teks maksimal
+2.000 karakter, termasuk gembala tertaut yang tetap tidak bisa mengedit
+postingan utama. Penulis boleh menghapus komentarnya sendiri; superadmin dan
+admin daerah yang sesuai dapat memoderasi komentar. Komentar tidak diedit.
+
+Rules memeriksa izin melalui postingan induk, UID penulis, schema pesan,
+panjang teks, dan timestamp server. Penghapusan postingan menutup akses
+komentar; dokumen komentar tersimpan tidak ikut dihapus otomatis. Tidak ada
+perubahan aturan upload Storage karena komentar berupa teks.
+
+Pengiriman menggunakan ID dokumen tetap dan transaksi. Jika timeout tidak
+memastikan hasil, draft dikunci dan kirim ulang memeriksa ID yang sama, sehingga
+tidak membuat pesan ganda. Halaman memuat 100 komentar terbaru terlebih dahulu,
+dengan tombol memuat komentar sebelumnya. Pembacaan serta penulisan komentar
+ke postingan yang hilang/daerah lain ditolak. Tes emulator juga memeriksa
+pemalsuan UID, pesan kosong/terlalu panjang, timestamp palsu, field tambahan,
+larangan edit komentar, dan moderasi oleh admin.

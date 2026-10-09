@@ -1,3 +1,4 @@
+import 'region_discussion_page.dart';
 import 'upload_support.dart';
 import 'dart:io';
 import 'dart:convert'; // 👈 DITAMBAHKAN UNTUK JSON ENCODE NOTIFIKASI
@@ -473,6 +474,14 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                           ],
                           const SizedBox(height: 10),
                           Text("Oleh: ${data['pengirim']}", style: const TextStyle(fontSize: 10, color: Colors.grey, fontStyle: FontStyle.italic)),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            icon: const Icon(Icons.forum_outlined),
+                            label: const Text('Diskusi & pertanyaan'),
+                            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => RegionDiscussionPage(postId: docs[index].id, area: widget.namaDaerah),
+                            )),
+                          ),
                         ],
                       ),
                     ),

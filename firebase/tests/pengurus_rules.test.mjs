@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
-import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, query, where, runTransaction } from 'firebase/firestore';
+import { doc, collection, getDoc, getDocs, setDoc, updateDoc, deleteDoc, writeBatch, query, where, runTransaction, serverTimestamp } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
   projectId: 'demo-gkii-pengurus',
@@ -130,6 +130,45 @@ try {
   await assertFails(updateDoc(doc(pastor, 'users/pastor'), { role: 'superadmin' }));
   await assertFails(updateDoc(doc(pastor, 'users/pastor'), { adminDaerahArea: 'Belitang' }));
   await assertSucceeds(updateDoc(doc(pastor, 'users/pastor'), { namaLengkap: 'Gembala' }));
+  // Real-time discussion permits questions but does not grant post editing.
+  const discussionPost = 'info_surat_daerah/discussion';
+  await assertSucceeds(runTransaction(superDb, async tx => {
+    const ref = doc(superDb, discussionPost);
+    const current = await tx.get(ref);
+    if (!current.exists()) tx.set(ref, { daerah: 'Belitang', judul: 'Info' });
+  }));
+  const comments = `${discussionPost}/komentar`;
+  const message = { authorId: 'pastor', authorName: 'Gembala', text: 'Bolehkah bertanya?', createdAt: serverTimestamp() };
+  const pastorComment = doc(pastor, `${comments}/one`);
+  await assertSucceeds(runTransaction(pastor, async tx => {
+    await tx.get(doc(pastor, discussionPost));
+    const existing = await tx.get(pastorComment);
+    if (!existing.exists()) tx.set(pastorComment, message);
+  }));
+  await assertSucceeds(getDocs(query(collection(pastor, comments), where('authorId', '==', 'pastor'))));
+  await assertSucceeds(getDocs(collection(own, comments)));
+  await assertFails(setDoc(doc(pastor, `${comments}/spoof`), { ...message, authorId: 'super' }));
+  await assertFails(setDoc(doc(pastor, `${comments}/long`), { ...message, text: 'a'.repeat(2001) }));
+  await assertFails(setDoc(doc(pastor, `${comments}/empty`), { ...message, text: '' }));
+  await assertFails(setDoc(doc(pastor, `${comments}/extra`), { ...message, daerah: 'Belitang' }));
+  await assertFails(setDoc(doc(pastor, `${comments}/timestamp`), { ...message, createdAt: null }));
+  await assertFails(updateDoc(pastorComment, { text: 'Edit' }));
+  await assertFails(updateDoc(doc(pastor, discussionPost), { judul: 'Edit' }));
+  await assertSucceeds(setDoc(doc(own, `${comments}/admin`), { ...message, authorId: 'own' }));
+  await assertFails(deleteDoc(doc(pastor, `${comments}/admin`)));
+  for (const id of ['other', 'ordinary', 'blocked', 'unlinked', 'dangling', 'mismatched', null]) {
+    const db = id ? env.authenticatedContext(id).firestore() : env.unauthenticatedContext().firestore();
+    await assertFails(getDocs(collection(db, comments)));
+    await assertFails(setDoc(doc(db, `${comments}/bad`), { ...message, authorId: id }));
+    await assertFails(deleteDoc(doc(db, `${comments}/one`)));
+  }
+  await assertSucceeds(deleteDoc(pastorComment));
+  await assertSucceeds(setDoc(pastorComment, message));
+  await assertSucceeds(deleteDoc(doc(own, `${comments}/one`))); // Moderator.
+  await assertSucceeds(setDoc(pastorComment, message));
+  await assertSucceeds(deleteDoc(doc(superDb, discussionPost)));
+  await assertFails(getDocs(collection(pastor, comments)));
+  await assertFails(setDoc(doc(pastor, `${comments}/orphan`), message));
   // Existing module permissions from the supplied rules remain intact.
   const ordinary = env.authenticatedContext('ordinary').firestore();
   for (const path of ['prayers/a', 'songs/a', 'kamus_global/a', 'churches/a/gallery/a']) {

@@ -119,7 +119,7 @@ service cloud.firestore {
     // Inventaris dan daftar pengurus daerah format lama memakai koleksi datar.
     match /{koleksi}/{recordId} {
       allow get: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
-        && (pdRead(resource.data.daerah)
+        && (pdSuper() || pdRead(resource.data.daerah)
           || (!exists(/databases/$(database)/documents/$(koleksi)/$(recordId))
             && pdAccountActive()
             && get(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -135,6 +135,31 @@ service cloud.firestore {
         && request.resource.data.daerah == resource.data.daerah;
       allow delete: if koleksi in ['inventaris_daerah', 'pengurus_daerah', 'keuangan_daerah', 'perpuluhan_daerah', 'info_surat_daerah']
         && (pdSuper() || pdOwn(resource.data.daerah));
+    }
+
+    match /info_surat_daerah/{postId}/komentar/{commentId} {
+      function postArea() {
+        return get(/databases/$(database)/documents/info_surat_daerah/$(postId)).data.daerah;
+      }
+      function discussionAccess() {
+        return exists(/databases/$(database)/documents/info_surat_daerah/$(postId))
+          && pdRead(postArea());
+      }
+      allow read: if discussionAccess();
+      allow create: if discussionAccess()
+        && request.resource.data.keys().hasAll(['authorId', 'authorName', 'text', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['authorId', 'authorName', 'text', 'createdAt'])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.authorName is string
+        && request.resource.data.authorName.size() > 0
+        && request.resource.data.authorName.size() <= 200
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 2000
+        && request.resource.data.createdAt == request.time;
+      // Pesan tidak diedit; penulis atau admin dapat menghapusnya.
+      allow delete: if discussionAccess()
+        && (resource.data.authorId == request.auth.uid || pdSuper() || pdOwn(postArea()));
     }
 
     match /struktur_pengurus_daerah/{idDaerah} {

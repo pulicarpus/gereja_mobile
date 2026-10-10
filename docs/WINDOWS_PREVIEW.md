@@ -40,13 +40,14 @@ credential, Alkitab lokal tetap tersedia dan login memberi pesan yang jelas.
 ## Dukungan fitur
 
 - Database Alkitab menggunakan SQLite FFI dengan runtime sqlite3.dll di bundle.
-- Playback video splash memakai video_player_win, audio/record memakai plugin yang
-  mendukung Windows. Microphone/privacy settings dan codec OS perlu uji perangkat.
+- Splash Windows memakai tampilan statis. Inisialisasi video splash pernah
+  menyebabkan access violation native pada Windows; video pembuka Android tetap
+  tersedia. Audio/record dan codec video lainnya perlu diuji di perangkat.
 - Pemilihan gambar memakai file chooser; tombol kamera langsung chat disembunyikan.
 - Scanner dokumen Android diganti pilihan file di desktop.
 - Foto galeri disimpan ke lokasi yang dipilih, bukan API galeri HP.
-- Kamus SABDA dibuka di browser sistem, karena WebView Flutter asli tidak mendukung
-  Windows. Tidak perlu WebView2 untuk jalur ini.
+- Kamus offline dibundel dalam SQLite dan tersedia tanpa WebView. Tautan sumber
+  eksternal tetap dibuka di browser sistem.
 - OneSignal push masuk tidak tersedia pada Windows; wrapper menghindari panggilan
   plugin Android/iOS di desktop. Fitur data/chat dapat dibuka setelah login.
 - Tampilan memakai jendela resizable dari runner Flutter standar; layout desktop

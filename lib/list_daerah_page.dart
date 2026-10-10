@@ -1,3 +1,5 @@
+import 'region_actions.dart';
+import 'user_manager.dart';
 import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -26,9 +28,10 @@ class ListDaerahPage extends StatelessWidget {
             return const Center(child: Text("Belum ada data."));
           }
 
-          final regions = groupRegionNames(snapshot.data!.docs.map(
-            (doc) => (doc.data() as Map<String, dynamic>)['daerah']));
+          final regions = groupChurchRegions(snapshot.data!.docs.map(
+            (doc) => doc.data() as Map<String, dynamic>));
 
+          if (regions.isEmpty) return const Center(child: Text('Belum ada daerah aktif.'));
           return ListView.builder(
             padding: const EdgeInsets.all(20),
             itemCount: regions.length,
@@ -52,14 +55,23 @@ class ListDaerahPage extends StatelessWidget {
                     child: const Icon(Icons.map, color: Colors.deepOrange),
                   ),
                   title: Text(
-                    cleanRegionName(namaDaerah).toUpperCase(),
+                    regions[index].displayName.toUpperCase(),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
                   ),
                   subtitle: Padding(
                     padding: const EdgeInsets.only(top: 5),
                     child: Text("Total: $jumlahGereja Gereja Lokal", style: const TextStyle(color: Colors.indigo, fontWeight: FontWeight.w600)),
                   ),
-                  trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                  trailing: UserManager().isSuperAdmin()
+                    ? PopupMenuButton<String>(
+                      tooltip: 'Kelola daerah',
+                      onSelected: (action) => manageRegion(context, namaDaerah,
+                        regions[index].displayName, delete: action == 'delete'),
+                      itemBuilder: (context) => const [
+                        PopupMenuItem(value: 'edit', child: Text('Edit Nama Daerah')),
+                        PopupMenuItem(value: 'delete', child: Text('Hapus Daerah')),
+                      ],
+                    ) : const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () {
                     // 👇 SEKARANG MENGARAH KE KANTOR / MENU DAERAH 👇
                     Navigator.push(context, MaterialPageRoute(

@@ -50,10 +50,12 @@ import 'menu_daerah_page.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
+  startupCheckpoint('main entrypoint');
   WidgetsFlutterBinding.ensureInitialized();
   await initializeAppServices();
   await initializeDateFormatting('id_ID', null);
   _initOneSignal();
+  startupCheckpoint('runApp');
   runApp(const MyApp());
   if (Platform.isWindows) {
     final smokeReady = Platform.environment['GKII_SMOKE_READY_PATH'];

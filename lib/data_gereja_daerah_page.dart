@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -116,7 +117,7 @@ class DataGerejaDaerahPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text("Gereja di $namaDaerah", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: RegionLabel(area: namaDaerah, prefix: 'Gereja di ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         elevation: 0,
@@ -132,7 +133,7 @@ class DataGerejaDaerahPage extends StatelessWidget {
 
           var docs = snapshot.data?.docs ?? [];
 
-          docs = docs.where((doc) => regionNameKey(
+          docs = docs.where((doc) => (doc.data() as Map<String, dynamic>)['isArchived'] != true && regionNameKey(
             (doc.data() as Map<String, dynamic>)['daerah']) == regionNameKey(namaDaerah)).toList();
 
           if (docs.isEmpty) {

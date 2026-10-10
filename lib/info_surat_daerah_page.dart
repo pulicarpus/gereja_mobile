@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'region_discussion_page.dart';
 import 'upload_support.dart';
 import 'dart:io';
@@ -387,7 +388,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text("Info & Surat ${widget.namaDaerah}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: RegionLabel(area: widget.namaDaerah, prefix: 'Info & Surat ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.indigo[900], foregroundColor: Colors.white, elevation: 0,
       ),
       body: Stack(

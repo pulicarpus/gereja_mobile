@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -47,7 +48,8 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       Query churchQuery = _db.collection("churches");
       var snapGereja = await churchQuery.get().timeout(const Duration(seconds: 20));
       
-      List<QueryDocumentSnapshot> docs = snapGereja.docs;
+      List<QueryDocumentSnapshot> docs = snapGereja.docs.where((doc) =>
+        (doc.data() as Map<String, dynamic>)['isArchived'] != true).toList();
 
       if (widget.namaDaerah != null) {
         docs = docs.where((doc) => regionNameKey(
@@ -129,7 +131,7 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        title: widget.namaDaerah == null ? Text(judul, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)) : RegionLabel(area: widget.namaDaerah!, prefix: 'Statistik ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
       ),

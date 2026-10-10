@@ -129,7 +129,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         final existing = await tx.get(ref);
         final church = await tx.get(_db.collection("churches").doc(churchId));
         if (_auth.currentUser?.uid != widget.userUid) throw StateError("Sesi berubah.");
-        if (!church.exists || church.data()?['kodeUndangan'] != invitationCode) {
+        if (!church.exists || church.data()?['isArchived'] == true || church.data()?['kodeUndangan'] != invitationCode) {
           throw StateError("Kode undangan sudah berubah. Periksa kembali.");
         }
         if (existing.exists) {

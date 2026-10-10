@@ -10,7 +10,9 @@ String regionNameKey(Object? value) {
 class RegionNameGroup {
   final String name;
   final int count;
-  const RegionNameGroup(this.name, this.count);
+  final String displayName;
+  const RegionNameGroup(this.name, this.count, {String? displayName})
+    : displayName = displayName ?? name;
 }
 
 // Keep the most-used stored spelling for navigation and existing regional data.
@@ -44,6 +46,42 @@ String existingRegionName(Object? input, Iterable<Object?> existing) {
   final key = regionNameKey(input);
   for (final group in groupRegionNames(existing)) {
     if (regionNameKey(group.name) == key) return group.name;
+  }
+  return cleanRegionName(input);
+}
+
+List<RegionNameGroup> groupChurchRegions(
+  Iterable<Map<String, dynamic>> records,
+) {
+  final active = records.where((data) => data['isArchived'] != true).toList();
+  return groupRegionNames(active.map((data) => data['daerah'])).map((group) {
+    final labels = active
+        .where(
+          (data) => regionNameKey(data['daerah']) == regionNameKey(group.name),
+        )
+        .map((data) => cleanRegionName(data['namaDaerah']))
+        .where((name) => name.isNotEmpty);
+    final labelGroups = groupRegionNames(labels);
+    labelGroups.sort((a, b) => b.count.compareTo(a.count));
+    return RegionNameGroup(
+      group.name,
+      group.count,
+      displayName: labelGroups.isEmpty
+          ? cleanRegionName(group.name)
+          : labelGroups.first.name,
+    );
+  }).toList();
+}
+
+String churchRegionIdentifier(
+  Object? input,
+  Iterable<Map<String, dynamic>> records,
+) {
+  final key = regionNameKey(input);
+  for (final group in groupChurchRegions(records)) {
+    if (regionNameKey(group.name) == key ||
+        regionNameKey(group.displayName) == key)
+      return group.name;
   }
   return cleanRegionName(input);
 }

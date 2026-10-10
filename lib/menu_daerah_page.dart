@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'user_manager.dart';
 import 'package:flutter/material.dart';
 
@@ -20,8 +21,8 @@ class MenuDaerahPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFFF5F7FA),
     appBar: AppBar(
-      title: Text(
-        "Pusat Kendali - $namaDaerah",
+      title: RegionLabel(
+        area: namaDaerah, prefix: 'Pusat Kendali - ',
         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
       ),
       backgroundColor: Colors.indigo.shade900,
@@ -58,8 +59,8 @@ class MenuDaerahPage extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            namaDaerah,
+                          RegionLabel(
+                            area: namaDaerah,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 18,

@@ -40,9 +40,9 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
       final access = await _gateway.access();
       if (!access.superAdmin) throw StateError('Hanya Superadmin yang dapat mengelola gereja.');
       final churches = await _gateway.churchChoices();
-      final regions = groupRegionNames(churches.map((c) => c.data['daerah']))
+      final regions = groupChurchRegions(churches.map((c) => c.data))
           .where((g) => regionNameKey(g.name) != regionNameKey('Belum Diatur'))
-          .map((g) => g.name).toList();
+          .map((g) => g.displayName).toList();
       ManagementRecord? church;
       if (widget.gerejaId != null || _uncertain) {
         try { church = await _gateway.loadChurch(_id); }
@@ -55,7 +55,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
       if (church != null) {
         _expected = church;
         _name.text = managementText(church.data['namaGereja'], managementText(church.data['nama'], managementText(church.data['churchName'])));
-        _region.text = managementText(church.data['daerah']);
+        _region.text = managementText(church.data['namaDaerah'], managementText(church.data['daerah']));
         _address.text = managementText(church.data['alamat']);
       }
       setState(() { _regions = regions; _ready = true; _uncertain = false; });

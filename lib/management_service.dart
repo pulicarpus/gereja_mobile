@@ -1,3 +1,4 @@
+import 'kategorial_config.dart';
 import 'region_names.dart';
 import 'dart:async';
 import 'dart:math';
@@ -20,6 +21,14 @@ abstract class ManagementGateway {
     String field,
     dynamic value,
   );
+  Future<void> deleteChurch(ManagementRecord expected) =>
+      Future.error(StateError('Penghapusan belum tersedia.'));
+  Future<void> restoreChurch(ManagementRecord expected) =>
+      Future.error(StateError('Pemulihan belum tersedia.'));
+  Future<void> renameRegion(String area, String name) =>
+      Future.error(StateError('Edit daerah belum tersedia.'));
+  Future<void> deleteRegion(String area) =>
+      Future.error(StateError('Penghapusan daerah belum tersedia.'));
   String newChurchId();
   Future<void> saveChurch(
     String id,
@@ -179,7 +188,10 @@ class FirebaseManagementGateway implements ManagementGateway {
         .get(_server)
         .timeout(_deadline);
     _guard();
-    return docs.docs.map((d) => ManagementRecord(d.id, d.data())).toList()
+    return docs.docs
+        .where((d) => d.data()['isArchived'] != true)
+        .map((d) => ManagementRecord(d.id, d.data()))
+        .toList()
       ..sort(
         (a, b) => managementChurchName(
           a.data,
@@ -409,7 +421,8 @@ class FirebaseManagementGateway implements ManagementGateway {
           final church = await tx.get(
             _db.collection('churches').doc(choice.churchId),
           );
-          if (!church.exists) throw StateError('Gereja tujuan tidak tersedia.');
+          if (!church.exists || church.data()?['isArchived'] == true)
+            throw StateError('Gereja tujuan tidak tersedia.');
           final churchPatch = {
             'churchName': managementChurchName(church.data()!),
             'daerah': managementText(church.data()?['daerah']),
@@ -512,12 +525,17 @@ class FirebaseManagementGateway implements ManagementGateway {
         .get(_server)
         .timeout(_deadline);
     _guard();
-    patch['daerah'] = existingRegionName(
-      patch['daerah'],
-      churches.docs
-          .where((doc) => doc.id != id)
-          .map((doc) => doc.data()['daerah']),
-    );
+    final activeRecords = churches.docs
+        .where((doc) => doc.id != id)
+        .map((doc) => doc.data())
+        .toList();
+    patch['daerah'] = churchRegionIdentifier(patch['daerah'], activeRecords);
+    patch['namaDaerah'] = cleanRegionName(patch['daerah']);
+    for (final group in groupChurchRegions(activeRecords)) {
+      if (regionNameKey(group.name) == regionNameKey(patch['daerah'])) {
+        patch['namaDaerah'] = group.displayName;
+      }
+    }
     String? code;
     if (expected == null) {
       code = _codes[id];
@@ -556,7 +574,8 @@ class FirebaseManagementGateway implements ManagementGateway {
           final doc = await transaction.get(ref);
           _guard();
           if (expected != null) {
-            if (!doc.exists) throw StateError('Gereja sudah tidak tersedia.');
+            if (!doc.exists || doc.data()?['isArchived'] == true)
+              throw StateError('Gereja sudah tidak tersedia.');
             if (!managementUnchanged(expected.data, doc.data()!, [
               'namaGereja',
               'nama',
@@ -592,9 +611,270 @@ class FirebaseManagementGateway implements ManagementGateway {
         .timeout(_deadline);
   }
 
+  Future<void> _requireEmptyChurch(ManagementRecord church) async {
+    final categories = ['Umum', ...KategorialConfig.pilihanJemaat].toSet();
+    final collections = {
+      'jemaat',
+      'jadwal',
+      'pengumuman',
+      'transaksi',
+      'perpuluhan',
+      'aset',
+      'gallery',
+      'galeri',
+      'gallery_folders',
+      'settings',
+      'bpj_seksi',
+      'bpj_penasehat',
+      'bpj_bpk',
+      'chats',
+      for (final category in categories) 'chats_$category',
+      for (final category in categories) 'gallery_$category',
+      for (final category in categories) 'gallery_folders_$category',
+    };
+    final refs = _db.collection('churches').doc(church.id);
+    final results = await Future.wait([
+      _db
+          .collection('users')
+          .where('churchId', isEqualTo: church.id)
+          .limit(1)
+          .get(_server),
+      _db
+          .collection('aset_gereja')
+          .where('gerejaId', isEqualTo: church.id)
+          .limit(1)
+          .get(_server),
+      for (final name in collections)
+        refs.collection(name).limit(1).get(_server),
+    ]).timeout(_deadline);
+    _guard();
+    if (results.any((result) => result.docs.isNotEmpty) ||
+        church.data.entries.any(
+          (entry) =>
+              entry.key.startsWith('bpj_') &&
+              entry.value != null &&
+              entry.value.toString() != '' &&
+              entry.value.toString() != '{}',
+        )) {
+      throw StateError(
+        'Gereja masih memiliki akun, jemaat, atau riwayat. Pindahkan atau periksa data dahulu; gereja tidak dihapus.',
+      );
+    }
+  }
+
+  Future<void> _archive(List<ManagementRecord> churches, bool archived) async {
+    _super(await access());
+    if (archived && churches.any((church) => church.id == _view)) {
+      throw StateError(
+        'Gereja sedang dibuka. Buka gereja lain sebelum menghapusnya.',
+      );
+    }
+    if (churches.length > 400)
+      throw StateError('Terlalu banyak gereja untuk satu operasi.');
+    if (archived)
+      for (final church in churches) await _requireEmptyChurch(church);
+    await _db
+        .runTransaction((tx) async {
+          _super(
+            _access((await tx.get(_db.collection('users').doc(_uid))).data()),
+          );
+          final fresh = <DocumentSnapshot<Map<String, dynamic>>>[];
+          for (final church in churches) {
+            final doc = await tx.get(_db.collection('churches').doc(church.id));
+            if (!doc.exists ||
+                !managementUnchanged(church.data, doc.data()!, [
+                  'isArchived',
+                  'daerah',
+                  'namaGereja',
+                  'namaDaerah',
+                  'lastUpdate',
+                  'kodeUndangan',
+                ])) {
+              throw StateError(
+                'Informasi gereja berubah. Muat ulang sebelum melanjutkan.',
+              );
+            }
+            fresh.add(doc);
+          }
+          _guard();
+          for (final doc in fresh) {
+            final data = doc.data()!;
+            tx.update(doc.reference, {
+              'isArchived': archived,
+              'lastUpdate': FieldValue.serverTimestamp(),
+              if (archived)
+                '_archivedInviteCode': data['isArchived'] == true
+                    ? data['_archivedInviteCode'] ?? ''
+                    : data['kodeUndangan'] ?? '',
+              'kodeUndangan': archived
+                  ? FieldValue.delete()
+                  : data['_archivedInviteCode'] ?? '',
+            });
+          }
+        })
+        .timeout(_deadline);
+  }
+
+  @override
+  Future<void> deleteChurch(ManagementRecord expected) =>
+      _archive([expected], true);
+  @override
+  Future<void> restoreChurch(ManagementRecord expected) =>
+      _archive([expected], false);
+
+  @override
+  Future<void> renameRegion(String area, String name) async {
+    _super(await access());
+    final label = cleanRegionName(name);
+    if (label.isEmpty || label.length > 200)
+      throw StateError('Nama daerah wajib diisi, maksimal 200 karakter.');
+    final all = await _db
+        .collection('churches')
+        .get(_server)
+        .timeout(_deadline);
+    final groups = groupChurchRegions(all.docs.map((doc) => doc.data()));
+    if (groups.any(
+      (group) =>
+          regionNameKey(group.name) != regionNameKey(area) &&
+          (regionNameKey(group.displayName) == regionNameKey(label) ||
+              regionNameKey(group.name) == regionNameKey(label)),
+    )) {
+      throw StateError(
+        'Nama tersebut sudah digunakan daerah lain. Gunakan nama berbeda.',
+      );
+    }
+    final matches = all.docs
+        .where(
+          (doc) =>
+              doc.data()['isArchived'] != true &&
+              regionNameKey(doc.data()['daerah']) == regionNameKey(area),
+        )
+        .toList();
+    if (matches.isEmpty || matches.length > 400)
+      throw StateError(
+        'Daerah tidak ditemukan atau terlalu besar untuk satu operasi.',
+      );
+    await _db
+        .runTransaction((tx) async {
+          _super(
+            _access((await tx.get(_db.collection('users').doc(_uid))).data()),
+          );
+          final refs = <DocumentReference<Map<String, dynamic>>>[];
+          for (final doc in matches) {
+            final fresh = await tx.get(doc.reference);
+            if (!fresh.exists ||
+                fresh.data()?['isArchived'] == true ||
+                regionNameKey(fresh.data()?['daerah']) != regionNameKey(area) ||
+                !managementUnchanged(doc.data(), fresh.data()!, [
+                  'namaDaerah',
+                  'lastUpdate',
+                ])) {
+              throw StateError('Daerah berubah. Muat ulang sebelum menyimpan.');
+            }
+            refs.add(doc.reference);
+          }
+          _guard();
+          for (final ref in refs)
+            tx.update(ref, {
+              'namaDaerah': label,
+              'lastUpdate': FieldValue.serverTimestamp(),
+            });
+        })
+        .timeout(_deadline);
+  }
+
+  @override
+  Future<void> deleteRegion(String area) async {
+    _super(await access());
+    final all = await _db
+        .collection('churches')
+        .get(_server)
+        .timeout(_deadline);
+    final matches = all.docs
+        .where(
+          (doc) =>
+              doc.data()['isArchived'] != true &&
+              regionNameKey(doc.data()['daerah']) == regionNameKey(area),
+        )
+        .toList();
+    if (matches.isEmpty) throw StateError('Daerah tidak ditemukan.');
+    final names = matches
+        .map((doc) => doc.data()['daerah']?.toString() ?? '')
+        .toSet();
+    for (final name in names) {
+      final assigned = await _db
+          .collection('users')
+          .where('adminDaerahArea', isEqualTo: name)
+          .limit(1)
+          .get(_server)
+          .timeout(_deadline);
+      if (assigned.docs.isNotEmpty)
+        throw StateError(
+          'Daerah masih memiliki penugasan admin. Cabut penugasan dahulu.',
+        );
+      for (final collection in [
+        'pengurus_daerah',
+        'inventaris_daerah',
+        'keuangan_daerah',
+        'perpuluhan_daerah',
+        'info_surat_daerah',
+      ]) {
+        final records = await _db
+            .collection(collection)
+            .where('daerah', isEqualTo: name)
+            .limit(1)
+            .get(_server)
+            .timeout(_deadline);
+        if (records.docs.isNotEmpty)
+          throw StateError(
+            'Daerah masih memiliki pengurus, inventaris, keuangan, atau info/surat. Daerah tidak dihapus.',
+          );
+      }
+      if (name.trim().isEmpty) continue;
+      final root = _db
+          .collection('struktur_pengurus_daerah')
+          .doc(Uri.encodeComponent(name.trim()));
+      final structure = await root.get(_server).timeout(_deadline);
+      if (structure.exists &&
+          structure.data()!.keys.any((key) => key.startsWith('bphd_'))) {
+        throw StateError(
+          'Daerah masih memiliki pengurus. Daerah tidak dihapus.',
+        );
+      }
+      for (final section in ['penasehat', 'mkdp', 'bpk', 'komisi']) {
+        final records = await root
+            .collection(section)
+            .limit(1)
+            .get(_server)
+            .timeout(_deadline);
+        if (records.docs.isNotEmpty)
+          throw StateError(
+            'Daerah masih memiliki pengurus. Daerah tidak dihapus.',
+          );
+      }
+      final chat = managementId(name)
+          ? await _db
+                .collection('chats_daerah')
+                .doc(name)
+                .get(_server)
+                .timeout(_deadline)
+          : null;
+      if (chat?.exists == true)
+        throw StateError(
+          'Daerah masih memiliki percakapan. Daerah tidak dihapus.',
+        );
+    }
+    await _archive(
+      matches.map((doc) => ManagementRecord(doc.id, doc.data())).toList(),
+      true,
+    );
+  }
+
   @override
   Future<void> enterChurch(ManagementRecord church) async {
     final latest = await loadChurch(church.id);
+    if (latest.data['isArchived'] == true)
+      throw StateError('Gereja telah dihapus dari daftar aktif.');
     _guard();
     if (!_manager.isSuperAdmin())
       throw StateError('Sesi lokal berubah. Masuk ulang terlebih dahulu.');

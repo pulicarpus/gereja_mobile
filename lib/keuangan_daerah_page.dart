@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'region_names.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -47,7 +48,7 @@ class KeuanganDaerahPage extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Text("Keuangan ${namaDaerah.toUpperCase()}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: RegionLabel(area: namaDaerah, prefix: 'Keuangan ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           backgroundColor: Colors.indigo[900],
           foregroundColor: Colors.white,
           elevation: 0,
@@ -693,7 +694,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
       for (var doc in snap.docs) {
         var data = doc.data();
-        if (regionNameKey(data['daerah']) != regionNameKey(widget.namaDaerah)) continue;
+        if (data['isArchived'] == true || regionNameKey(data['daerah']) != regionNameKey(widget.namaDaerah)) continue;
         String nmGereja = data['namaGereja'] ?? data['churchName'] ?? data['nama'] ?? "";
         String nmGembala = data['namaGembala'] ?? "";
 

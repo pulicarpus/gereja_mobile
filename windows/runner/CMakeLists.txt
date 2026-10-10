@@ -24,6 +24,7 @@ apply_standard_settings(${BINARY_NAME})
 target_compile_options(${BINARY_NAME} PRIVATE "$<$<CONFIG:Release>:/Zi>")
 target_link_options(${BINARY_NAME} PRIVATE
   "$<$<CONFIG:Release>:/DEBUG>"
+  "$<$<CONFIG:Release>:/MAP>"
   "$<$<CONFIG:Release>:/OPT:REF>"
   "$<$<CONFIG:Release>:/OPT:ICF>")
 

@@ -1,3 +1,4 @@
+import 'region_label.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'region_photo_upload.dart';

@@ -1,4 +1,5 @@
 #include "flutter_window.h"
+#include "startup_trace.h"
 
 #include <optional>
 
@@ -18,13 +19,16 @@ bool FlutterWindow::OnCreate() {
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.
+  GkiiStartupTrace("native: create Flutter controller");
   flutter_controller_ = std::make_unique<flutter::FlutterViewController>(
       frame.right - frame.left, frame.bottom - frame.top, project_);
   // Ensure that basic setup of the controller was successful.
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
+  GkiiStartupTrace("native: register plugins");
   RegisterPlugins(flutter_controller_->engine());
+  GkiiStartupTrace("native: plugins registered");
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

@@ -36,10 +36,10 @@ try {
     $detail = $report.error.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
     Write-Output "::error::Startup check: $detail (exit $($report.exitCode))"
     if (Test-Path $env:GKII_STARTUP_TRACE_PATH) {
-        Get-Content $env:GKII_STARTUP_TRACE_PATH -Tail 30 | ForEach-Object {
-            $stage = $_.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::notice::Startup trace: $stage"
-        }
+        # GitHub caps annotations per step. Keep the whole trace in one notice
+        # so later exception frames are not hidden by earlier checkpoints.
+        $stage = ((Get-Content $env:GKII_STARTUP_TRACE_PATH -Tail 40) -join ' | ').Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+        Write-Output "::notice::Startup trace: $stage"
         $mapPath = [IO.Path]::ChangeExtension((Resolve-Path $Executable).Path, '.map')
         if (Test-Path $mapPath) {
             Copy-Item $mapPath $diagnostics
@@ -55,7 +55,7 @@ try {
                         }
                     }
                 })
-                Get-Content $env:GKII_STARTUP_TRACE_PATH -Tail 30 | ForEach-Object {
+                $resolvedFrames = @(Get-Content $env:GKII_STARTUP_TRACE_PATH -Tail 40 | ForEach-Object {
                     if ($_ -match '(fault|frame) module=.*gereja_mobile\.exe rva=0x([0-9a-fA-F]+)') {
                         $faultOffset = [Convert]::ToUInt64($Matches[2], 16)
                         $nearest = $symbols | Where-Object { $_.Offset -le $faultOffset } |
@@ -63,9 +63,12 @@ try {
                         if ($nearest) {
                             $symbol = $nearest.Name.Replace('%', '%25')
                             $delta = $faultOffset - $nearest.Offset
-                            Write-Output "::notice::Startup symbol: $symbol + $delta bytes"
+                            "$symbol + $delta bytes"
                         }
                     }
+                })
+                if ($resolvedFrames.Count -gt 0) {
+                    Write-Output ("::notice::Startup symbols: " + ($resolvedFrames -join ' | '))
                 }
             }
         }

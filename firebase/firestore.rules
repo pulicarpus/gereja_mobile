@@ -171,6 +171,7 @@ service cloud.firestore {
     match /struktur_pengurus_daerah/{idDaerah} {
       // Superadmin dapat membuka daerah baru tanpa daftar nama dalam Rules.
       allow get: if pdSuper() || pdParentReadable(idDaerah);
+      allow list: if pdRead(resource.data.daerah);
       // Dokumen induk daerah baru dibuat superadmin melalui pengisian pengurus.
       allow create: if pdSuper()
         && request.resource.data.daerah is string

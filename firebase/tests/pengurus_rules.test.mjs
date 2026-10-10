@@ -162,6 +162,9 @@ try {
     await assertFails(setDoc(doc(db, `${comments}/bad`), { ...message, authorId: id }));
     await assertFails(deleteDoc(doc(db, `${comments}/one`)));
   }
+  await assertSucceeds(getDocs(query(collection(pastor, 'struktur_pengurus_daerah'), where('daerah', 'in', ['Belitang', ' BELITANG ']))));
+  await assertFails(getDocs(query(collection(pastor, 'struktur_pengurus_daerah'), where('daerah', 'in', ['Belitang', 'Ketungau']))));
+  await assertSucceeds(getDocs(collection(pastor, `${root}/penasehat`)));
   // Legacy uppercase/whitespace region aliases must not isolate pastors.
   await assertSucceeds(setDoc(doc(superDb, 'info_surat_daerah/alias'), { daerah: ' BELITANG ' }));
   await assertSucceeds(getDocs(query(collection(pastor, 'info_surat_daerah'), where('daerah', 'in', ['Belitang', ' BELITANG ']))));

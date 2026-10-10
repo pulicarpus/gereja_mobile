@@ -114,3 +114,10 @@ Hak menulis pengumuman dan hak admin daerah tetap memakai identitas persis.
 Perbaikan ini memerlukan aplikasi terbaru **dan** Publish seluruh file
 `firebase/firestore.rules` terbaru mengikuti langkah Menerapkan di atas.
 APK sendiri tidak memperbarui Rules produksi.
+
+Pengurus Daerah untuk gembala mencari dokumen induk yang sudah ada di antara
+variasi nama daerah tersebut. Nama daerah tidak langsung dipakai untuk membuka
+jalur kosong yang berbeda kapitalisasinya. ID dokumen yang ditemukan dipakai
+juga saat membuka anggota komisi. Query induk diizinkan hanya bila semua daerah
+yang dicari dapat dibaca akun; hak edit gembala tetap ditolak. Pembaruan ini
+memerlukan Publish Rules terbaru dan aplikasi terbaru.

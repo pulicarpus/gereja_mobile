@@ -23,8 +23,9 @@ class PengurusRepository {
     String area,
     this.sessionId, {
     this.readOnly = false,
+    String? documentId,
   }) : regionName = area.trim(),
-       churchId = pengurusRegionId(area);
+       churchId = documentId ?? pengurusRegionId(area);
   bool get isRegion => regionName != null;
   String get seksiCollection => isRegion ? 'komisi' : 'bpj_seksi';
   String get sectionNameKey => isRegion ? 'namaKomisi' : 'namaSeksi';

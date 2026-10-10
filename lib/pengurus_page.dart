@@ -1,3 +1,4 @@
+import 'region_pengurus.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -19,6 +20,8 @@ class PengurusPage extends StatefulWidget {
 
 class _PengurusPageState extends State<PengurusPage> {
   PengurusRepository? _repo;
+  bool _resolving = false;
+  String? _regionError;
   late final String _churchName;
   Stream<DocumentSnapshot<Map<String, dynamic>>>? _churchStream;
   Stream<QuerySnapshot<Map<String, dynamic>>>? _seksiStream,
@@ -50,7 +53,37 @@ class _PengurusPageState extends State<PengurusPage> {
                   widget.churchId != null &&
                   id != user.getChurchIdForCurrentView(),
             );
-      _connect();
+      if (_isRegion && user.isGembala()) {
+        _resolvePastorRegion(user.userId!);
+      } else {
+        _connect();
+      }
+    }
+  }
+
+  Future<void> _resolvePastorRegion(String uid) async {
+    _resolving = true;
+    try {
+      final root = await resolveRegionPengurus(
+        FirebaseFirestore.instance,
+        widget.namaDaerah!,
+      );
+      if (!mounted || UserManager().userId != uid) return;
+      if (root == null) {
+        _regionError = 'Pengurus daerah belum diisi oleh administrator.';
+      } else {
+        _repo = PengurusRepository.daerah(
+          root.data()['daerah'] as String,
+          uid,
+          documentId: root.id,
+          readOnly: true,
+        );
+        _connect();
+      }
+    } catch (error) {
+      if (mounted) _regionError = pengurusError(error);
+    } finally {
+      if (mounted) setState(() => _resolving = false);
     }
   }
 
@@ -67,6 +100,13 @@ class _PengurusPageState extends State<PengurusPage> {
   }
 
   void _retry() {
+    if (_isRegion &&
+        UserManager().isGembala() &&
+        UserManager().userId != null) {
+      setState(() => _regionError = null);
+      _resolvePastorRegion(UserManager().userId!);
+      return;
+    }
     if (mounted && _repo != null) setState(_connect);
   }
 
@@ -206,7 +246,7 @@ class _PengurusPageState extends State<PengurusPage> {
           namaSeksi: name,
           churchId: repo.churchId,
           readOnly: !repo.canEdit,
-          namaDaerah: widget.namaDaerah,
+          namaDaerah: repo.regionName,
         ),
       ),
     );
@@ -359,7 +399,11 @@ class _PengurusPageState extends State<PengurusPage> {
       backgroundColor: Colors.indigo[900],
       foregroundColor: Colors.white,
     ),
-    body: _repo == null
+    body: _resolving
+        ? const Center(child: CircularProgressIndicator())
+        : _regionError != null
+        ? pengurusMessage(_regionError!, retry: _retry)
+        : _repo == null
         ? pengurusMessage(
             'Gereja atau sesi akun belum tersedia. Silakan kembali dan masuk ulang.',
           )

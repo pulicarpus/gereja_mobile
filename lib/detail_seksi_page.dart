@@ -44,6 +44,7 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
               widget.namaDaerah!,
               user.userId!,
               readOnly: widget.readOnly,
+              documentId: widget.churchId,
             )
           : PengurusRepository(
               id,

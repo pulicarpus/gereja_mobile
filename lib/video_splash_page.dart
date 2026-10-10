@@ -1,13 +1,13 @@
+import 'dart:io';
 import 'mobile_notifications.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
- 
 
-import 'main.dart'; 
-import 'login_page.dart'; 
+import 'main.dart';
+import 'login_page.dart';
 import 'user_manager.dart'; // 👈 IMPORT OTAK MEMORI KITA
 
 // 👇 IMPORT 2 GERBANG TOL KITA 👇
@@ -24,13 +24,20 @@ class VideoSplashPage extends StatefulWidget {
 class _VideoSplashPageState extends State<VideoSplashPage> {
   late VideoPlayerController _controller;
   Timer? _timer;
-  bool _isNavigating = false; 
+  bool _isNavigating = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.asset("assets/videos/splash_video.mp4");
-    _initializeVideo();
+    // The Windows video plugin can crash natively before Dart can catch an
+    // initialization error. The opening video is decorative; desktop uses a
+    // static splash while preserving the same session restoration and routing.
+    if (!Platform.isWindows) {
+      _controller = VideoPlayerController.asset(
+        "assets/videos/splash_video.mp4",
+      );
+      _initializeVideo();
+    }
     _timer = Timer(const Duration(seconds: 2), () {
       if (mounted && !_isNavigating) {
         _isNavigating = true;
@@ -75,9 +82,13 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
 
     // Jika jaringan tersedia, segarkan profil dari Firestore sebelum menentukan rute.
     try {
-      final doc = await FirebaseFirestore.instance.collection("users").doc(user.uid)
-          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
-      if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid) return;
+      final doc = await FirebaseFirestore.instance
+          .collection("users")
+          .doc(user.uid)
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
+      if (!mounted || FirebaseAuth.instance.currentUser?.uid != user.uid)
+        return;
       if (!doc.exists) {
         await userManager.reset();
         _doNavigate(const LoginPage());
@@ -99,7 +110,8 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
           churchId: data['churchId']?.toString() ?? "",
           churchName: data['churchName']?.toString() ?? "",
           uId: user.uid,
-          uNama: data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat",
+          uNama:
+              data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat",
           uFoto: data['photoUrl']?.toString() ?? user.photoURL,
           uKomisi: data['kelompok']?.toString() ?? "Umum",
           uIsPengurus: data['isPengurus'] == true,
@@ -156,12 +168,36 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
   @override
   void dispose() {
     _timer?.cancel();
-    _controller.dispose();
+    if (!Platform.isWindows) _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (Platform.isWindows) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF5F7FA),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.church, size: 96, color: Colors.indigo.shade900),
+              const SizedBox(height: 24),
+              const Text('Selamat Datang di', style: TextStyle(fontSize: 18)),
+              const SizedBox(height: 8),
+              Text(
+                'GKII Mobile',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.indigo.shade900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
@@ -176,7 +212,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
                     width: double.infinity,
                     height: double.infinity,
                     child: FittedBox(
-                      fit: BoxFit.cover, 
+                      fit: BoxFit.cover,
                       child: SizedBox(
                         width: _controller.value.size.width,
                         height: _controller.value.size.height,
@@ -184,7 +220,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
                       ),
                     ),
                   )
-                : const CircularProgressIndicator(color: Colors.indigo), 
+                : const CircularProgressIndicator(color: Colors.indigo),
           ),
 
           // ==========================================
@@ -194,7 +230,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: MediaQuery.of(context).size.height * 0.35, 
+              bottom: MediaQuery.of(context).size.height * 0.35,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -204,23 +240,31 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: Colors.indigo.shade900, 
+                      color: Colors.indigo.shade900,
                       shadows: [
-                        Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
-                      ]
+                        Shadow(
+                          color: Colors.white.withOpacity(0.8),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 5), 
+                  const SizedBox(height: 5),
                   Text(
                     "GKII Mobile",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 38, 
-                      fontWeight: FontWeight.w900, 
+                      fontSize: 38,
+                      fontWeight: FontWeight.w900,
                       color: Colors.blue.shade700,
                       shadows: [
-                        Shadow(color: Colors.white.withOpacity(0.8), blurRadius: 10, offset: const Offset(0, 2))
-                      ]
+                        Shadow(
+                          color: Colors.white.withOpacity(0.8),
+                          blurRadius: 10,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -231,4 +275,3 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
     );
   }
 }
-

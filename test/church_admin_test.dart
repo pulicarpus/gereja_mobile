@@ -64,6 +64,19 @@ void main() {
       'Belitang',
     );
   });
+  test(
+    'Editing the only church after region rename preserves region identity',
+    () async {
+      await gateway.renameRegion('Belitang', 'Belitang Baru');
+      await gateway.saveChurch('C', {
+        'namaGereja': 'Corrected',
+        'daerah': 'Belitang Baru',
+        'alamat': '',
+      }, expected: await church());
+      expect((await church()).data['daerah'], 'Belitang');
+      expect((await church()).data['namaDaerah'], 'Belitang Baru');
+    },
+  );
   test('Regional history blocks deleting region', () async {
     await db.doc('info_surat_daerah/info').set({'daerah': 'Belitang'});
     await expectLater(gateway.deleteRegion('Belitang'), throwsStateError);
@@ -79,6 +92,10 @@ void main() {
       expect(groups.map((g) => g.name), isNot(contains('Belitang')));
     },
   );
+  test('Restore cannot clear an active church invitation', () async {
+    await expectLater(gateway.restoreChurch(await church()), throwsStateError);
+    expect((await church()).data['kodeUndangan'], 'CODE');
+  });
   test('Fresh server role rejects local superadmin privilege', () async {
     await db.doc('users/boss').update({'role': 'user'});
     await expectLater(gateway.deleteChurch(await church()), throwsStateError);

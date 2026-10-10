@@ -525,10 +525,7 @@ class FirebaseManagementGateway implements ManagementGateway {
         .get(_server)
         .timeout(_deadline);
     _guard();
-    final activeRecords = churches.docs
-        .where((doc) => doc.id != id)
-        .map((doc) => doc.data())
-        .toList();
+    final activeRecords = churches.docs.map((doc) => doc.data()).toList();
     patch['daerah'] = churchRegionIdentifier(patch['daerah'], activeRecords);
     patch['namaDaerah'] = cleanRegionName(patch['daerah']);
     for (final group in groupChurchRegions(activeRecords)) {
@@ -664,6 +661,11 @@ class FirebaseManagementGateway implements ManagementGateway {
 
   Future<void> _archive(List<ManagementRecord> churches, bool archived) async {
     _super(await access());
+    if (churches.any(
+      (church) => (church.data['isArchived'] == true) == archived,
+    )) {
+      throw StateError('Status arsip sudah berubah. Muat ulang daftar gereja.');
+    }
     if (archived && churches.any((church) => church.id == _view)) {
       throw StateError(
         'Gereja sedang dibuka. Buka gereja lain sebelum menghapusnya.',

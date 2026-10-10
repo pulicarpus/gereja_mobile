@@ -243,8 +243,8 @@ class _DaerahRecordsPageState extends State<DaerahRecordsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.namaDaerah,
+                  RegionLabel(
+                    area: widget.namaDaerah,
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                   const SizedBox(height: 12),

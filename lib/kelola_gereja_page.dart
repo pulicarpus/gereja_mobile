@@ -280,7 +280,8 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
                                         ),
                                       ),
                                       TextButton.icon(
-                                        onPressed: _busy
+                                        onPressed:
+                                            _busy || (active && !_showArchived)
                                             ? null
                                             : () => _delete(
                                                 church,

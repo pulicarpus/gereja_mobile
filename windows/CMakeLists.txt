@@ -78,8 +78,6 @@ set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 gkii_use_baseline_snappy()
 include(firestore_settings_guard.cmake)
 gkii_guard_firestore_settings()
-include(auth_signed_out.cmake)
-gkii_guard_signed_out_auth()
 include(storage_lifetime.cmake)
 gkii_fix_storage_lifetime()
 

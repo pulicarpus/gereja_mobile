@@ -417,7 +417,7 @@ class FirebaseManagementGateway implements ManagementGateway {
             final head = await tx.get(source.doc(headId));
             if (!head.exists ||
                 head.data()?['familyRevision'] !=
-                    headSnapshot.data()?['familyRevision']) {
+                    headSnapshot?.data()?['familyRevision']) {
               throw StateError(
                 'Susunan keluarga berubah. Muat ulang sebelum memindahkan.',
               );

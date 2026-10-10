@@ -7,21 +7,36 @@ pilih gereja tujuan → baca konfirmasi → Simpan. Admin gereja biasa tidak dap
 memindahkan akun antar gereja, dan superadmin tidak bisa memindahkan akun
 sendiri atau akun superadmin lainnya melalui menu ini.
 
-Transaksi memeriksa ulang kewenangan, akun, pemilik tautan lama, dan keberadaan
-gereja tujuan sebelum menulis. Tautan `uid` di buku induk lama dilepas; akun
-mendapat churchId/churchName/daerah tujuan dan jemaatId kosong. Biodata, keluarga,
-riwayat, serta dokumen jemaat di gereja asal tidak dipindahkan atau dihapus.
-Penugasan admin daerah dan pengurus lokal dicabut. Akun admin/BPJ menjadi user;
-akun gembala tetap gembala tetapi belum mendapat akses daerah sebelum tertaut
-kembali. Tidak ada perubahan separuh transaksi jika validasi gagal.
+Setelah memilih gereja tujuan, pilih **Pindahkan satu orang** atau
+**Pindahkan satu keluarga**, kemudian baca konfirmasi dan Simpan.
 
-Pengguna masuk ulang, lalu melalui Profil Saya menghubungkan Data Jemaat yang
-sudah disiapkan di gereja tujuan. Akun gembala yang belum tertaut juga bisa
-masuk ke Beranda dan menautkan lewat Profil Saya. Nomor WhatsApp harus unik di
-gereja tujuan; tahun lahir diperlukan untuk verifikasi.
+Biodata lengkap (termasuk kolom tambahan, foto, dan riwayat pada dokumen jemaat)
+dipindahkan ke koleksi jemaat gereja tujuan dengan ID yang sama. Dokumen di
+gereja lama dihapus dalam transaksi yang sama. Akun yang tertaut tetap memiliki
+jemaatId dan UID yang sesuai, sehingga cukup masuk ulang tanpa menautkan ulang.
+Foto tetap menggunakan URL yang sama; berkas foto tidak diunggah ulang.
+Akun tanpa tautan jemaat hanya dipindahkan akunnya; pilihan keluarga memerlukan
+tautan jemaat yang valid.
+
+Satu keluarga mencakup kepala keluarga dan semua dokumen yang merujuk kepala
+keluarga itu, termasuk anggota tanpa akun. Akun anggota yang sudah tertaut ikut
+berpindah. Hubungan keluarga dan kategorial jemaat tetap sama. Penugasan admin
+daerah dan pengurus lokal dicabut untuk semua akun yang dipindahkan; admin
+menjadi user, sementara gembala tetap gembala dan mengikuti daerah tujuan.
+Jika salah satu akun merupakan superadmin, akun pelaksana, tautannya rusak,
+atau ID jemaat sudah ada di tujuan, seluruh perpindahan ditolak tanpa perubahan.
+Keluarga di atas 100 orang tidak dipindahkan otomatis.
+
+Satu orang menjadi kepala keluarga sendiri di tujuan; keluarganya tidak ikut
+berpindah. Kepala keluarga yang masih memiliki anggota tidak dapat dipindahkan
+sendirian: pilih satu keluarga atau atur kepala keluarga pengganti terlebih
+dahulu melalui menu keluarga. Perubahan susunan keluarga dari aplikasi diperiksa
+melalui familyRevision supaya anggota yang baru ditambahkan tidak tertinggal.
+Gunakan versi aplikasi terbaru untuk pengelolaan keluarga bersamaan dengan
+perpindahan; perubahan manual lewat Console tidak mengikuti pemeriksaan ini.
 
 Jika tautan lama rusak (jemaat hilang, UID tidak sesuai), perpindahan ditolak
-agar tidak melepas akun orang lain. Administrator perlu memeriksa data itu
+agar tidak memindahkan data orang lain. Administrator perlu memeriksa data itu
 terlebih dahulu. Timeout tidak menyatakan gagal pasti: muat ulang daftar,
 periksa gereja akun, baru bertindak lagi. Daftar gereja tujuan tidak menampilkan
 gereja akun saat ini.

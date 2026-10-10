@@ -116,7 +116,10 @@ Future<void> deleteUnlinkedJemaat(String churchId, String jemaatId) async {
         data['idKepalaKeluarga'] == jemaatId) {
       throw StateError('Akun atau kepala keluarga harus diselesaikan dahulu. Data tidak dihapus.');
     }
+    final headId = legacyText(data['idKepalaKeluarga']).trim();
+    final head = headId.isNotEmpty ? await tx.get(col.doc(headId)) : null;
     access.assertCurrent();
+    if (head?.exists == true) tx.update(head!.reference, {'familyRevision': FieldValue.increment(1)});
     tx.delete(ref);
   }).timeout(const Duration(seconds: 20));
 }

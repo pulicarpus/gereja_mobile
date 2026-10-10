@@ -78,7 +78,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         title: const Text('Konfirmasi perubahan'),
         content: Text(
           field == 'churchId'
-              ? 'Pindahkan akun ke gereja yang dipilih? Tautan buku induk lama akan dilepas; biodata, keluarga, dan riwayat gereja asal tetap disimpan. Jabatan admin gereja/daerah dan pengurus lokal akan dicabut. Pengguna harus menghubungkan kembali data jemaat di gereja tujuan.'
+              ? '${value is ChurchTransferChoice && value.wholeFamily ? 'Pindahkan seluruh keluarga' : 'Pindahkan satu orang'} ke gereja yang dipilih? Biodata dan foto ikut pindah, akun tetap tertaut. Hak admin gereja/daerah dan pengurus lokal akan dicabut untuk akun yang ikut pindah. Untuk satu orang, hubungan keluarga di tujuan menjadi keluarga sendiri. Kepala keluarga yang masih memiliki anggota harus dipindahkan bersama keluarganya atau diatur ulang dahulu.'
               : field == 'kelompok'
               ? 'Ubah kategorial ke $value? Status pengurus lokal akan di-reset.'
               : 'Simpan perubahan ${field == 'role'
@@ -112,7 +112,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Akun dipindahkan. Pengguna perlu masuk ulang dan menghubungkan Data Jemaat di gereja tujuan.',
+              'Data jemaat dan akun dipindahkan. Pengguna cukup masuk ulang; tautan jemaat tetap terhubung.',
             ),
           ),
         );
@@ -208,8 +208,33 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         ),
       ),
     );
-    if (selected != null && mounted && !_expired)
+    if (selected == null || !mounted || _expired) return;
+    if (field == 'churchId') {
+      final family = await showDialog<bool>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Siapa yang dipindahkan?'),
+          children: [
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Pindahkan satu orang'),
+            ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Pindahkan satu keluarga'),
+            ),
+          ],
+        ),
+      );
+      if (family != null && mounted && !_expired) {
+        await _change(
+          field,
+          ChurchTransferChoice(selected, wholeFamily: family),
+        );
+      }
+    } else {
       await _change(field, selected);
+    }
   }
 
   Widget _action(String title, VoidCallback onTap) => Padding(
@@ -319,7 +344,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                               role == 'user' ? 'admin' : 'user',
                             ),
                           ),
-                        if (user.id != access!.uid &&
+                        if (user.id != access.uid &&
                             (role == 'user' ||
                                 (access.superAdmin && role == 'admin')))
                           _action(
@@ -331,7 +356,7 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                           const Text(
                             'Untuk menjadi gembala, hubungkan Data Jemaat melalui Profil Saya terlebih dahulu.',
                           ),
-                        if (access!.superAdmin) ...[
+                        if (access.superAdmin) ...[
                           if (user.id != access.uid)
                             _action(
                               'Atur / Pindah Gereja',

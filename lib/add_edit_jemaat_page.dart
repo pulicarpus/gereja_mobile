@@ -185,8 +185,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
         await _db.runTransaction((tx) async {
           await access.inTransaction(tx);
           final existing = await tx.get(docRef);
+          DocumentSnapshot<Map<String, dynamic>>? familyHead;
           if (widget.idKepalaKeluargaBaru != null) {
             final head = await tx.get(colRef.doc(widget.idKepalaKeluargaBaru));
+            familyHead = head;
             if (!head.exists || head.data()?['statusKeluarga'] != 'Kepala Keluarga') {
               throw StateError('Kepala keluarga berubah. Buka ulang keluarga.');
             }
@@ -195,6 +197,7 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
           if (existing.exists) {
             assertRetryMatches(existing.data()!, jemaatMap);
           } else {
+            if (familyHead != null) tx.update(familyHead.reference, {'familyRevision': FieldValue.increment(1)});
             tx.set(docRef, jemaatMap);
           }
         }).timeout(const Duration(seconds: 20));

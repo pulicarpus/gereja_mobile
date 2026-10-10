@@ -32,6 +32,7 @@ class FakeManagementGateway extends ManagementGateway {
   Completer<ManagementRecord>? pendingLoad;
   int saves = 0, entries = 0, changes = 0, loads = 0;
   String? savedId;
+  ChurchTransferChoice? transferChoice;
   Map<String, dynamic>? savedValues;
   @override
   String? get signedInUid => uid;
@@ -72,6 +73,10 @@ class FakeManagementGateway extends ManagementGateway {
     dynamic value,
   ) async {
     changes++;
+    if (value is ChurchTransferChoice) {
+      transferChoice = value;
+      value = value.churchId;
+    }
     if (changeError != null) throw changeError!;
     user = ManagementRecord(user.id, {
       ...user.data,
@@ -198,7 +203,32 @@ void main() {
     });
   });
   test(
-    'Account transfer clears old linkage and assignments without transferring biodata',
+    'Individual transfer preserves biodata and UID but separates family relation',
+    () {
+      final source = <String, dynamic>{
+        'id': 'J',
+        'uid': 'u',
+        'namaLengkap': 'Nama',
+        'foto': 'https://foto',
+        'tanggalLahir': '2000-01-01',
+        'statusBaptis': 'Sudah',
+        'kelompok': 'AMKI',
+        'idKepalaKeluarga': 'K',
+        'statusKeluarga': 'Anak',
+        'riwayat': {'catatan': 'tetap'},
+        'custom': [1, 2],
+      };
+      expect(transferredMember(source, 'J', false), {
+        ...source,
+        'idKepalaKeluarga': 'J',
+        'statusKeluarga': 'Kepala Keluarga',
+      });
+      expect(source['idKepalaKeluarga'], 'K');
+      expect(transferredMember(source, 'J', true), source);
+    },
+  );
+  test(
+    'Base transfer patch resets obsolete assignments before verified member migration',
     () {
       expect(
         managementUserPatch(
@@ -301,7 +331,7 @@ void main() {
     },
   );
   test(
-    'Moving an administrator revokes editing roles; a pastor must relink before viewing',
+    'Base transfer patch revokes editing roles and retains the pastor role',
     () {
       final admin = managementUserPatch(
         central,
@@ -431,6 +461,39 @@ void main() {
     expect(managementText(123), '123');
     expect(managementUncertain(TimeoutException('pending')), isTrue);
   });
+  for (final family in [false, true]) {
+    testWidgets(
+      'Transfer choice $family requires confirmation before writing',
+      (tester) async {
+        final fake = FakeManagementGateway()
+          ..church = ManagementRecord('B', {'namaGereja': 'Gereja Tujuan'});
+        await showPage(
+          tester,
+          DetailPenggunaPage(userId: 'target', gateway: fake),
+        );
+        await tester.ensureVisible(find.text('Atur / Pindah Gereja'));
+        await tester.tap(find.text('Atur / Pindah Gereja'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Gereja Tujuan'));
+        await tester.pumpAndSettle();
+        expect(find.text('Pindahkan satu orang'), findsOneWidget);
+        expect(find.text('Pindahkan satu keluarga'), findsOneWidget);
+        await tester.tap(
+          find.text(
+            family ? 'Pindahkan satu keluarga' : 'Pindahkan satu orang',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(fake.changes, 0);
+        await tester.tap(find.text('Simpan'));
+        await tester.pumpAndSettle();
+        expect(fake.changes, 1);
+        expect(fake.transferChoice!.wholeFamily, family);
+        expect(fake.transferChoice!.churchId, 'B');
+        await fake.auth.close();
+      },
+    );
+  }
   testWidgets('User list reports read errors and retry works', (tester) async {
     final fake = FakeManagementGateway()
       ..listError = StateError('Pilih gereja terlebih dahulu.');

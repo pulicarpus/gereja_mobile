@@ -16,6 +16,23 @@ String managementChurchName(Map<String, dynamic> data) => managementText(
   ),
 );
 
+class ChurchTransferChoice {
+  final String churchId;
+  final bool wholeFamily;
+  const ChurchTransferChoice(this.churchId, {this.wholeFamily = false});
+}
+
+Map<String, dynamic> transferredMember(
+  Map<String, dynamic> source,
+  String id,
+  bool wholeFamily,
+) => {
+  ...source,
+  'id': id,
+  if (!wholeFamily) 'idKepalaKeluarga': id,
+  if (!wholeFamily) 'statusKeluarga': 'Kepala Keluarga',
+};
+
 class ManagementRecord {
   final String id;
   final Map<String, dynamic> data;

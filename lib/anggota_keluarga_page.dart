@@ -158,7 +158,11 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             member.data()?['idKepalaKeluarga'] == jemaatId) {
           throw StateError('Kepala keluarga tidak dapat dijadikan anggota. Atur anggota keluarga asal dahulu.');
         }
+        final oldHead = expectedFamily.isNotEmpty && expectedFamily != widget.idKepalaKeluarga
+            ? await tx.get(col.doc(expectedFamily)) : null;
         access.assertCurrent();
+        tx.update(head.reference, {'familyRevision': FieldValue.increment(1)});
+        if (oldHead?.exists == true) tx.update(oldHead!.reference, {'familyRevision': FieldValue.increment(1)});
         tx.update(member.reference, {'idKepalaKeluarga': widget.idKepalaKeluarga, 'statusKeluarga': newStatus});
       }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$namaJemaat berhasil ditambahkan sebagai $newStatus.")));
@@ -229,7 +233,10 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
             member.data()?['statusKeluarga'] == 'Kepala Keluarga') {
           throw StateError('Anggota keluarga sudah berubah. Muat ulang dahulu.');
         }
+        final head = await tx.get(ref.parent.doc(widget.idKepalaKeluarga));
+        if (!head.exists) throw StateError('Kepala keluarga tidak ditemukan.');
         access.assertCurrent();
+        tx.update(head.reference, {'familyRevision': FieldValue.increment(1)});
         tx.update(ref, {'idKepalaKeluarga': docId, 'statusKeluarga': 'Kepala Keluarga'});
       }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$nama berhasil dikeluarkan.")));

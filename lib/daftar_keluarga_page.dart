@@ -65,7 +65,10 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
             fresh.data()?['statusKeluarga'] != selected['statusKeluarga']) {
           throw StateError('Relasi keluarga sudah berubah. Pilih ulang jemaat.');
         }
+        final oldHead = currentFamily.isNotEmpty && currentFamily != id
+            ? await tx.get(ref.parent.doc(currentFamily)) : null;
         access.assertCurrent();
+        if (oldHead?.exists == true) tx.update(oldHead!.reference, {'familyRevision': FieldValue.increment(1)});
         tx.update(ref, {'idKepalaKeluarga': id, 'statusKeluarga': 'Kepala Keluarga'});
       }).timeout(const Duration(seconds: 20));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Keluarga $nama berhasil dibuat.")));

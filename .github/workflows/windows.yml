@@ -119,46 +119,14 @@ jobs:
           Copy-Item docs/WINDOWS_PREVIEW.md "$releasePath/BACA_DULU.md"
           Get-FileHash "$releasePath/gereja_mobile.exe" -Algorithm SHA256
       - name: Smoke test native startup without accounts or production writes
-        run: |
-          $readyPath = Join-Path $env:RUNNER_TEMP ('gkii-ready-' + [Guid]::NewGuid() + '.txt')
-          $env:GKII_SMOKE_READY_PATH = $readyPath
-          $appProcess = $null
-          $launchTime = Get-Date
-          try {
-            $appProcess = Start-Process -FilePath 'build/windows/x64/runner/Release/gereja_mobile.exe' -PassThru
-            $deadline = (Get-Date).AddSeconds(25)
-            while (!(Test-Path $readyPath) -and (Get-Date) -lt $deadline) {
-              Start-Sleep -Milliseconds 250
-              $appProcess.Refresh()
-              if ($appProcess.HasExited) { throw 'Windows app exited during startup' }
-            }
-            if (!(Test-Path $readyPath)) { throw 'First Flutter frame was not reached' }
-            Write-Output 'Windows Firebase/SQLite initialization and first Flutter frame passed'
-          } catch {
-            $detail = $_.Exception.Message
-            if ($null -ne $appProcess) {
-              $appProcess.Refresh()
-              if ($appProcess.HasExited) {
-                $hexCode = '{0:X8}' -f ($appProcess.ExitCode -band 0xffffffffL)
-                $detail += " (exit $($appProcess.ExitCode), 0x$hexCode)"
-              }
-            }
-            $detail = $detail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error::Startup check: $detail"
-            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Id = 1000; StartTime = $launchTime } -ErrorAction SilentlyContinue |
-              Where-Object { $_.Message -match 'gereja_mobile.exe' } | ForEach-Object {
-                $eventDetail = $_.Message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-                Write-Output "::error::Windows crash event: $eventDetail"
-              }
-            throw
-          } finally {
-            if ($null -ne $appProcess) {
-              $appProcess.Refresh()
-              if (!$appProcess.HasExited) { Stop-Process -Id $appProcess.Id }
-            }
-            Remove-Item Env:GKII_SMOKE_READY_PATH
-            if (Test-Path $readyPath) { Remove-Item $readyPath }
-          }
+        run: ./tool/test_windows_startup.ps1 -Executable 'build/windows/x64/runner/Release/gereja_mobile.exe'
+      - name: Upload startup diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-startup-diagnostics
+          path: windows-startup-diagnostics/
+          if-no-files-found: ignore
       - name: Package complete portable folder
         run: |
           $symbols = Get-ChildItem 'build/windows/x64' -Filter '*.pdb' -Recurse

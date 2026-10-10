@@ -71,6 +71,18 @@ void main() {
     );
   });
   test(
+    'Saving a church reuses an existing region despite casing and spaces',
+    () async {
+      await gateway.saveChurch('C', {
+        'namaGereja': 'Gereja Baru',
+        'daerah': '  LAMA  ',
+        'alamat': '',
+      });
+      expect((await db.doc('churches/C').get()).data()!['daerah'], 'Lama');
+      expect((await db.doc('churches/A').get()).data()!['daerah'], 'Lama');
+    },
+  );
+  test(
     'One person moves full biodata and account, leaves relatives in source',
     () async {
       final original = (await db.doc('churches/A/jemaat/child').get()).data()!;

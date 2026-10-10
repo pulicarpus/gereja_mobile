@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -44,18 +45,13 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
     if (mounted) setState(() { _isLoading = true; _loadError = null; });
     try {
       Query churchQuery = _db.collection("churches");
-      if (widget.namaDaerah != null && widget.namaDaerah != "Belum Diatur") {
-        churchQuery = churchQuery.where('daerah', isEqualTo: widget.namaDaerah);
-      }
       var snapGereja = await churchQuery.get().timeout(const Duration(seconds: 20));
       
       List<QueryDocumentSnapshot> docs = snapGereja.docs;
 
-      if (widget.namaDaerah == "Belum Diatur") {
-        docs = docs.where((doc) {
-          var d = doc.data() as Map<String, dynamic>;
-          return !d.containsKey('daerah') || d['daerah'] == null || d['daerah'].toString().trim().isEmpty;
-        }).toList();
+      if (widget.namaDaerah != null) {
+        docs = docs.where((doc) => regionNameKey(
+          (doc.data() as Map<String, dynamic>)['daerah']) == regionNameKey(widget.namaDaerah)).toList();
       }
 
       totalGereja = docs.length;

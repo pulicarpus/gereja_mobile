@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -506,6 +507,17 @@ class FirebaseManagementGateway implements ManagementGateway {
     };
     if (patch['namaGereja'].isEmpty || patch['daerah'].isEmpty)
       throw StateError('Nama gereja dan daerah wajib diisi.');
+    final churches = await _db
+        .collection('churches')
+        .get(_server)
+        .timeout(_deadline);
+    _guard();
+    patch['daerah'] = existingRegionName(
+      patch['daerah'],
+      churches.docs
+          .where((doc) => doc.id != id)
+          .map((doc) => doc.data()['daerah']),
+    );
     String? code;
     if (expected == null) {
       code = _codes[id];

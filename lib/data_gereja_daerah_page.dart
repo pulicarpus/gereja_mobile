@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -123,7 +124,6 @@ class DataGerejaDaerahPage extends StatelessWidget {
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('churches')
-            .where('daerah', isEqualTo: namaDaerah == "Belum Diatur" ? null : namaDaerah)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -132,12 +132,8 @@ class DataGerejaDaerahPage extends StatelessWidget {
 
           var docs = snapshot.data?.docs ?? [];
 
-          if (namaDaerah == "Belum Diatur") {
-             docs = docs.where((doc) {
-                var d = doc.data() as Map<String, dynamic>;
-                return !d.containsKey('daerah') || d['daerah'] == null || d['daerah'].toString().trim().isEmpty;
-             }).toList();
-          }
+          docs = docs.where((doc) => regionNameKey(
+            (doc.data() as Map<String, dynamic>)['daerah']) == regionNameKey(namaDaerah)).toList();
 
           if (docs.isEmpty) {
              return const Center(child: Text("Tidak ada gereja di daerah ini."));

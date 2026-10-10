@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -686,12 +687,13 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
   Future<void> _fetchSuggestions() async {
     try {
-      var snap = await _db.collection("churches").where("daerah", isEqualTo: widget.namaDaerah).get();
+      var snap = await _db.collection("churches").get();
       Set<String> setGereja = {};
       Set<String> setPengerja = {};
 
       for (var doc in snap.docs) {
         var data = doc.data();
+        if (regionNameKey(data['daerah']) != regionNameKey(widget.namaDaerah)) continue;
         String nmGereja = data['namaGereja'] ?? data['churchName'] ?? data['nama'] ?? "";
         String nmGembala = data['namaGembala'] ?? "";
 

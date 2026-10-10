@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'management_service.dart';
@@ -17,6 +18,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
   StreamSubscription<String?>? _auth;
   ManagementRecord? _expected;
   String? _error;
+  List<String> _regions = [];
   bool _busy = false, _ready = false, _expired = false, _uncertain = false;
   int _request = 0;
   @override void initState() {
@@ -37,6 +39,10 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
     try {
       final access = await _gateway.access();
       if (!access.superAdmin) throw StateError('Hanya Superadmin yang dapat mengelola gereja.');
+      final churches = await _gateway.churchChoices();
+      final regions = groupRegionNames(churches.map((c) => c.data['daerah']))
+          .where((g) => regionNameKey(g.name) != regionNameKey('Belum Diatur'))
+          .map((g) => g.name).toList();
       ManagementRecord? church;
       if (widget.gerejaId != null || _uncertain) {
         try { church = await _gateway.loadChurch(_id); }
@@ -52,7 +58,7 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         _region.text = managementText(church.data['daerah']);
         _address.text = managementText(church.data['alamat']);
       }
-      setState(() { _ready = true; _uncertain = false; });
+      setState(() { _regions = regions; _ready = true; _uncertain = false; });
     } catch (error) { if (mounted && request == _request) setState(() => _error = managementError(error)); }
     finally { if (mounted && request == _request) setState(() => _busy = false); }
   }
@@ -85,7 +91,16 @@ class _AddEditGerejaPageState extends State<AddEditGerejaPage> {
         const SizedBox(height: 20),
         TextFormField(controller: _name, enabled: _ready && !_busy, decoration: const InputDecoration(labelText: 'Nama Gereja'), validator: _required),
         const SizedBox(height: 20),
-        TextFormField(controller: _region, enabled: _ready && !_busy, decoration: const InputDecoration(labelText: 'Nama Daerah / Wilayah'), validator: _required),
+        TextFormField(controller: _region, enabled: _ready && !_busy, decoration: InputDecoration(labelText: 'Nama Daerah / Wilayah',
+          helperText: 'Pilih daerah yang sudah ada, atau ketik daerah baru.',
+          suffixIcon: _regions.isEmpty ? null : PopupMenuButton<String>(
+            enabled: _ready && !_busy,
+            tooltip: 'Pilih daerah yang sudah ada',
+            icon: const Icon(Icons.arrow_drop_down),
+            onSelected: (name) => _region.text = name,
+            itemBuilder: (context) => _regions.map((name) => PopupMenuItem(
+              value: name, child: Text(cleanRegionName(name)))).toList(),
+          )), validator: _required),
         const SizedBox(height: 20),
         TextFormField(controller: _address, enabled: _ready && !_busy, maxLines: 3, decoration: const InputDecoration(labelText: 'Alamat Lengkap')),
         const SizedBox(height: 24),

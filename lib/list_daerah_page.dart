@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'menu_daerah_page.dart'; // 👈 IMPORT MENU DAERAHNYA
@@ -25,24 +26,15 @@ class ListDaerahPage extends StatelessWidget {
             return const Center(child: Text("Belum ada data."));
           }
 
-          Map<String, int> daerahCount = {};
-          for (var doc in snapshot.data!.docs) {
-            var data = doc.data() as Map<String, dynamic>;
-            String namaDaerah = data['daerah'] ?? "Belum Diatur";
-            if (namaDaerah.trim().isEmpty) namaDaerah = "Belum Diatur";
-            
-            daerahCount[namaDaerah] = (daerahCount[namaDaerah] ?? 0) + 1;
-          }
-
-          List<String> daftarDaerah = daerahCount.keys.toList();
-          daftarDaerah.sort();
+          final regions = groupRegionNames(snapshot.data!.docs.map(
+            (doc) => (doc.data() as Map<String, dynamic>)['daerah']));
 
           return ListView.builder(
             padding: const EdgeInsets.all(20),
-            itemCount: daftarDaerah.length,
+            itemCount: regions.length,
             itemBuilder: (context, index) {
-              String namaDaerah = daftarDaerah[index];
-              int jumlahGereja = daerahCount[namaDaerah]!;
+              String namaDaerah = regions[index].name;
+              int jumlahGereja = regions[index].count;
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 15),
@@ -60,7 +52,7 @@ class ListDaerahPage extends StatelessWidget {
                     child: const Icon(Icons.map, color: Colors.deepOrange),
                   ),
                   title: Text(
-                    namaDaerah.toUpperCase(),
+                    cleanRegionName(namaDaerah).toUpperCase(),
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87),
                   ),
                   subtitle: Padding(

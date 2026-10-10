@@ -162,6 +162,12 @@ try {
     await assertFails(setDoc(doc(db, `${comments}/bad`), { ...message, authorId: id }));
     await assertFails(deleteDoc(doc(db, `${comments}/one`)));
   }
+  // Legacy uppercase/whitespace region aliases must not isolate pastors.
+  await assertSucceeds(setDoc(doc(superDb, 'info_surat_daerah/alias'), { daerah: ' BELITANG ' }));
+  await assertSucceeds(getDocs(query(collection(pastor, 'info_surat_daerah'), where('daerah', 'in', ['Belitang', ' BELITANG ']))));
+  await assertSucceeds(setDoc(doc(pastor, 'info_surat_daerah/alias/komentar/pastor'), message));
+  await assertFails(updateDoc(doc(pastor, 'info_surat_daerah/alias'), { judul: 'Tidak boleh' }));
+  await assertFails(getDocs(query(collection(pastor, 'info_surat_daerah'), where('daerah', 'in', ['Belitang', 'Ketungau']))));
   await assertSucceeds(deleteDoc(pastorComment));
   await assertSucceeds(setDoc(pastorComment, message));
   await assertSucceeds(deleteDoc(doc(own, `${comments}/one`))); // Moderator.

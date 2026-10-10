@@ -89,6 +89,10 @@ service cloud.firestore {
           .data.get('adminDaerahArea', '') == area;
     }
 
+    function pdRegionKey(area) {
+      return area.lower().replace('[\\s​﻿]+', ' ').trim();
+    }
+
     function pdLinkedPastor(area) {
       let account = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       let churchId = account.get('churchId', '');
@@ -99,7 +103,9 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/churches/$(churchId))
         && exists(/databases/$(database)/documents/churches/$(churchId)/jemaat/$(memberId))
         && get(/databases/$(database)/documents/churches/$(churchId)/jemaat/$(memberId)).data.get('uid', '') == request.auth.uid
-        && get(/databases/$(database)/documents/churches/$(churchId)).data.get('daerah', '') == area;
+        && get(/databases/$(database)/documents/churches/$(churchId)).data.get('daerah', '') is string
+        && area is string && pdRegionKey(area) != ''
+        && pdRegionKey(get(/databases/$(database)/documents/churches/$(churchId)).data.get('daerah', '')) == pdRegionKey(area);
     }
 
     function pdRead(area) {

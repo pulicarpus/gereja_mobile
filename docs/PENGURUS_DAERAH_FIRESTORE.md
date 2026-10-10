@@ -102,3 +102,15 @@ dengan tombol memuat komentar sebelumnya. Pembacaan serta penulisan komentar
 ke postingan yang hilang/daerah lain ditolak. Tes emulator juga memeriksa
 pemalsuan UID, pesan kosong/terlalu panjang, timestamp palsu, field tambahan,
 larangan edit komentar, dan moderasi oleh admin.
+
+## Pengumuman dari daerah yang dahulu duplikat
+
+Info & Surat untuk superadmin dan gembala membaca variasi field `daerah`
+yang hanya berbeda huruf besar/kecil atau spasi pada data gereja. Komentar
+tetap disimpan di postingan asal; tidak ada penyalinan atau penghapusan data.
+Rules menyamakan variasi tersebut saat memeriksa akses baca gembala tertaut.
+Hak menulis pengumuman dan hak admin daerah tetap memakai identitas persis.
+
+Perbaikan ini memerlukan aplikasi terbaru **dan** Publish seluruh file
+`firebase/firestore.rules` terbaru mengikuti langkah Menerapkan di atas.
+APK sendiri tidak memperbarui Rules produksi.

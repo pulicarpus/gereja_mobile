@@ -1,3 +1,4 @@
+import 'region_posts.dart';
 import 'region_label.dart';
 import 'region_discussion_page.dart';
 import 'upload_support.dart';
@@ -394,7 +395,8 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
       body: Stack(
         children: [
           StreamBuilder<QuerySnapshot>(
-            stream: _db.collection("info_surat_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
+            stream: regionPosts(_db, widget.namaDaerah,
+              includeAliases: _user.isSuperAdmin() || _user.isGembala()),
             builder: (context, snapshot) {
               if (snapshot.hasError) return const Center(child: Text("Postingan belum dapat dimuat. Periksa koneksi dan izin akun."));
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
@@ -480,7 +482,7 @@ class _InfoSuratDaerahPageState extends State<InfoSuratDaerahPage> {
                             icon: const Icon(Icons.forum_outlined),
                             label: const Text('Diskusi & pertanyaan'),
                             onPressed: () => Navigator.push(context, MaterialPageRoute(
-                              builder: (_) => RegionDiscussionPage(postId: docs[index].id, area: widget.namaDaerah),
+                              builder: (_) => RegionDiscussionPage(postId: docs[index].id, area: legacyText(data['daerah'])),
                             )),
                           ),
                         ],

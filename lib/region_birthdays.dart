@@ -24,8 +24,9 @@ class RegionalBirthday {
 Future<List<RegionalBirthday>> loadRegionalBirthdays(
   FirebaseFirestore db,
   String area,
-  DateTime now,
-) async {
+  DateTime now, {
+  bool includeAliases = true,
+}) async {
   final allChurches = await db.collection('churches').get();
   final aliases = regionPostAliases(
     area,
@@ -122,7 +123,7 @@ Future<List<RegionalBirthday>> loadRegionalBirthdays(
   }
   final boards = await db
       .collection('struktur_pengurus_daerah')
-      .where('daerah', whereIn: aliases)
+      .where('daerah', whereIn: includeAliases ? aliases : [area])
       .get();
   for (final board in boards.docs) {
     final data = board.data();

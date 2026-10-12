@@ -33,6 +33,8 @@ class _RegionBirthdaysPageState extends State<RegionBirthdaysPage> {
             FirebaseFirestore.instance,
             widget.area,
             DateTime.now(),
+            includeAliases:
+                UserManager().isGembala() || UserManager().isSuperAdmin(),
           )
         : Future.value([]);
   }

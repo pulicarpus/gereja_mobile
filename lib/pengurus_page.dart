@@ -1,3 +1,4 @@
+import 'region_birthdays.dart';
 import 'region_pengurus.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -184,9 +185,18 @@ class _PengurusPageState extends State<PengurusPage> {
       name: pengurusText(data['${repo.corePrefix}_$roleId']),
       wa: pengurusText(data['wa_$roleId']),
       photo: pengurusPhoto(data['img_$roleId']),
+      editBirthDate: _isRegion,
+      birthDate: regionalBirthDate(data['lahir_$roleId']),
       save: (input) => repo.savePerson(
         repo.church,
-        {'${repo.corePrefix}_$roleId': input.name, 'wa_$roleId': input.wa},
+        {
+          '${repo.corePrefix}_$roleId': input.name,
+          'wa_$roleId': input.wa,
+          if (_isRegion)
+            'lahir_$roleId': input.birthDate == null
+                ? null
+                : Timestamp.fromDate(input.birthDate!),
+        },
         photoKey: 'img_$roleId',
         photo: input.photo,
         oldPhoto: pengurusText(data['img_$roleId']),
@@ -212,9 +222,18 @@ class _PengurusPageState extends State<PengurusPage> {
       name: pengurusText(data['nama']),
       wa: pengurusText(data['wa']),
       photo: pengurusPhoto(data['fotoUrl']),
+      editBirthDate: _isRegion,
+      birthDate: regionalBirthDate(data['tanggalLahir']),
       save: (input) => repo.saveDynamicPerson(
         doc,
-        {'nama': input.name, 'wa': input.wa},
+        {
+          'nama': input.name,
+          'wa': input.wa,
+          if (_isRegion)
+            'tanggalLahir': input.birthDate == null
+                ? null
+                : Timestamp.fromDate(input.birthDate!),
+        },
         create: docId == null,
         photo: input.photo,
         oldPhoto: pengurusText(data['fotoUrl']),

@@ -170,7 +170,14 @@ class PengurusPersonInput {
   final String name, wa;
   final File? photo;
   final bool removePhoto;
-  PengurusPersonInput(this.name, this.wa, this.photo, this.removePhoto);
+  final DateTime? birthDate;
+  PengurusPersonInput(
+    this.name,
+    this.wa,
+    this.photo,
+    this.removePhoto, {
+    this.birthDate,
+  });
 }
 
 Future<void> showPengurusPersonEditor(
@@ -179,6 +186,8 @@ Future<void> showPengurusPersonEditor(
   String name = '',
   String wa = '',
   String? photo,
+  DateTime? birthDate,
+  bool editBirthDate = false,
   required Future<void> Function(PengurusPersonInput) save,
   Future<void> Function()? delete,
 }) => showDialog<void>(
@@ -189,6 +198,8 @@ Future<void> showPengurusPersonEditor(
     name: name,
     wa: wa,
     photo: photo,
+    birthDate: birthDate,
+    editBirthDate: editBirthDate,
     save: save,
     delete: delete,
   ),
@@ -197,6 +208,8 @@ Future<void> showPengurusPersonEditor(
 class _PersonEditor extends StatefulWidget {
   final String title, name, wa;
   final String? photo;
+  final DateTime? birthDate;
+  final bool editBirthDate;
   final Future<void> Function(PengurusPersonInput) save;
   final Future<void> Function()? delete;
   const _PersonEditor({
@@ -204,6 +217,8 @@ class _PersonEditor extends StatefulWidget {
     required this.name,
     required this.wa,
     required this.photo,
+    this.birthDate,
+    this.editBirthDate = false,
     required this.save,
     this.delete,
   });
@@ -216,6 +231,7 @@ class _PersonEditorState extends State<_PersonEditor> {
     text: widget.name,
   );
   late final TextEditingController _wa = TextEditingController(text: widget.wa);
+  late DateTime? _birthDate = widget.birthDate;
   File? _photo;
   bool _removePhoto = false,
       _busy = false,
@@ -294,6 +310,7 @@ class _PersonEditorState extends State<_PersonEditor> {
             wa.isEmpty ? '' : pengurusWa(wa)!,
             _photo,
             _removePhoto,
+            birthDate: _birthDate,
           ),
         );
       }
@@ -363,6 +380,35 @@ class _PersonEditorState extends State<_PersonEditor> {
                 labelText: 'WhatsApp (opsional)',
               ),
             ),
+            if (widget.editBirthDate)
+              ListTile(
+                title: const Text('Tanggal lahir (opsional)'),
+                subtitle: Text(
+                  _birthDate == null
+                      ? 'Belum diisi'
+                      : '${_birthDate!.day}/${_birthDate!.month}/${_birthDate!.year}',
+                ),
+                trailing: _birthDate == null
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() => _birthDate = null),
+                      ),
+                onTap: _busy
+                    ? null
+                    : () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _birthDate ?? DateTime(1980),
+                          firstDate: DateTime(1900),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null && mounted)
+                          setState(() => _birthDate = picked);
+                      },
+              ),
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),
             if (_busy)

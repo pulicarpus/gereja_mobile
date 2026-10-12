@@ -1,3 +1,4 @@
+import 'region_birthdays_page.dart';
 import 'region_label.dart';
 import 'user_manager.dart';
 import 'package:flutter/material.dart';
@@ -169,6 +170,10 @@ class MenuDaerahPage extends StatelessWidget {
                           InfoSuratDaerahPage(namaDaerah: namaDaerah),
                         ),
                       ),
+                      if (UserManager().canViewRegion(namaDaerah) &&
+                          (UserManager().isGembala() || UserManager().isAdminDaerah() || UserManager().isSuperAdmin()))
+                        _menu(context, Icons.cake_outlined, 'Ulang Tahun Bulan Ini', Colors.pink,
+                          () => _open(context, RegionBirthdaysPage(area: namaDaerah))),
                       _menu(
                         context,
                         Icons.settings_outlined,

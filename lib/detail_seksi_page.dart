@@ -1,3 +1,4 @@
+import 'region_birthdays.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -83,11 +84,17 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
       name: name,
       wa: wa,
       photo: pengurusPhoto(photo),
+      editBirthDate: widget.namaDaerah != null,
+      birthDate: regionalBirthDate(data['${role}_lahir']),
       save: (input) => _repo!.savePerson(
         _doc!,
         {
           '${role}_nama': input.name,
           '${role}_wa': input.wa,
+          if (widget.namaDaerah != null)
+            '${role}_lahir': input.birthDate == null
+                ? null
+                : Timestamp.fromDate(input.birthDate!),
           if (role == 'ketua' && data.containsKey('namaPengurus'))
             'namaPengurus': input.name,
           if (role == 'ketua' && data.containsKey('telepon'))
@@ -120,11 +127,21 @@ class _DetailSeksiPageState extends State<DetailSeksiPage> {
       name: pengurusText(data['nama']),
       wa: pengurusText(data['wa']),
       photo: pengurusPhoto(data['img']),
+      editBirthDate: widget.namaDaerah != null,
+      birthDate: regionalBirthDate(data['tanggalLahir']),
       save: (input) => _repo!.changeMember(
         _doc!,
         original,
         index,
-        {...data, 'nama': input.name, 'wa': input.wa},
+        {
+          ...data,
+          'nama': input.name,
+          'wa': input.wa,
+          if (widget.namaDaerah != null)
+            'tanggalLahir': input.birthDate == null
+                ? null
+                : Timestamp.fromDate(input.birthDate!),
+        },
         photo: input.photo,
         oldPhoto: pengurusText(data['img']),
         removePhoto: input.removePhoto,

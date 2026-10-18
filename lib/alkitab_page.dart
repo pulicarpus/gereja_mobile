@@ -1,3 +1,4 @@
+import 'bible_number_grid.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
@@ -396,9 +397,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           reference.bookId != _currentBookNum ||
           reference.chapter != _currentChapter)
         continue;
-      for (final verse in reference.verses) {
-        _verseNotesMap.putIfAbsent(verse, () => []).add(key);
-      }
+      final verse = bibleNoteAnchor(reference);
+      if (verse != null) _verseNotesMap.putIfAbsent(verse, () => []).add(key);
     }
   }
 
@@ -593,7 +593,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
     } else if (v == 'dictionary') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (c) => KamusPage(allBooks: _allBooks, bibleDb: _db)),
+        MaterialPageRoute(
+          builder: (c) => KamusPage(allBooks: _allBooks, bibleDb: _db),
+        ),
       ).then(_handleNavResult);
     } else if (v == 'offline_audio') {
       try {
@@ -715,29 +717,45 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   void _handleNoteClick(int verse, List<String>? keys) {
-    if (keys == null || keys.isEmpty) return;
-    if (keys.length == 1) {
-      _openNote(keys.first);
-      return;
-    }
     showModalBottomSheet(
       context: context,
       builder: (c) => SafeArea(
         child: ListView(
           shrinkWrap: true,
-          children: keys
-              .map(
-                (key) => ListTile(
-                  title: Text(
-                    NoteModel.fromRaw(key, _store.readNote(key) ?? '').title,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.add_comment),
+              title: const Text('Tambah catatan baru'),
+              onTap: () {
+                Navigator.pop(c);
+                final book = _allBooks.firstWhere(
+                  (b) => b.bookNumber == _currentBookNum,
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => NoteEditorPage(
+                      nas: '${book.name} $_currentChapter:$verse',
+                      prefs: _prefs,
+                      db: _db!,
+                      allBooks: _allBooks,
+                    ),
                   ),
-                  onTap: () {
-                    Navigator.pop(c);
-                    _openNote(key);
-                  },
+                ).then(_handleNavResult);
+              },
+            ),
+            for (final key in keys ?? <String>[])
+              ListTile(
+                leading: const Icon(Icons.note_outlined),
+                title: Text(
+                  NoteModel.fromRaw(key, _store.readNote(key) ?? '').title,
                 ),
-              )
-              .toList(),
+                onTap: () {
+                  Navigator.pop(c);
+                  _openNote(key);
+                },
+              ),
+          ],
         ),
       ),
     );
@@ -1285,13 +1303,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
                             size: _fontSize * 0.9,
                           ),
                           const SizedBox(width: 5),
-                          Text(
-                            "Lihat Catatan (${_verseNotesMap[vNum]!.length})",
-                            style: TextStyle(
-                              color: Colors.green.shade700,
-                              fontSize: _fontSize * 0.7,
-                              fontWeight: FontWeight.bold,
-                              fontStyle: FontStyle.italic,
+                          Flexible(
+                            child: Text(
+                              "Lihat Catatan (${_verseNotesMap[vNum]!.length})",
+                              style: TextStyle(
+                                color: Colors.green.shade700,
+                                fontSize: _fontSize * 0.7,
+                                fontWeight: FontWeight.bold,
+                                fontStyle: FontStyle.italic,
+                              ),
                             ),
                           ),
                         ],
@@ -1471,21 +1491,21 @@ class _NavSheetState extends State<_NavSheet> {
     itemCount: books.length,
     itemBuilder: (c, i) => OutlinedButton(
       onPressed: () => _getChapters(books[i]),
-      child: Text(books[i].shortName, style: const TextStyle(fontSize: 11)),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+      ),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          books[i].shortName,
+          maxLines: 1,
+          softWrap: false,
+          style: const TextStyle(fontSize: 11),
+        ),
+      ),
     ),
   );
 
-  Widget _grid(List<int> values, void Function(int) onTap) => GridView.builder(
-    padding: const EdgeInsets.all(15),
-    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-      maxCrossAxisExtent: 60,
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-    ),
-    itemCount: values.length,
-    itemBuilder: (c, i) => OutlinedButton(
-      onPressed: () => onTap(values[i]),
-      child: Text('${values[i]}'),
-    ),
-  );
+  Widget _grid(List<int> values, void Function(int) onTap) =>
+      BibleNumberGrid(values: values, onSelected: onTap);
 }

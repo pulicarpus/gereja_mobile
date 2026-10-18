@@ -116,8 +116,9 @@ class BibleReference {
   const BibleReference(this.bookId, this.chapter, this.verses);
 
   static BibleReference? parse(String value, List<BibleBook> books) {
-    final match = RegExp(r'^\s*(.+?)\s+(\d+):([\d,\s-]+)\s*$')
-        .firstMatch(value);
+    final match = RegExp(
+      r'^\s*(.+?)\s+(\d+):([\d,\s-]+)\s*$',
+    ).firstMatch(value);
     if (match == null) return null;
     final name = match[1]!.trim().toLowerCase();
     BibleBook? book;
@@ -294,3 +295,8 @@ bool isMp3Header(List<int> bytes) {
     return true;
   return bytes.length >= 2 && bytes[0] == 0xff && (bytes[1] & 0xe0) == 0xe0;
 }
+
+/// A note spanning selected verses has one visible entry, at its last verse.
+int? bibleNoteAnchor(BibleReference reference) => reference.verses.isEmpty
+    ? null
+    : reference.verses.reduce((a, b) => a > b ? a : b);

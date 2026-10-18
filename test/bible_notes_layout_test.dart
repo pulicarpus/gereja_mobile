@@ -57,6 +57,7 @@ void main() {
     );
     expect(tester.takeException(), isNull);
     await tester.scrollUntilVisible(find.text('150'), 180);
+    await tester.pumpAndSettle();
     final text = tester.widget<Text>(find.text('150'));
     expect(text.maxLines, 1);
     expect(text.softWrap, false);

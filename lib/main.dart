@@ -1351,7 +1351,9 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
         for (var doc in snapshot.data!.docs) {
           final source = doc.data() as Map<String, dynamic>;
           final lahir = _parseTanggalLahir(source['tanggalLahir']);
-          if (lahir == null || lahir.month != now.month) continue;
+          if (lahir == null ||
+              lahir.month != now.month ||
+              lahir.day < now.day) continue;
 
           final data = Map<String, dynamic>.from(source);
           data['id'] = doc.id;
@@ -1377,10 +1379,6 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
         ultahList.sort((a, b) {
           final aDate = a['_lahirDate'] as DateTime;
           final bDate = b['_lahirDate'] as DateTime;
-          final aUpcoming = aDate.day >= now.day;
-          final bUpcoming = bDate.day >= now.day;
-
-          if (aUpcoming != bUpcoming) return aUpcoming ? -1 : 1;
           return aDate.day.compareTo(bDate.day);
         });
 

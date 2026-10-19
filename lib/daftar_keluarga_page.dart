@@ -1,3 +1,4 @@
+import 'family_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'user_manager.dart';
@@ -155,7 +156,14 @@ class _DaftarKeluargaPageState extends State<DaftarKeluargaPage> {
                   ),
                   title: Text("Kel. $nama", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   subtitle: Text(alamat, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey.shade600)),
-                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
+                  trailing: _userManager.isAdmin()
+                      ? PopupMenuButton<String>(
+                          tooltip: 'Tindakan keluarga',
+                          itemBuilder: (_) => const [PopupMenuItem(
+                            value: 'cancelHead', child: Text('Batalkan jadi kepala keluarga'))],
+                          onSelected: (_) => confirmCancelFamilyHead(context, _churchId!, doc.id, nama),
+                        )
+                      : const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
                   onTap: () {
                     // 👇 LOMPAT KE HALAMAN ANGGOTA KELUARGA 👇
                     Navigator.push(

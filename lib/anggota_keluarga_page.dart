@@ -1,3 +1,4 @@
+import 'family_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -175,7 +176,13 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
 
   void _showMemberActionDialog(Map<String, dynamic> anggota, String docId) {
     if (anggota['statusKeluarga'] == 'Kepala Keluarga') {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada aksi untuk Kepala Keluarga.")));
+      final churchId = UserManager().getChurchIdForCurrentView();
+      if (churchId != null) {
+        confirmCancelFamilyHead(context, churchId, docId,
+          legacyText(anggota['namaLengkap'])).then((cancelled) {
+            if (cancelled && mounted) Navigator.pop(context);
+          });
+      }
       return;
     }
 

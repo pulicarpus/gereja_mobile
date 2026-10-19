@@ -180,7 +180,7 @@ class _AnggotaKeluargaPageState extends State<AnggotaKeluargaPage> {
       if (churchId != null) {
         confirmCancelFamilyHead(context, churchId, docId,
           legacyText(anggota['namaLengkap'])).then((cancelled) {
-            if (cancelled && mounted) Navigator.pop(context);
+            if (cancelled && mounted && ModalRoute.of(context)?.isCurrent == true) Navigator.pop(context);
           });
       }
       return;

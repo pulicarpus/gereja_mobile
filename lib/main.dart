@@ -1370,7 +1370,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
               children: [
                 Icon(Icons.cake, color: Colors.grey),
                 SizedBox(width: 10),
-                Text("Tidak ada yang berulang tahun bulan ini.", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                Text("Tidak ada ulang tahun tersisa bulan ini.", style: TextStyle(color: Colors.grey, fontSize: 13)),
               ],
             ),
           );

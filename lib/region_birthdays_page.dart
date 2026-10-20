@@ -130,7 +130,7 @@ class _RegionBirthdaysSectionState extends State<RegionBirthdaysSection> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: people.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 12),
+                separatorBuilder: (context, index) => const SizedBox(width: 12),
                 itemBuilder: (context, index) {
                   final person = people[index];
                   final today = person.birth.day == now.day;

@@ -229,6 +229,10 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
               itemCount: _filteredJemaat.length,
               itemBuilder: (context, index) {
                 final j = _filteredJemaat[index];
+                final subtitle = [j['statusKeluarga'], j['kelompok']]
+                    .map((value) => legacyText(value).trim())
+                    .where((value) => value.isNotEmpty && value.toLowerCase() != 'null')
+                    .join(' • ');
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 6),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
@@ -244,7 +248,9 @@ class _DataJemaatPageState extends State<DataJemaatPage> {
                       ),
                     ),
                     title: Text(j['namaLengkap'] ?? "-", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("${j['statusKeluarga']} • ${j['kelompok']}"),
+                    subtitle: Text(subtitle.isEmpty
+                        ? 'Data keluarga dan kelompok belum diisi.'
+                        : subtitle),
                     trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.grey),
                     onTap: () => _showDetailJemaat(j),
                     onLongPress: () { if (_userManager.isAdmin()) _showAksiAdmin(j); },

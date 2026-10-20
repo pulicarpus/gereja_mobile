@@ -43,6 +43,7 @@ class UserManager {
   String? originalChurchName;
   String? activeChurchId;
   String? activeChurchName;
+  bool isPastorAccount = false;
   bool isPengurus = false;
   String? jemaatId;
   
@@ -70,11 +71,13 @@ class UserManager {
     String? uFoto,
     String uKomisi = "Umum",
     bool uIsPengurus = false,
+    bool uIsPastor = false,
     String? uJemaatId, 
     String? uAdminDaerahArea,
     String? uDaerah,
   }) async {
     userRole = role;
+    isPastorAccount = uIsPastor;
     userId = uId;
     userNama = uNama;
     userFotoUrl = uFoto;
@@ -93,6 +96,7 @@ class UserManager {
   // Simpan ke SharedPreferences
   Future<void> saveToPrefs() async {
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('is_pastor_account', isPastorAccount);
     await prefs.setString(_keyRole, userRole ?? "");
     await prefs.setString(_keyUserId, userId ?? "");
     await prefs.setString(_keyUserNama, userNama ?? "");
@@ -112,6 +116,7 @@ class UserManager {
   Future<bool> loadFromPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     userRole = prefs.getString(_keyRole);
+    isPastorAccount = prefs.getBool('is_pastor_account') ?? false;
     
     if (userRole == null || userRole!.isEmpty) {
       await reset();
@@ -152,7 +157,7 @@ class UserManager {
   bool isAdminDaerah() => adminDaerahArea != null && adminDaerahArea!.trim().isNotEmpty;
 
   // 👇 4. HAK AKSES TAMBAHAN UNTUK GEMBALA & BPJ 👇
-  bool isGembala() => userRole == "gembala";
+  bool isGembala() => userRole == "gembala" || isPastorAccount;
   
   bool isBPJ() => userRole == "bpj";
 
@@ -212,6 +217,7 @@ class UserManager {
 
   Future<void> reset() async {
     userRole = null;
+    isPastorAccount = false;
     userId = null;
     userNama = null;
     userFotoUrl = null;
@@ -228,6 +234,7 @@ class UserManager {
     // Hapus hanya data sesi; cache fitur lain (mis. renungan) tetap dipertahankan.
     for (final key in <String>[
       _keyRole,
+      'is_pastor_account',
       _keyOriginalChurchId,
       _keyOriginalChurchName,
       _keyActiveChurchId,

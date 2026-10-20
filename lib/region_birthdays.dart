@@ -1,3 +1,4 @@
+import 'pastor_identity.dart';
 import 'church_pastors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -95,11 +96,11 @@ Future<List<RegionalBirthday>> loadRegionalBirthdays(
 
   final accounts = await db
       .collection('users')
-      .where('role', isEqualTo: 'gembala')
+      .where('role', whereIn: ['gembala', 'admin'])
       .get();
   for (final account in accounts.docs) {
     final data = account.data();
-    if (data['isBlocked'] == true) continue;
+    if (data['isBlocked'] == true || !accountIsPastor(data)) continue;
     final matches = members.where(
       (m) =>
           m['churchId'] == data['churchId'] &&

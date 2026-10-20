@@ -114,6 +114,7 @@ class _VideoSplashPageState extends State<VideoSplashPage> {
               data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat",
           uFoto: data['photoUrl']?.toString() ?? user.photoURL,
           uKomisi: data['kelompok']?.toString() ?? "Umum",
+          uIsPastor: data['isPastor'] == true,
           uIsPengurus: data['isPengurus'] == true,
           uJemaatId: data['jemaatId']?.toString(),
           uAdminDaerahArea: data['adminDaerahArea']?.toString(),

@@ -302,6 +302,7 @@ class _PastorEditorState extends State<_PastorEditor> {
         );
       }
       final profile = ChurchPastor.fromMap({
+        ...?widget.profile?.toMap(),
         'id': _id,
         for (final entry in _fields.entries) entry.key: entry.value.text.trim(),
         'photo': _uploadedPhoto ?? widget.profile?.photo ?? '',

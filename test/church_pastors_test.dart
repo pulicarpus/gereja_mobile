@@ -126,4 +126,35 @@ void main() {
       isEmpty,
     );
   });
+  test(
+    'Linked pastor identity survives edits and cannot be removed through public profile editor',
+    () async {
+      await db.doc('churches/C').set({
+        'gembalaProfiles': [
+          {
+            'id': 'bound',
+            'name': 'Pdt. Bound',
+            'uid': 'account',
+            'memberId': 'member',
+          },
+        ],
+      });
+      final linked = churchPastors(await data()).single;
+      await expectLater(repository.remove(linked), throwsStateError);
+      await expectLater(
+        repository.save(
+          const ChurchPastor(id: 'bound', name: 'Changed'),
+          expected: linked,
+        ),
+        throwsStateError,
+      );
+      final edited = ChurchPastor.fromMap({
+        ...linked.toMap(),
+        'name': 'Pdt. Edited',
+      });
+      await repository.save(edited, expected: linked);
+      expect(churchPastors(await data()).single.uid, 'account');
+      expect(churchPastors(await data()).single.memberId, 'member');
+    },
+  );
 }

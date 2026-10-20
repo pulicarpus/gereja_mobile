@@ -19,6 +19,7 @@ try {
       blocked: { role: 'superadmin', isBlocked: true },
       super: { role: 'superadmin' },
       ordinary: { role: 'user' },
+      pastorAdmin: { role: 'admin', isPastor: true, pastorId: 'p', churchId: 'pastorChurch', jemaatId: 'adminMember' },
       pastor: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'member', daerah: 'Stale' },
       unlinked: { role: 'gembala', churchId: 'pastorChurch' },
       dangling: { role: 'gembala', churchId: 'pastorChurch', jemaatId: 'gone' },
@@ -27,19 +28,28 @@ try {
     })) await setDoc(doc(db, 'users', id), account);
     await setDoc(doc(db, 'churches/pastorChurch'), { daerah: 'Belitang' });
     await setDoc(doc(db, 'churches/pastorChurch/jemaat/member'), { uid: 'pastor' });
+    await setDoc(doc(db, 'churches/pastorChurch/jemaat/adminMember'), { uid: 'pastorAdmin' });
     await setDoc(doc(db, 'churches/pastorChurch/jemaat/blocked'), { uid: 'blockedPastor' });
   });
   const own = env.authenticatedContext('own').firestore();
   const root = 'struktur_pengurus_daerah/Belitang';
   const sections = ['penasehat', 'mkdp', 'bpk', 'komisi'];
   const superDb = env.authenticatedContext('super').firestore();
+  const pastorAdminDb = env.authenticatedContext('pastorAdmin').firestore();
+  await assertFails(updateDoc(doc(own, 'users/own'), { isPastor: true, pastorId: 'fake' }));
+  await assertFails(updateDoc(doc(pastorAdminDb, 'users/pastorAdmin'), { pastorId: 'fake' }));
+
   await assertSucceeds(getDoc(doc(superDb, root))); // Superadmin can open a new area.
   for (const section of sections) await assertSucceeds(getDocs(collection(superDb, `${root}/${section}`)));
   await assertFails(setDoc(doc(own, root), { daerah: 'Belitang' }));
   const batch = writeBatch(superDb);
   batch.set(doc(superDb, root), { daerah: 'Belitang', bphd_ketua: 'Ketua' });
   batch.set(doc(superDb, `${root}/komisi/anak`), { daerah: 'Belitang', namaKomisi: 'Anak', anggota: [] });
-  await assertSucceeds(batch.commit()); // getAfter permits atomic parent/child creation.
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(getDoc(doc(pastorAdminDb, root)));
+  await assertSucceeds(getDocs(collection(pastorAdminDb, `${root}/komisi`)));
+  await assertFails(updateDoc(doc(pastorAdminDb, root), { bphd_ketua: 'Tidak boleh' }));
+ // getAfter permits atomic parent/child creation.
   for (const section of sections) {
     const ref = doc(own, `${root}/${section}/person`);
     await assertSucceeds(setDoc(ref, { daerah: 'Belitang', nama: 'Nama' }));

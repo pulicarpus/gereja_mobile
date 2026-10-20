@@ -4,7 +4,7 @@ import 'app_safety.dart';
 import 'user_manager.dart';
 
 class ChurchPastor {
-  final String id, name, photo, wa, fb, ig, tiktok, yt;
+  final String id, name, photo, wa, fb, ig, tiktok, yt, uid, memberId;
   const ChurchPastor({
     required this.id,
     required this.name,
@@ -14,6 +14,8 @@ class ChurchPastor {
     this.ig = '',
     this.tiktok = '',
     this.yt = '',
+    this.uid = '',
+    this.memberId = '',
   });
   factory ChurchPastor.fromMap(Map<String, dynamic> data) => ChurchPastor(
     id: legacyText(data['id']).trim(),
@@ -24,6 +26,8 @@ class ChurchPastor {
     ig: legacyText(data['ig']).trim(),
     tiktok: legacyText(data['tiktok']).trim(),
     yt: legacyText(data['yt']).trim(),
+    uid: legacyText(data['uid']).trim(),
+    memberId: legacyText(data['memberId']).trim(),
   );
   Map<String, dynamic> toMap() => {
     'id': id,
@@ -34,6 +38,8 @@ class ChurchPastor {
     'ig': ig,
     'tiktok': tiktok,
     'yt': yt,
+    if (uid.isNotEmpty) 'uid': uid,
+    if (memberId.isNotEmpty) 'memberId': memberId,
   };
   bool same(ChurchPastor other) =>
       toMap().entries.every((e) => other.toMap()[e.key] == e.value);
@@ -129,7 +135,23 @@ class ChurchPastorsRepository {
               'Profil gembala sudah berubah. Muat ulang sebelum menyimpan.',
             );
           }
+          if (index >= 0 &&
+              (profiles[index].uid != profile.uid ||
+                  profiles[index].memberId != profile.memberId)) {
+            throw StateError(
+              'Tautan akun hanya dapat diatur melalui Hubungkan Gembala.',
+            );
+          }
+          if (index < 0 &&
+              (profile.uid.isNotEmpty || profile.memberId.isNotEmpty)) {
+            throw StateError('Gunakan Hubungkan Gembala untuk menautkan akun.');
+          }
           if (remove) {
+            if (profiles[index].uid.isNotEmpty) {
+              throw StateError(
+                'Profil tertaut tidak dapat dihapus. Gunakan perpindahan gembala.',
+              );
+            }
             profiles.removeAt(index);
           } else if (index >= 0) {
             if (expected == null && !profiles[index].same(profile))
@@ -138,21 +160,25 @@ class ChurchPastorsRepository {
           } else {
             profiles.add(profile);
           }
-          final primary = profiles.isEmpty
-              ? const ChurchPastor(id: '', name: '')
-              : profiles.first;
-          tx.update(ref, {
-            'gembalaProfiles': profiles.map((p) => p.toMap()).toList(),
-            // Keep existing readers compatible with the first profile.
-            'namaGembala': primary.name,
-            'fotoGembalaUrl': primary.photo.isEmpty ? null : primary.photo,
-            'waGembala': primary.wa,
-            'fbGembala': primary.fb,
-            'igGembala': primary.ig,
-            'tiktokGembala': primary.tiktok,
-            'ytGembala': primary.yt,
-          });
+          tx.update(ref, churchPastorPatch(profiles));
         })
         .timeout(const Duration(seconds: 20));
   }
+}
+
+/// Mirrors only the first profile for older readers, without losing other pastors.
+Map<String, dynamic> churchPastorPatch(List<ChurchPastor> profiles) {
+  final primary = profiles.isEmpty
+      ? const ChurchPastor(id: '', name: '')
+      : profiles.first;
+  return {
+    'gembalaProfiles': profiles.map((p) => p.toMap()).toList(),
+    'namaGembala': primary.name,
+    'fotoGembalaUrl': primary.photo.isEmpty ? null : primary.photo,
+    'waGembala': primary.wa,
+    'fbGembala': primary.fb,
+    'igGembala': primary.ig,
+    'tiktokGembala': primary.tiktok,
+    'ytGembala': primary.yt,
+  };
 }

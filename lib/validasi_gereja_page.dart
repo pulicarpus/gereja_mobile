@@ -160,6 +160,7 @@ class _ValidasiGerejaPageState extends State<ValidasiGerejaPage> {
         uAdminDaerahArea: saved['adminDaerahArea']?.toString(),
         uDaerah: saved['daerah']?.toString(),
         uJemaatId: saved['jemaatId']?.toString(),
+        uIsPastor: saved['isPastor'] == true,
         uIsPengurus: saved['isPengurus'] == true, // 👈 SESUAIKAN DENGAN LOGIKA USER MANAGER BARU
       ).timeout(const Duration(seconds: 10));
 

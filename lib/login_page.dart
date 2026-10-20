@@ -103,6 +103,7 @@ class _LoginPageState extends State<LoginPage> {
           uNama: nama,
           uFoto: foto,
           uKomisi: data['kelompok']?.toString() ?? "Umum",
+          uIsPastor: data['isPastor'] == true,
           uIsPengurus: statusPengurus, 
           uJemaatId: jemaatId,
           uAdminDaerahArea: data['adminDaerahArea']?.toString(),
@@ -112,7 +113,7 @@ class _LoginPageState extends State<LoginPage> {
         if (!mounted || _auth.currentUser?.uid != user.uid) return;
 
         // 👇 PENANAMAN TAG ONESIGNAL SULTAN (UNTUK NOTIF EKSKLUSIF) 👇
-        MobilePush.tag("role", role);
+        MobilePush.tag("role", UserManager().isGembala() ? "gembala" : role);
         MobilePush.tag("kelompok", data['kelompok']?.toString() ?? "Umum");
         if (daerah.isNotEmpty) {
           MobilePush.tag("daerah", daerah);

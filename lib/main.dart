@@ -510,6 +510,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
             uNama: data['namaLengkap']?.toString() ?? firebaseUser.displayName ?? "Jemaat",
             uFoto: data['photoUrl']?.toString() ?? firebaseUser.photoURL,
             uKomisi: data['kelompok']?.toString() ?? "Umum",
+            uIsPastor: data['isPastor'] == true,
             uIsPengurus: data['isPengurus'] == true,
             uJemaatId: data['jemaatId']?.toString(),
             uAdminDaerahArea: data['adminDaerahArea']?.toString(),
@@ -564,7 +565,7 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
     final churchId = manager.getChurchIdForCurrentView();
     if (user != null) {
       MobilePush.login(user.uid);
-      MobilePush.tag("role", manager.userRole ?? "user");
+      MobilePush.tag("role", manager.isGembala() ? "gembala" : manager.userRole ?? "user");
       MobilePush.tag("kelompok", manager.userKomisi ?? "Umum");
       MobilePush.tag("daerah", UserManager.nonEmpty(manager.userDaerah) ?? "");
       MobilePush.tag("admin_daerah_area", UserManager.nonEmpty(manager.adminDaerahArea) ?? "");

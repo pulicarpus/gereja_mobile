@@ -1,3 +1,4 @@
+import 'pastor_identity.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'kategorial_config.dart';
@@ -19,7 +20,12 @@ String managementChurchName(Map<String, dynamic> data) => managementText(
 class ChurchTransferChoice {
   final String churchId;
   final bool wholeFamily;
-  const ChurchTransferChoice(this.churchId, {this.wholeFamily = false});
+  final Set<String>? expectedMemberIds;
+  const ChurchTransferChoice(
+    this.churchId, {
+    this.wholeFamily = false,
+    this.expectedMemberIds,
+  });
 }
 
 Map<String, dynamic> transferredMember(
@@ -84,7 +90,11 @@ Map<String, dynamic> managementUserPatch(
         'Hubungkan akun ke Data Jemaat melalui Profil Saya terlebih dahulu.',
       );
     }
-    return {'role': value, 'isPengurus': false};
+    return {
+      'role': value,
+      'isPengurus': false,
+      if (target['isPastor'] == true && value != 'gembala') 'isPastor': false,
+    };
   }
   if (field == 'kelompok') {
     if (!KategorialConfig.pilihanJemaat.contains(value))
@@ -118,7 +128,8 @@ Map<String, dynamic> managementUserPatch(
       'isPengurus': false,
       'adminDaerahArea': '',
       'kelompok': 'Umum',
-      'role': managementText(target['role']) == 'gembala' ? 'gembala' : 'user',
+      'role': accountIsPastor(target) ? 'admin' : 'user',
+      if (accountIsPastor(target)) 'isPastor': true,
     };
   }
   throw StateError('Tindakan tidak didukung.');

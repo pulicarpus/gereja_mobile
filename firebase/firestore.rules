@@ -16,13 +16,22 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn();
       // A linked pastor must not grant themselves regional editing privileges.
-      allow create: if isSignedIn() && (isPrivilegedUser() ||
+      allow create: if isSignedIn()
+        && ((request.resource.data.get('isPastor', false) == false
+              && request.resource.data.get('pastorId', '') == '')
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'superadmin')
+        && (isPrivilegedUser() ||
         (request.auth.uid == userId && request.resource.data.get('role', 'user') == 'user'
           && request.resource.data.get('adminDaerahArea', '') == ''
-          && request.resource.data.get('isBlocked', false) == false));
-      allow update: if isSignedIn() && (isPrivilegedUser() ||
+          && request.resource.data.get('isBlocked', false) == false
+          && request.resource.data.get('isPastor', false) == false
+          && request.resource.data.get('pastorId', '') == ''));
+      allow update: if isSignedIn()
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isPastor', 'pastorId'])
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'superadmin')
+        && (isPrivilegedUser() ||
         (request.auth.uid == userId && !request.resource.data.diff(resource.data)
-          .affectedKeys().hasAny(['role', 'adminDaerahArea', 'isBlocked'])));
+          .affectedKeys().hasAny(['role', 'adminDaerahArea', 'isBlocked', 'isPastor', 'pastorId'])));
       allow delete: if isSignedIn() && (request.auth.uid == userId || isPrivilegedUser());
       match /notes/{noteId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
@@ -97,7 +106,8 @@ service cloud.firestore {
       let account = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
       let churchId = account.get('churchId', '');
       let memberId = account.get('jemaatId', '');
-      return pdAccountActive() && account.get('role', '') == 'gembala'
+      return pdAccountActive() && (account.get('role', '') == 'gembala'
+          || (account.get('role', '') == 'admin' && account.get('isPastor', false) == true))
         && churchId is string && churchId != ''
         && memberId is string && memberId != ''
         && exists(/databases/$(database)/documents/churches/$(churchId))

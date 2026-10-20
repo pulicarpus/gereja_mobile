@@ -33,6 +33,11 @@ class FakeManagementGateway extends ManagementGateway {
   int saves = 0, entries = 0, changes = 0, loads = 0;
   String? savedId;
   ChurchTransferChoice? transferChoice;
+  List<ManagementRecord> family = [];
+  @override
+  Future<List<ManagementRecord>> transferFamily(
+    ManagementRecord account,
+  ) async => family;
   Map<String, dynamic>? savedValues;
   @override
   String? get signedInUid => uid;
@@ -331,7 +336,7 @@ void main() {
     },
   );
   test(
-    'Base transfer patch revokes editing roles and retains the pastor role',
+    'Base transfer patch revokes ordinary admin rights and grants transferred pastor church admin',
     () {
       final admin = managementUserPatch(
         central,
@@ -349,7 +354,8 @@ void main() {
         'churchId',
         'B',
       );
-      expect(pastor['role'], 'gembala');
+      expect(pastor['role'], 'admin');
+      expect(pastor['isPastor'], true);
       expect(pastor['jemaatId'], '');
     },
   );
@@ -376,6 +382,47 @@ void main() {
       expect(find.text('Hak akses: GEMBALA'), findsOneWidget);
       expect(find.text('Turunkan ke Jemaat Biasa'), findsOneWidget);
       expect(find.text('Atur / Pindah Gereja'), findsNothing);
+    },
+  );
+  testWidgets(
+    'Pastor transfer reviews family and never offers an individual move',
+    (tester) async {
+      final fake = FakeManagementGateway();
+      fake.user = ManagementRecord('target', {
+        ...fake.user.data,
+        'role': 'admin',
+        'isPastor': true,
+        'jemaatId': 'head',
+        'churchName': 'Gereja Asal',
+      });
+      fake.church = ManagementRecord('B', {
+        'namaGereja': 'Gereja Tujuan',
+        'daerah': 'Baru',
+      });
+      fake.family = [
+        ManagementRecord('head', {'namaLengkap': 'Gembala'}),
+        ManagementRecord('wife', {'namaLengkap': 'Istri'}),
+      ];
+      await showPage(
+        tester,
+        DetailPenggunaPage(userId: 'target', gateway: fake),
+      );
+      await reveal(tester, find.text('Pindahkan Gembala dan Keluarga'));
+      await tester.tap(find.text('Pindahkan Gembala dan Keluarga'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gereja Tujuan'));
+      await tester.pumpAndSettle();
+      expect(find.text('Siapa yang dipindahkan?'), findsNothing);
+      expect(find.textContaining('• Istri'), findsOneWidget);
+      expect(fake.changes, 0);
+      await tester.tap(find.text('Lanjut'));
+      await tester.pumpAndSettle();
+      expect(fake.changes, 0);
+      await tester.tap(find.text('Simpan'));
+      await tester.pumpAndSettle();
+      expect(fake.changes, 1);
+      expect(fake.transferChoice!.wholeFamily, true);
+      expect(fake.transferChoice!.expectedMemberIds, {'head', 'wife'});
     },
   );
   test('Category changes reset leadership and require a valid category', () {

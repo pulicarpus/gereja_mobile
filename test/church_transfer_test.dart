@@ -41,7 +41,19 @@ void main() {
       auth: MockFirebaseAuth(mockUser: MockUser(uid: 'boss'), signedIn: true),
     );
     await db.doc('users/boss').set({'role': 'superadmin', 'churchId': 'A'});
-    await db.doc('churches/A').set({'namaGereja': 'Asal', 'daerah': 'Lama'});
+    await db.doc('churches/A').set({
+      'namaGereja': 'Asal',
+      'daerah': 'Lama',
+      'gembalaProfiles': [
+        {
+          'id': 'pastor-head',
+          'name': 'Pdt. Kepala',
+          'uid': 'head',
+          'memberId': 'head',
+        },
+        {'id': 'other', 'name': 'Vic. Tetap di asal'},
+      ],
+    });
     await db.doc('churches/B').set({'namaGereja': 'Tujuan', 'daerah': 'Baru'});
     for (final id in ['head', 'child', 'unlinked']) {
       await db.doc('churches/A/jemaat/$id').set({
@@ -124,7 +136,8 @@ void main() {
       final pastor = (await db.doc('users/head').get()).data()!;
       expect(pastor['churchId'], 'B');
       expect(pastor['jemaatId'], 'head');
-      expect(pastor['role'], 'gembala');
+      expect(pastor['role'], 'admin');
+      expect(pastor['isPastor'], true);
       expect(pastor['daerah'], 'Baru');
       expect(pastor['adminDaerahArea'], '');
     },
@@ -149,17 +162,22 @@ void main() {
       expect((await db.doc('churches/B/jemaat/child').get()).exists, false);
     },
   );
-  test('Head cannot leave dependents behind when moving alone', () async {
-    final head = ManagementRecord(
-      'head',
-      (await db.doc('users/head').get()).data()!,
-    );
-    await expectLater(
-      gateway.changeUser(head, 'churchId', const ChurchTransferChoice('B')),
-      throwsStateError,
-    );
-    expect((await db.doc('users/head').get()).data()!['churchId'], 'A');
-  });
+  test(
+    'Pastor family is automatic even when caller requests one person',
+    () async {
+      final head = ManagementRecord(
+        'head',
+        (await db.doc('users/head').get()).data()!,
+      );
+      await gateway.changeUser(
+        head,
+        'churchId',
+        const ChurchTransferChoice('B'),
+      );
+      expect((await db.doc('users/head').get()).data()!['churchId'], 'B');
+      expect((await db.doc('churches/B/jemaat/child').get()).exists, true);
+    },
+  );
   test('Destination collision aborts all family writes', () async {
     await db.doc('churches/B/jemaat/unlinked').set({'namaLengkap': 'Other'});
     await expectLater(
@@ -198,5 +216,88 @@ void main() {
       throwsStateError,
     );
     expect((await db.doc('users/child').get()).data()!['churchId'], 'A');
+  });
+  test(
+    'Pastor always moves the whole family, profiles, admin and history atomically',
+    () async {
+      await db.doc('churches/B').update({
+        'gembalaProfiles': [
+          {'id': 'destination-other', 'name': 'Pdt. Sudah di tujuan'},
+        ],
+      });
+      final head = ManagementRecord(
+        'head',
+        (await db.doc('users/head').get()).data()!,
+      );
+      await gateway.changeUser(
+        head,
+        'churchId',
+        const ChurchTransferChoice('B'),
+      );
+      for (final id in ['head', 'child', 'unlinked']) {
+        expect((await db.doc('churches/A/jemaat/$id').get()).exists, false);
+        expect((await db.doc('churches/B/jemaat/$id').get()).exists, true);
+      }
+      final old = (await db.doc('churches/A').get()).data()!;
+      final destination = (await db.doc('churches/B').get()).data()!;
+      expect((old['gembalaProfiles'] as List).map((p) => p['id']), ['other']);
+      expect((destination['gembalaProfiles'] as List).map((p) => p['id']), [
+        'destination-other',
+        'pastor-head',
+      ]);
+      expect(old['namaGembala'], 'Vic. Tetap di asal');
+      expect(destination['namaGembala'], 'Pdt. Sudah di tujuan');
+      final account = (await db.doc('users/head').get()).data()!;
+      expect(account['role'], 'admin');
+      expect(account['isPastor'], true);
+      expect(account['adminDaerahArea'], '');
+      expect((await db.doc('users/child').get()).data()!['role'], 'user');
+      final history = await db.collection('churches/A/transfer_history').get();
+      expect(history.docs.length, 1);
+      expect(history.docs.single.data()['pastorIds'], ['pastor-head']);
+      expect(history.docs.single.data()['actorUid'], 'boss');
+      await expectLater(
+        gateway.changeUser(head, 'churchId', const ChurchTransferChoice('B')),
+        throwsStateError,
+      );
+      expect(
+        (await db.collection('churches/A/transfer_history').get()).docs.length,
+        1,
+      );
+    },
+  );
+
+  test('Pastor with no verified profile link cannot partially move', () async {
+    await db.doc('churches/A').update({'gembalaProfiles': []});
+    final head = ManagementRecord(
+      'head',
+      (await db.doc('users/head').get()).data()!,
+    );
+    await expectLater(
+      gateway.changeUser(head, 'churchId', const ChurchTransferChoice('B')),
+      throwsStateError,
+    );
+    expect((await db.doc('users/head').get()).data()!['churchId'], 'A');
+    expect((await db.doc('churches/A/jemaat/child').get()).exists, true);
+    expect(
+      (await db.collection('churches/A/transfer_history').get()).docs,
+      isEmpty,
+    );
+  });
+
+  test('Family added after confirmation requires reviewing again', () async {
+    final head = ManagementRecord(
+      'head',
+      (await db.doc('users/head').get()).data()!,
+    );
+    await expectLater(
+      gateway.changeUser(
+        head,
+        'churchId',
+        const ChurchTransferChoice('B', expectedMemberIds: {'head'}),
+      ),
+      throwsStateError,
+    );
+    expect((await db.doc('churches/A/jemaat/head').get()).exists, true);
   });
 }

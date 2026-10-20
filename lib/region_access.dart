@@ -1,3 +1,4 @@
+import 'pastor_identity.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'pengurus_support.dart';
 
@@ -6,7 +7,7 @@ Future<String?> linkedPastorRegion(
   Map<String, dynamic> account,
   String uid,
 ) async {
-  if (account['role'] != 'gembala') {
+  if (!accountIsPastor(account)) {
     return pengurusText(account['daerah']).trim();
   }
   final churchId = pengurusText(account['churchId']).trim();

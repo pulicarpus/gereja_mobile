@@ -1,3 +1,6 @@
+import 'church_pastors.dart';
+import 'pastor_identity.dart';
+import 'pastor_transfer.dart';
 import 'kategorial_config.dart';
 import 'region_names.dart';
 import 'dart:async';
@@ -29,6 +32,9 @@ abstract class ManagementGateway {
       Future.error(StateError('Edit daerah belum tersedia.'));
   Future<void> deleteRegion(String area) =>
       Future.error(StateError('Penghapusan daerah belum tersedia.'));
+  Future<List<ManagementRecord>> transferFamily(
+    ManagementRecord account,
+  ) async => [];
   String newChurchId();
   Future<void> saveChurch(
     String id,
@@ -237,6 +243,8 @@ class FirebaseManagementGateway implements ManagementGateway {
             'isPengurus',
             'adminDaerahArea',
             'isBlocked',
+            'isPastor',
+            'pastorId',
           ])) {
             throw StateError(
               'Data pengguna berubah. Muat ulang sebelum menyimpan.',
@@ -250,6 +258,25 @@ class FirebaseManagementGateway implements ManagementGateway {
             value,
           );
           DocumentReference<Map<String, dynamic>>? bookRef;
+          DocumentReference<Map<String, dynamic>>? retiredChurchRef;
+          Map<String, dynamic>? retiredChurchPatch;
+          if (field == 'role' && value != 'gembala' && accountIsPastor(data)) {
+            if (!actor.superAdmin) {
+              throw StateError(
+                'Hanya superadmin dapat mengakhiri penempatan gembala.',
+              );
+            }
+            retiredChurchRef = _db
+                .collection('churches')
+                .doc(managementText(data['churchId']));
+            final church = await transaction.get(retiredChurchRef);
+            if (!church.exists) throw StateError('Gereja tidak ditemukan.');
+            final profiles = churchPastors(church.data()!);
+            profiles.removeWhere((p) => p.uid == expected.id);
+            retiredChurchPatch = churchPastorPatch(profiles);
+            patch['isPastor'] = false;
+            patch['pastorId'] = '';
+          }
           if (field == 'kelompok' &&
               managementText(data['jemaatId']).isNotEmpty) {
             final church = managementText(data['churchId']),
@@ -294,6 +321,8 @@ class FirebaseManagementGateway implements ManagementGateway {
               throw StateError('Nama daerah terlalu panjang.');
           }
           _guard();
+          if (retiredChurchRef != null)
+            transaction.update(retiredChurchRef, retiredChurchPatch!);
           if (bookRef != null)
             transaction.update(bookRef, {'kelompok': patch['kelompok']});
           if (patch.isNotEmpty) transaction.update(userRef, patch);
@@ -319,10 +348,47 @@ class FirebaseManagementGateway implements ManagementGateway {
     }
   }
 
+  @override
+  Future<List<ManagementRecord>> transferFamily(
+    ManagementRecord account,
+  ) async {
+    _super(await access());
+    final church = managementText(account.data['churchId']);
+    final member = managementText(account.data['jemaatId']);
+    if (!managementId(church) || !managementId(member)) {
+      throw StateError('Hubungkan akun ke Data Jemaat terlebih dahulu.');
+    }
+    final col = _db.collection('churches').doc(church).collection('jemaat');
+    final selected = await col.doc(member).get(_server).timeout(_deadline);
+    managementCheckBook(selected.data(), account.id);
+    final head = managementText(selected.data()?['idKepalaKeluarga'], member);
+    final relatives = await col
+        .where('idKepalaKeluarga', isEqualTo: head)
+        .get(_server)
+        .timeout(_deadline);
+    final headDoc = await col.doc(head).get(_server).timeout(_deadline);
+    if (!headDoc.exists)
+      throw StateError('Perbaiki data kepala keluarga terlebih dahulu.');
+    _guard();
+    return {
+      for (final d in relatives.docs) d.id: ManagementRecord(d.id, d.data()),
+      head: ManagementRecord(head, headDoc.data()!),
+      member: ManagementRecord(member, selected.data()!),
+    }.values.toList();
+  }
+
   Future<void> _transfer(
     ManagementRecord expected,
     ChurchTransferChoice choice,
   ) async {
+    if (accountIsPastor(expected.data)) {
+      choice = ChurchTransferChoice(
+        choice.churchId,
+        wholeFamily: true,
+        expectedMemberIds: choice.expectedMemberIds,
+      );
+    }
+    final operationId = _db.collection('churches').doc().id;
     final actor = await access();
     managementUserPatch(
       actor,
@@ -388,6 +454,13 @@ class FirebaseManagementGateway implements ManagementGateway {
           'Keluarga melebihi 100 orang. Hubungi pengelola sebelum memindahkan.',
         );
     }
+    if (choice.expectedMemberIds != null &&
+        (ids.length != choice.expectedMemberIds!.length ||
+            !ids.containsAll(choice.expectedMemberIds!))) {
+      throw StateError(
+        'Susunan keluarga berubah setelah diperiksa. Buka ulang ringkasan.',
+      );
+    }
     await _db
         .runTransaction((tx) async {
           final currentActor = _access(
@@ -404,6 +477,8 @@ class FirebaseManagementGateway implements ManagementGateway {
                 'adminDaerahArea',
                 'kelompok',
                 'isBlocked',
+                'isPastor',
+                'pastorId',
               ])) {
             throw StateError('Akun berubah. Muat ulang sebelum memindahkan.');
           }
@@ -418,11 +493,23 @@ class FirebaseManagementGateway implements ManagementGateway {
             'churchId',
             choice.churchId,
           );
+          final sourceChurchRef = _db.collection('churches').doc(oldChurch);
+          final sourceChurch = await tx.get(sourceChurchRef);
+          if (!sourceChurch.exists ||
+              sourceChurch.data()?['isArchived'] == true) {
+            throw StateError('Gereja asal tidak tersedia.');
+          }
           final church = await tx.get(
             _db.collection('churches').doc(choice.churchId),
           );
+          final sourcePastors = churchPastors(sourceChurch.data()!);
+          final destinationPastors = churchPastors(church.data() ?? {});
+          final movedPastors = <ChurchPastor>[];
           if (!church.exists || church.data()?['isArchived'] == true)
             throw StateError('Gereja tujuan tidak tersedia.');
+          if (managementText(church.data()?['daerah']).isEmpty) {
+            throw StateError('Daerah gereja tujuan belum diisi.');
+          }
           final churchPatch = {
             'churchName': managementChurchName(church.data()!),
             'daerah': managementText(church.data()?['daerah']),
@@ -467,6 +554,23 @@ class FirebaseManagementGateway implements ManagementGateway {
                   'Tautan akun dan jemaat tidak cocok. Periksa sinkronisasi keluarga.',
                 );
               }
+              if (accountIsPastor(account.data()!)) {
+                final profile = takeTransferredPastor(
+                  sourcePastors,
+                  account.data()!,
+                  uid,
+                  id,
+                );
+                if (destinationPastors.any(
+                  (p) => p.id == profile.id || p.uid == uid,
+                )) {
+                  throw StateError(
+                    'Profil gembala sudah ada di tujuan. Periksa data dahulu.',
+                  );
+                }
+                destinationPastors.add(profile);
+                movedPastors.add(profile);
+              }
               accountPatches[uid] = {
                 ...managementUserPatch(
                   currentActor,
@@ -477,6 +581,8 @@ class FirebaseManagementGateway implements ManagementGateway {
                 ),
                 ...churchPatch,
                 'jemaatId': id,
+                if (accountIsPastor(account.data()!))
+                  'pastorId': movedPastors.last.id,
                 'kelompok':
                     data['kelompok'] ?? account.data()?['kelompok'] ?? 'Umum',
               };
@@ -485,6 +591,32 @@ class FirebaseManagementGateway implements ManagementGateway {
           }
           _guard();
           // All reads precede these writes; ownership, account and family move together.
+          if (movedPastors.isNotEmpty) {
+            tx.update(sourceChurchRef, churchPastorPatch(sourcePastors));
+            tx.update(church.reference, churchPastorPatch(destinationPastors));
+          }
+          tx.set(
+            sourceChurchRef.collection('transfer_history').doc(operationId),
+            {
+              'actorUid': _uid,
+              'sourceChurchId': oldChurch,
+              'sourceChurchName': managementChurchName(sourceChurch.data()!),
+              'destinationChurchId': choice.churchId,
+              'destinationChurchName': managementChurchName(church.data()!),
+              'memberIds': ids.toList(),
+              'members': books.entries
+                  .map(
+                    (e) => {
+                      'id': e.key,
+                      'name': managementText(e.value['namaLengkap']),
+                    },
+                  )
+                  .toList(),
+              'pastorIds': movedPastors.map((p) => p.id).toList(),
+              'wholeFamily': choice.wholeFamily,
+              'createdAt': FieldValue.serverTimestamp(),
+            },
+          );
           if (headSnapshot != null && !ids.contains(headId)) {
             tx.update(source.doc(headId), {
               'familyRevision': FieldValue.increment(1),

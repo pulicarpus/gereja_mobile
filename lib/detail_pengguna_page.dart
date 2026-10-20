@@ -1,3 +1,5 @@
+import 'pastor_link_page.dart';
+import 'pastor_identity.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'kategorial_config.dart';
@@ -78,7 +80,9 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
         title: const Text('Konfirmasi perubahan'),
         content: Text(
           field == 'churchId'
-              ? '${value is ChurchTransferChoice && value.wholeFamily ? 'Pindahkan seluruh keluarga' : 'Pindahkan satu orang'} ke gereja yang dipilih? Biodata dan foto ikut pindah, akun tetap tertaut. Hak admin gereja/daerah dan pengurus lokal akan dicabut untuk akun yang ikut pindah. Untuk satu orang, hubungan keluarga di tujuan menjadi keluarga sendiri. Kepala keluarga yang masih memiliki anggota harus dipindahkan bersama keluarganya atau diatur ulang dahulu.'
+              ? accountIsPastor(expected.data)
+                    ? 'Pindahkan gembala beserta seluruh keluarga ke gereja tujuan? Profil dan akun tetap tertaut. Gembala menjadi admin gereja tujuan, hak admin gereja asal dicabut, dan akses daerah mengikuti gereja baru.'
+                    : '${value is ChurchTransferChoice && value.wholeFamily ? 'Pindahkan seluruh keluarga' : 'Pindahkan satu orang'} ke gereja yang dipilih? Biodata dan foto ikut pindah, akun tetap tertaut. Hak admin gereja/daerah dan pengurus lokal akan dicabut untuk akun yang ikut pindah. Untuk satu orang, hubungan keluarga di tujuan menjadi keluarga sendiri. Kepala keluarga yang masih memiliki anggota harus dipindahkan bersama keluarganya atau diatur ulang dahulu.'
               : field == 'kelompok'
               ? 'Ubah kategorial ke $value? Status pengurus lokal akan di-reset.'
               : 'Simpan perubahan ${field == 'role'
@@ -210,6 +214,53 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
     );
     if (selected == null || !mounted || _expired) return;
     if (field == 'churchId') {
+      if (accountIsPastor(_user!.data)) {
+        setState(() => _busy = true);
+        try {
+          final members = await _gateway.transferFamily(_user!);
+          if (!mounted || _expired) return;
+          setState(() => _busy = false);
+          final approved = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Periksa perpindahan gembala'),
+              content: SingleChildScrollView(
+                child: Text(
+                  '${managementText(_user!.data['_churchDisplayName'], managementText(_user!.data['churchName'], managementText(_user!.data['churchId'])))} → ${choices.firstWhere((c) => c.key == selected).value}\n\n'
+                  'Keluarga yang otomatis ikut:\n${members.map((m) => '• ${managementText(m.data['namaLengkap'], m.id)}').join('\n')}\n\n'
+                  'Gembala menjadi admin gereja tujuan. Akses daerah mengikuti gereja tujuan.',
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Batal'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Lanjut'),
+                ),
+              ],
+            ),
+          );
+          if (mounted) setState(() => _busy = false);
+          if (approved == true && mounted && !_expired) {
+            await _change(
+              field,
+              ChurchTransferChoice(
+                selected,
+                wholeFamily: true,
+                expectedMemberIds: members.map((m) => m.id).toSet(),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) setState(() => _error = managementError(e));
+        } finally {
+          if (mounted) setState(() => _busy = false);
+        }
+        return;
+      }
       final family = await showDialog<bool>(
         context: context,
         builder: (context) => SimpleDialog(
@@ -308,6 +359,8 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                         'Kategorial: ${managementText(data['kelompok'], 'Belum diatur')}',
                       ),
                       Text('Hak akses: ${role.toUpperCase()}'),
+                      if (accountIsPastor(data))
+                        const Text('Pelayanan: Gembala Sidang'),
                       Text(
                         'Pengurus lokal: ${data['isPengurus'] == true ? 'Ya' : 'Tidak'}',
                       ),
@@ -344,13 +397,23 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                               role == 'user' ? 'admin' : 'user',
                             ),
                           ),
-                        if (user.id != access.uid &&
-                            (role == 'user' ||
-                                (access.superAdmin && role == 'admin')))
+                        if (!access.superAdmin &&
+                            user.id != access.uid &&
+                            role == 'user')
                           _action(
                             'Jadikan Gembala Sidang',
                             () => _change('role', 'gembala'),
                           ),
+                        if (access.superAdmin && user.id != access.uid)
+                          _action('Hubungkan akun / profil gembala', () async {
+                            final saved = await Navigator.push<bool>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PastorLinkPage(account: user),
+                              ),
+                            );
+                            if (saved == true && mounted) await _load();
+                          }),
                         if (role == 'user' &&
                             managementText(data['jemaatId']).isEmpty)
                           const Text(
@@ -359,7 +422,9 @@ class _DetailPenggunaPageState extends State<DetailPenggunaPage> {
                         if (access.superAdmin) ...[
                           if (user.id != access.uid)
                             _action(
-                              'Atur / Pindah Gereja',
+                              accountIsPastor(data)
+                                  ? 'Pindahkan Gembala dan Keluarga'
+                                  : 'Atur / Pindah Gereja',
                               () => _choose('churchId'),
                             ),
                           _action(

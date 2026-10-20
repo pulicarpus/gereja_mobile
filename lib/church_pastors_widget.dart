@@ -1,10 +1,10 @@
+import 'pastor_profile_page.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'church_pastors.dart';
 import 'pengurus_widgets.dart';
 import 'upload_support.dart';
@@ -86,24 +86,6 @@ class _ChurchPastorsSectionState extends State<ChurchPastorsSection> {
     }
   }
 
-  Future<void> _link(String value) async {
-    final parsed = Uri.tryParse(
-      value.contains('://') ? value : 'https://$value',
-    );
-    try {
-      if (parsed == null ||
-          !['http', 'https'].contains(parsed.scheme) ||
-          parsed.host.isEmpty ||
-          !await launchUrl(parsed, mode: LaunchMode.externalApplication))
-        throw StateError('Tautan tidak dapat dibuka.');
-    } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tautan tidak dapat dibuka.')),
-        );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final canEdit = UserManager().isAdmin();
@@ -151,74 +133,85 @@ class _ChurchPastorsSectionState extends State<ChurchPastorsSection> {
             for (final profile in profiles)
               Card(
                 margin: const EdgeInsets.only(top: 10, bottom: 4),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          pengurusAvatar(
-                            profile.photo.isEmpty ? null : profile.photo,
-                            radius: 32,
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              profile.name,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
+                child: InkWell(
+                  onTap: () => openPastorProfile(
+                    context,
+                    profile,
+                    widget.churchId!,
+                    UserManager().activeChurchName ??
+                        UserManager().originalChurchName ??
+                        'Gereja',
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            ChurchPastorAvatar(
+                              pastor: profile,
+                              churchId: widget.churchId!,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                profile.name,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
-                          if (canEdit)
-                            PopupMenuButton<String>(
-                              tooltip: 'Atur ${profile.name}',
-                              itemBuilder: (_) => const [
-                                PopupMenuItem(
-                                  value: 'edit',
-                                  child: Text('Edit profil'),
-                                ),
-                                PopupMenuItem(
-                                  value: 'remove',
-                                  child: Text('Hapus profil'),
-                                ),
-                              ],
-                              onSelected: (action) => action == 'edit'
-                                  ? _edit(profile)
-                                  : _remove(profile),
-                            ),
-                        ],
-                      ),
-                      Wrap(
-                        spacing: 4,
-                        children: [
-                          if (profile.wa.isNotEmpty)
-                            IconButton(
-                              tooltip: 'WhatsApp',
-                              icon: const Icon(
-                                Icons.phone,
-                                color: Colors.green,
+                            if (canEdit)
+                              PopupMenuButton<String>(
+                                tooltip: 'Atur ${profile.name}',
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'edit',
+                                    child: Text('Edit profil'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'remove',
+                                    child: Text('Hapus profil'),
+                                  ),
+                                ],
+                                onSelected: (action) => action == 'edit'
+                                    ? _edit(profile)
+                                    : _remove(profile),
                               ),
-                              onPressed: () =>
-                                  pengurusWhatsApp(context, profile.wa),
-                            ),
-                          for (final entry in [
-                            (profile.fb, Icons.facebook, 'Facebook'),
-                            (profile.ig, Icons.camera_alt, 'Instagram'),
-                            (profile.tiktok, Icons.music_note, 'TikTok'),
-                            (profile.yt, Icons.play_circle_fill, 'YouTube'),
-                          ])
-                            if (entry.$1.isNotEmpty)
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            if (profile.wa.isNotEmpty)
                               IconButton(
-                                tooltip: entry.$3,
-                                icon: Icon(entry.$2, color: Colors.indigo),
-                                onPressed: () => _link(entry.$1),
+                                tooltip: 'WhatsApp',
+                                icon: const Icon(
+                                  Icons.phone,
+                                  color: Colors.green,
+                                ),
+                                onPressed: () =>
+                                    pengurusWhatsApp(context, profile.wa),
                               ),
-                        ],
-                      ),
-                    ],
+                            for (final entry in [
+                              (profile.fb, Icons.facebook, 'Facebook'),
+                              (profile.ig, Icons.camera_alt, 'Instagram'),
+                              (profile.tiktok, Icons.music_note, 'TikTok'),
+                              (profile.yt, Icons.play_circle_fill, 'YouTube'),
+                            ])
+                              if (entry.$1.isNotEmpty)
+                                IconButton(
+                                  tooltip: entry.$3,
+                                  icon: Icon(entry.$2, color: Colors.indigo),
+                                  onPressed: () =>
+                                      openPastorLink(context, entry.$1),
+                                ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),

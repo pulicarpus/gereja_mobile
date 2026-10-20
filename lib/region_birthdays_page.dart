@@ -126,7 +126,7 @@ class _RegionBirthdaysSectionState extends State<RegionBirthdaysSection> {
               );
             }
             return SizedBox(
-              height: 185 + (scale - 1).clamp(0, double.infinity) * 95,
+              height: 185.0 + (scale - 1).clamp(0, double.infinity) * 95,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: people.length,
@@ -135,7 +135,7 @@ class _RegionBirthdaysSectionState extends State<RegionBirthdaysSection> {
                   final person = people[index];
                   final today = person.birth.day == now.day;
                   return SizedBox(
-                    width: 155 * scale.clamp(1, 2),
+                    width: 155.0 * scale.clamp(1, 2),
                     child: Material(
                       color: today ? Colors.orange.shade50 : Colors.white,
                       shape: RoundedRectangleBorder(

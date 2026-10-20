@@ -1,3 +1,4 @@
+import 'pastor_statistics.dart';
 import 'region_label.dart';
 import 'region_names.dart';
 import 'package:flutter/material.dart';
@@ -59,7 +60,7 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       totalGereja = docs.length;
 
       int tempTotal = 0, tempPria = 0, tempWanita = 0;
-      int tempPengerja = 0, tempPdt = 0, tempVic = 0, tempEv = 0;
+      final pastorStats = PastorStatistics();
       Map<String, int> tempKat = {
         "Sekolah Minggu": 0, "AMKI": 0, "Perkawan": 0, "Perkaria": 0, "Lainnya": 0,
       };
@@ -67,23 +68,7 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
       for (var docGereja in docs) {
         var dataGereja = docGereja.data() as Map<String, dynamic>;
         
-        String gembala = (dataGereja['namaGembala'] ?? "").toString().toLowerCase();
-        bool isPengerja = false;
-
-        if (gembala.contains("pdt") || gembala.contains("pendeta")) {
-          tempPdt++;
-          isPengerja = true;
-        } else if (gembala.contains("vic") || gembala.contains("vik")) {
-          tempVic++;
-          isPengerja = true;
-        } else if (gembala.contains("ev") || gembala.contains("penginjil")) {
-          tempEv++;
-          isPengerja = true;
-        } else if (gembala.isNotEmpty && !gembala.contains("belum ada")) {
-          isPengerja = true; 
-        }
-
-        if (isPengerja) tempPengerja++;
+        pastorStats.addChurch(dataGereja);
 
         var snapJemaat = await docGereja.reference.collection("jemaat").get().timeout(const Duration(seconds: 20));
 
@@ -110,10 +95,10 @@ class _DashboardDaerahPageState extends State<DashboardDaerahPage> {
           wanita = tempWanita;
           kategorialStats = tempKat;
           
-          totalPengerja = tempPengerja;
-          totalPdt = tempPdt;
-          totalVic = tempVic;
-          totalEv = tempEv;
+          totalPengerja = pastorStats.total;
+          totalPdt = pastorStats.pendeta;
+          totalVic = pastorStats.vicaris;
+          totalEv = pastorStats.penginjil;
 
           _isLoading = false;
         });

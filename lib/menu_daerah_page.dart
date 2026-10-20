@@ -170,10 +170,6 @@ class MenuDaerahPage extends StatelessWidget {
                           InfoSuratDaerahPage(namaDaerah: namaDaerah),
                         ),
                       ),
-                      if (UserManager().canViewRegion(namaDaerah) &&
-                          (UserManager().isGembala() || UserManager().isAdminDaerah() || UserManager().isSuperAdmin()))
-                        _menu(context, Icons.cake_outlined, 'Ulang Tahun Bulan Ini', Colors.pink,
-                          () => _open(context, RegionBirthdaysPage(area: namaDaerah))),
                       _menu(
                         context,
                         Icons.settings_outlined,
@@ -187,6 +183,9 @@ class MenuDaerahPage extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(height: 24),
+              RegionBirthdaysSection(area: namaDaerah),
+              const SizedBox(height: 20),
             ],
           ),
         ),

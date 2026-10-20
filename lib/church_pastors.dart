@@ -145,7 +145,7 @@ class ChurchPastorsRepository {
             'gembalaProfiles': profiles.map((p) => p.toMap()).toList(),
             // Keep existing readers compatible with the first profile.
             'namaGembala': primary.name,
-            'fotoGembalaUrl': primary.photo,
+            'fotoGembalaUrl': primary.photo.isEmpty ? null : primary.photo,
             'waGembala': primary.wa,
             'fbGembala': primary.fb,
             'igGembala': primary.ig,

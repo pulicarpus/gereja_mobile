@@ -86,6 +86,7 @@ void main() {
       await repository.save(third);
       await repository.remove(churchPastors(await data()).first);
       expect((await data())['namaGembala'], 'Gembala Kedua');
+      expect((await data())['fotoGembalaUrl'], isNull);
       await repository.remove(second);
       expect(churchPastors(await data()).single.id, 'third');
       await repository.remove(third);

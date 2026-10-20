@@ -1,3 +1,4 @@
+import 'church_pastors_widget.dart';
 import 'region_access.dart';
 import 'mobile_notifications.dart';
 import 'upload_support.dart';
@@ -15,7 +16,6 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'user_manager.dart';
@@ -154,16 +154,9 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
   String? _sessionUid;
   int _currentIndex = 0;
 
-  String? _fotoGembalaUrl;
-  String _namaGembala = "Gembala Sidang";
   String _alamatGereja = "Memuat alamat...";
   String? _fotoGerejaUrl;
   
-  String _waGembala = "";
-  String _fbGembala = "";
-  String _igGembala = "";
-  String _tiktokGembala = "";
-  String _ytGembala = "";
 
   String _namaBank = "";
   String _noRekening = "";
@@ -585,15 +578,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
   }
 
   void _resetChurchState() {
-    _fotoGembalaUrl = null;
-    _namaGembala = "Gembala Sidang";
     _alamatGereja = "Memuat alamat...";
     _fotoGerejaUrl = null;
-    _waGembala = "";
-    _fbGembala = "";
-    _igGembala = "";
-    _tiktokGembala = "";
-    _ytGembala = "";
     _namaBank = "";
     _noRekening = "";
     _atasNamaRekening = "";
@@ -642,15 +628,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
           manager.saveToPrefs().catchError((Object error) { debugPrint('Nama gereja belum tersimpan di cache lokal.'); });
         }
         setState(() {
-          _namaGembala = data?['namaGembala']?.toString() ?? "Gembala Sidang";
-          _fotoGembalaUrl = data?['fotoGembalaUrl']?.toString();
           _alamatGereja = data?['alamat']?.toString() ?? "Alamat tidak tersedia";
           _fotoGerejaUrl = data?['fotoGerejaUrl']?.toString();
-          _waGembala = data?['waGembala']?.toString() ?? "";
-          _fbGembala = data?['fbGembala']?.toString() ?? "";
-          _igGembala = data?['igGembala']?.toString() ?? "";
-          _tiktokGembala = data?['tiktokGembala']?.toString() ?? "";
-          _ytGembala = data?['ytGembala']?.toString() ?? "";
           _namaBank = data?['namaBank']?.toString() ?? "";
           _noRekening = data?['noRekening']?.toString() ?? "";
           _atasNamaRekening = data?['atasNamaRekening']?.toString() ?? "";
@@ -754,128 +733,6 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
         ],
       ),
     );
-  }
-
-  void _tampilkanDialogEditGembala() {
-    final user = UserManager();
-    if (!user.isAdmin() && !user.isSuperAdmin()) return;
-    final churchId = user.getChurchIdForCurrentView();
-    if (churchId == null) return;
-    bool saving = false;
-
-    File? imageFile;
-    final txtNama = TextEditingController(text: _namaGembala);
-    final txtWa = TextEditingController(text: _waGembala);
-    final txtFb = TextEditingController(text: _fbGembala);
-    final txtIg = TextEditingController(text: _igGembala);
-    final txtTiktok = TextEditingController(text: _tiktokGembala);
-    final txtYt = TextEditingController(text: _ytGembala);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Edit Profil Gembala", style: TextStyle(fontWeight: FontWeight.bold)),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                GestureDetector(
-                  onTap: () async {
-                    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-                    if (pickedFile != null && context.mounted && !saving) setStateDialog(() => imageFile = File(pickedFile.path));
-                  },
-                  child: CircleAvatar(
-                    radius: 50,
-                    backgroundColor: Colors.indigo.shade50,
-                    backgroundImage: imageFile != null ? FileImage(imageFile!) : (_fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null) as ImageProvider?,
-                    child: (imageFile == null && _fotoGembalaUrl == null) ? const Icon(Icons.camera_alt, size: 40, color: Colors.indigo) : null,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text("Ketuk foto untuk mengubah", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                const SizedBox(height: 16),
-                TextField(controller: txtNama, decoration: const InputDecoration(labelText: "Nama Gembala", border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: txtWa, decoration: const InputDecoration(labelText: "WhatsApp (Cth: 0812...)", prefixIcon: Icon(Icons.phone), border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: txtFb, decoration: const InputDecoration(labelText: "Link Facebook", prefixIcon: Icon(Icons.facebook), border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: txtIg, decoration: const InputDecoration(labelText: "Link Instagram", prefixIcon: Icon(Icons.camera_alt_outlined), border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: txtTiktok, decoration: const InputDecoration(labelText: "Link TikTok", prefixIcon: Icon(Icons.music_video), border: OutlineInputBorder())),
-                const SizedBox(height: 10),
-                TextField(controller: txtYt, decoration: const InputDecoration(labelText: "Link YouTube", prefixIcon: Icon(Icons.play_circle_fill), border: OutlineInputBorder())),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Batal")),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.indigo, foregroundColor: Colors.white),
-              onPressed: () async {
-                if (saving || !mounted) return;
-                saving = true;
-                setState(() => _isLoadingUpload = true);
-                String? finalFotoUrl = _fotoGembalaUrl;
-                try {
-                  final access = await ChurchWriteAccess.check(churchId);
-                  if (imageFile != null) {
-                    String fileName = "gembala_${DateTime.now().millisecondsSinceEpoch}.jpg";
-                    Reference ref = _storage.ref().child("gereja/$churchId/$fileName");
-                    await ref.putFile(imageFile!, await prepareUpload(imageFile!)).timeout(const Duration(seconds: 30));
-                    finalFotoUrl = await ref.getDownloadURL().timeout(const Duration(seconds: 20));
-                  }
-                  await _db.runTransaction((tx) async {
-                  await access.inTransaction(tx);
-                  tx.update(_db.collection("churches").doc(churchId), {
-                    "namaGembala": txtNama.text.trim(),
-                    "waGembala": txtWa.text.trim(),
-                    "fbGembala": txtFb.text.trim(),
-                    "igGembala": txtIg.text.trim(),
-                    "tiktokGembala": txtTiktok.text.trim(),
-                    "ytGembala": txtYt.text.trim(),
-                    if (imageFile != null && finalFotoUrl != null) "fotoGembalaUrl": finalFotoUrl,
-                  });
-                }).timeout(const Duration(seconds: 20));
-                if (context.mounted) Navigator.pop(context);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profil Gembala diperbarui.")));
-                } catch (e) {
-                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Gagal menyimpan: $e")));
-                } finally {
-                  saving = false;
-                  if (mounted) setState(() => _isLoadingUpload = false);
-                }
-              },
-              child: const Text("Simpan"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _bukaLink(String urlString, bool isWhatsApp) async {
-    if (urlString.isEmpty) return;
-    Uri uri;
-    if (isWhatsApp) {
-      String cleanNumber = urlString.replaceAll(RegExp(r'[^0-9]'), '');
-      if (cleanNumber.startsWith('0')) cleanNumber = '62${cleanNumber.substring(1)}';
-      uri = Uri.parse("https://wa.me/$cleanNumber");
-    } else {
-      if (!urlString.startsWith("http://") && !urlString.startsWith("https://")) {
-        uri = Uri.parse("https://$urlString");
-      } else {
-        uri = Uri.parse(urlString);
-      }
-    }
-    try {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak dapat membuka tautan.")));
-    }
   }
 
   // 👇 ============================================================== 👇
@@ -1140,82 +997,8 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
                         SizedBox(height: screenHeight * 0.04), 
                         
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text("Gembala Sidang", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            if (isAdmin)
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.indigo),
-                                onPressed: _tampilkanDialogEditGembala,
-                                tooltip: "Edit Profil Gembala",
-                              )
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        
-                        Container(
-                          padding: const EdgeInsets.all(15),
-                          decoration: BoxDecoration(
-                            color: Colors.white, borderRadius: BorderRadius.circular(15),
-                            border: Border.all(color: Colors.grey.shade200),
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))],
-                          ),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  GestureDetector(
-                                    onTap: () {
-                                      if (_fotoGembalaUrl != null && _fotoGembalaUrl!.isNotEmpty) {
-                                        Navigator.push(context, MaterialPageRoute(
-                                          builder: (context) => FullScreenImagePage(
-                                            imageUrl: _fotoGembalaUrl!, 
-                                            heroTag: 'foto_gembala'
-                                          )
-                                        ));
-                                      }
-                                    },
-                                    child: Hero(
-                                      tag: 'foto_gembala',
-                                      child: CircleAvatar(
-                                        radius: 35, backgroundColor: Colors.indigo.shade100,
-                                        backgroundImage: _fotoGembalaUrl != null ? CachedNetworkImageProvider(_fotoGembalaUrl!) : null,
-                                        child: _fotoGembalaUrl == null ? const Icon(Icons.person, size: 35, color: Colors.indigo) : null,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 20),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(_namaGembala, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                                        const SizedBox(height: 4),
-                                        const Text("Pelayan Tuhan", style: TextStyle(color: Colors.grey)),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_waGembala.isNotEmpty || _fbGembala.isNotEmpty || _igGembala.isNotEmpty || _tiktokGembala.isNotEmpty || _ytGembala.isNotEmpty) ...[
-                                const Divider(height: 30),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    if (_waGembala.isNotEmpty) _buildSosmedIcon(Icons.phone, Colors.green, () => _bukaLink(_waGembala, true)),
-                                    if (_fbGembala.isNotEmpty) _buildSosmedIcon(Icons.facebook, Colors.blue, () => _bukaLink(_fbGembala, false)),
-                                    if (_igGembala.isNotEmpty) _buildSosmedIcon(Icons.camera_alt, Colors.purple, () => _bukaLink(_igGembala, false)),
-                                    if (_tiktokGembala.isNotEmpty) _buildSosmedIcon(Icons.music_note, Colors.black, () => _bukaLink(_tiktokGembala, false)),
-                                    if (_ytGembala.isNotEmpty) _buildSosmedIcon(Icons.play_circle_fill, Colors.red, () => _bukaLink(_ytGembala, false)),
-                                  ],
-                                )
-                              ]
-                            ],
-                          ),
-                        ),
-                        
-                        SizedBox(height: screenHeight * 0.04), 
+                        ChurchPastorsSection(churchId: user.getChurchIdForCurrentView()),
+                        SizedBox(height: screenHeight * 0.04),
 
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1317,17 +1100,6 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _buildSosmedIcon(IconData icon, Color color, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-        child: Icon(icon, color: color, size: 24),
-      ),
     );
   }
 

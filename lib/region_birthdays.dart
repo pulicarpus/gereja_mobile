@@ -1,3 +1,4 @@
+import 'church_pastors.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'region_names.dart';
@@ -110,16 +111,17 @@ Future<List<RegionalBirthday>> loadRegionalBirthdays(
   }
   // Gembala recorded on a church can appear even before linking a login account.
   for (final church in churches) {
-    final matches = members
-        .where(
-          (m) =>
-              m['churchId'] == church.id &&
-              nameKey(m['namaLengkap']) ==
-                  nameKey(church.data()['namaGembala']),
-        )
-        .toList();
-    if (matches.length == 1)
-      add(matches.single, 'Gembala', linked: matches.single);
+    for (final pastor in churchPastors(church.data())) {
+      final matches = members
+          .where(
+            (member) =>
+                member['churchId'] == church.id &&
+                nameKey(member['namaLengkap']) == nameKey(pastor.name),
+          )
+          .toList();
+      if (matches.length == 1)
+        add(matches.single, 'Gembala', linked: matches.single);
+    }
   }
   final boards = await db
       .collection('struktur_pengurus_daerah')

@@ -58,4 +58,32 @@ void main() {
       expect(regionalBirthDate('31/02/1980'), isNull);
     },
   );
+  test(
+    'All additional church pastors can appear in regional birthdays',
+    () async {
+      final db = FakeFirebaseFirestore();
+      await db.doc('churches/a').set({
+        'daerah': 'Belitang',
+        'gembalaProfiles': [
+          {'id': 'first', 'name': 'Gembala Satu'},
+          {'id': 'second', 'name': 'Gembala Dua'},
+        ],
+      });
+      for (final name in ['Gembala Satu', 'Gembala Dua', 'Jemaat Biasa']) {
+        await db.collection('churches/a/jemaat').add({
+          'namaLengkap': name,
+          'tanggalLahir': '20/10/1980',
+        });
+      }
+      final result = await loadRegionalBirthdays(
+        db,
+        'Belitang',
+        DateTime(2026, 10, 1),
+      );
+      expect(result.map((p) => p.person['namaLengkap']).toSet(), {
+        'Gembala Satu',
+        'Gembala Dua',
+      });
+    },
+  );
 }

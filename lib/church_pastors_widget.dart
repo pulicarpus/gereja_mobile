@@ -113,7 +113,8 @@ class _ChurchPastorsSectionState extends State<ChurchPastorsSection> {
       builder: (context, snapshot) {
         if (snapshot.hasError)
           return pengurusMessage(pengurusError(snapshot.error!));
-        if (!snapshot.hasData)
+        if (snapshot.connectionState == ConnectionState.waiting ||
+            !snapshot.hasData)
           return const Center(child: CircularProgressIndicator());
         if (!snapshot.data!.exists) return const SizedBox.shrink();
         final profiles = churchPastors(snapshot.data!.data()!);

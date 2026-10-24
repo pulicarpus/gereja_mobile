@@ -1,3 +1,4 @@
+import 'region_names.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,7 +9,17 @@ import 'user_manager.dart';
 
 class KelolaGerejaPage extends StatefulWidget {
   final ManagementGateway? gateway;
-  const KelolaGerejaPage({super.key, this.gateway});
+  final String? area, areaLabel;
+  final bool initialArchived;
+  final String initialSearch;
+  const KelolaGerejaPage({
+    super.key,
+    this.gateway,
+    this.area,
+    this.areaLabel,
+    this.initialArchived = false,
+    this.initialSearch = '',
+  });
   @override
   State<KelolaGerejaPage> createState() => _KelolaGerejaPageState();
 }
@@ -19,9 +30,12 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
   StreamSubscription<String?>? _auth;
   bool _busy = false, _expired = false, _showArchived = false;
   String? _error;
+  late final TextEditingController _search;
   @override
   void initState() {
     super.initState();
+    _showArchived = widget.initialArchived;
+    _search = TextEditingController(text: widget.initialSearch);
     _gateway = widget.gateway ?? FirebaseManagementGateway();
     _stream = _gateway.churches();
     final uid = _gateway.signedInUid;
@@ -37,8 +51,39 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
   @override
   void dispose() {
     _auth?.cancel();
+    _search.dispose();
     super.dispose();
   }
+
+  Future<void> _openRegion(RegionNameGroup region) async {
+    if (_busy || _expired) return;
+    final changed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => KelolaGerejaPage(
+          gateway: _gateway,
+          area: region.name,
+          areaLabel: region.displayName,
+          initialArchived: _showArchived,
+          initialSearch:
+              _searchText(region.name).contains(_searchText(_search.text)) ||
+                  _searchText(
+                    region.displayName,
+                  ).contains(_searchText(_search.text))
+              ? ''
+              : _search.text,
+        ),
+      ),
+    );
+    if (!mounted || _expired) return;
+    if (changed == true) {
+      Navigator.pop(context, true);
+    } else {
+      setState(() => _stream = _gateway.churches());
+    }
+  }
+
+  String _searchText(Object? value) => cleanRegionName(value).toLowerCase();
 
   Future<void> _enter(ManagementRecord church) async {
     if (_busy || _expired) return;
@@ -138,7 +183,11 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
     canPop: !_busy,
     child: Scaffold(
       appBar: AppBar(
-        title: Text(_showArchived ? 'Arsip Gereja' : 'Kelola & Pilih Gereja'),
+        title: Text(
+          widget.area == null
+              ? (_showArchived ? 'Arsip Gereja per Daerah' : 'Kelola Gereja')
+              : '${_showArchived ? 'Arsip' : 'Gereja'} • ${widget.areaLabel ?? cleanRegionName(widget.area)}',
+        ),
         actions: [
           IconButton(
             tooltip: _showArchived ? 'Daftar aktif' : 'Arsip gereja',
@@ -167,6 +216,37 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
                     child: Text(
                       _error!,
                       style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: TextField(
+                    controller: _search,
+                    enabled: !_busy,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: widget.area == null
+                          ? 'Cari gereja atau daerah'
+                          : 'Cari gereja di daerah ini',
+                      prefixIcon: const Icon(Icons.search),
+                      border: const OutlineInputBorder(),
+                      suffixIcon: _search.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Hapus pencarian',
+                              onPressed: _busy
+                                  ? null
+                                  : () => setState(_search.clear),
+                              icon: const Icon(Icons.clear),
+                            ),
+                    ),
+                  ),
+                ),
+                if (widget.area == null)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Text(
+                      'Pilih daerah untuk melihat dan mengelola gereja.',
                     ),
                   ),
                 Expanded(
@@ -205,6 +285,26 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
                                     (church.data['isArchived'] == true) ==
                                     _showArchived,
                               )
+                              .where(
+                                (church) =>
+                                    widget.area == null ||
+                                    regionNameKey(church.data['daerah']) ==
+                                        regionNameKey(widget.area),
+                              )
+                              .where((church) {
+                                final query = _searchText(_search.text);
+                                return query.isEmpty ||
+                                    _searchText(
+                                      managementChurchName(church.data),
+                                    ).contains(query) ||
+                                    (widget.area == null &&
+                                        (_searchText(
+                                              church.data['daerah'],
+                                            ).contains(query) ||
+                                            _searchText(
+                                              church.data['namaDaerah'],
+                                            ).contains(query)));
+                              })
                               .toList()
                             ..sort(
                               (a, b) => managementChurchName(
@@ -214,13 +314,47 @@ class _KelolaGerejaPageState extends State<KelolaGerejaPage> {
                       if (churches.isEmpty)
                         return Center(
                           child: Text(
-                            _showArchived
+                            _search.text.trim().isNotEmpty
+                                ? 'Gereja atau daerah tidak ditemukan.'
+                                : _showArchived
                                 ? 'Arsip gereja kosong.'
                                 : 'Belum ada data gereja. Tekan + untuk menambah.',
                           ),
                         );
+                      if (widget.area == null) {
+                        final regions = groupChurchRegions(
+                          churches.map(
+                            (church) => {...church.data, 'isArchived': false},
+                          ),
+                        );
+                        return ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                          itemCount: regions.length,
+                          itemBuilder: (context, index) {
+                            final region = regions[index];
+                            return Card(
+                              child: ListTile(
+                                leading: const CircleAvatar(
+                                  child: Icon(Icons.map_outlined),
+                                ),
+                                title: Text(
+                                  region.displayName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                subtitle: Text(
+                                  '${region.count} Gereja${_search.text.trim().isEmpty ? '' : ' ditemukan'}',
+                                ),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: _busy ? null : () => _openRegion(region),
+                              ),
+                            );
+                          },
+                        );
+                      }
                       return ListView.builder(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
                         itemCount: churches.length,
                         itemBuilder: (context, index) {
                           final church = churches[index], data = church.data;

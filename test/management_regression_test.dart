@@ -51,9 +51,10 @@ class FakeManagementGateway extends ManagementGateway {
     yield [user];
   }
 
+  List<ManagementRecord>? churchList;
   @override
   Stream<List<ManagementRecord>> churches() async* {
-    yield [church];
+    yield churchList ?? [church];
   }
 
   @override
@@ -743,6 +744,8 @@ void main() {
       ..pendingEnter = Completer<void>()
       ..enterError = StateError('Gereja sudah tidak tersedia.');
     await showPage(tester, KelolaGerejaPage(gateway: fake));
+    await tester.tap(find.text('Utara'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Kelola Data'));
     await tester.pump();
     expect(
@@ -760,6 +763,8 @@ void main() {
     (tester) async {
       final fake = FakeManagementGateway();
       await showPage(tester, KelolaGerejaPage(gateway: fake));
+      await tester.tap(find.text('Utara'));
+      await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Edit Info Gereja'));
       await tester.pumpAndSettle();
       expect(
@@ -788,6 +793,106 @@ void main() {
         'alamat',
       });
       expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'Church management groups region aliases and scopes church search',
+    (tester) async {
+      final fake = FakeManagementGateway()
+        ..churchList = [
+          ManagementRecord('one', {
+            'namaGereja': 'Smirna',
+            'daerah': 'Belitang',
+          }),
+          ManagementRecord('two', {
+            'namaGereja': 'Antiokhia',
+            'daerah': ' BELITANG ',
+          }),
+          ManagementRecord('three', {
+            'namaGereja': 'Siloam',
+            'daerah': 'Pontianak',
+          }),
+          ManagementRecord('archived', {
+            'namaGereja': 'Arsip',
+            'daerah': 'Lama',
+            'isArchived': true,
+          }),
+        ];
+      await showPage(tester, KelolaGerejaPage(gateway: fake));
+      expect(find.text('Smirna'), findsNothing);
+      expect(find.text('2 Gereja'), findsOneWidget);
+      expect(find.text('Lama'), findsNothing);
+      await tester.tap(find.text('Belitang'));
+      await tester.pumpAndSettle();
+      expect(find.text('Smirna'), findsOneWidget);
+      expect(find.text('Antiokhia'), findsOneWidget);
+      expect(find.text('Siloam'), findsNothing);
+      await tester.enterText(find.byType(TextField), ' SMIRNA ');
+      await tester.pumpAndSettle();
+      expect(find.text('Smirna'), findsOneWidget);
+      expect(find.text('Antiokhia'), findsNothing);
+      await tester.tap(find.byTooltip('Hapus pencarian'));
+      await tester.pumpAndSettle();
+      expect(find.text('Antiokhia'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.text('Pontianak'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'siloam');
+      await tester.pumpAndSettle();
+      expect(find.text('Pontianak'), findsOneWidget);
+      expect(find.text('Belitang'), findsNothing);
+      await tester.tap(find.text('Pontianak'));
+      await tester.pumpAndSettle();
+      expect(find.text('Siloam'), findsOneWidget);
+      expect(find.text('Smirna'), findsNothing);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Hapus pencarian'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Arsip gereja'));
+      await tester.pumpAndSettle();
+      expect(find.text('Lama'), findsOneWidget);
+      expect(find.text('Belitang'), findsNothing);
+      await fake.auth.close();
+    },
+  );
+  testWidgets(
+    'Entering a regional church returns through both selection pages',
+    (tester) async {
+      final fake = FakeManagementGateway();
+      var changed = false;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  changed =
+                      await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => KelolaGerejaPage(gateway: fake),
+                        ),
+                      ) ==
+                      true;
+                },
+                child: const Text('Buka kelola gereja'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Buka kelola gereja'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Utara'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kelola Data'));
+      await tester.pumpAndSettle();
+      expect(fake.entries, 1);
+      expect(changed, true);
+      expect(find.text('Buka kelola gereja'), findsOneWidget);
+      expect(find.text('Utara'), findsNothing);
+      await fake.auth.close();
     },
   );
 }

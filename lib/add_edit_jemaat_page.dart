@@ -1,5 +1,6 @@
 import 'upload_support.dart';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -40,6 +41,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
   final _noTelpController = TextEditingController();
   final _karuniaController = TextEditingController();
   final _catatanController = TextEditingController();
+  final _noKKController = TextEditingController();
+  final _nikController = TextEditingController();
+  final _pendidikanController = TextEditingController();
+  final _pekerjaanController = TextEditingController();
 
   // Dropdown Values
   String _jenisKelamin = "Pria";
@@ -68,6 +73,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       _noTelpController.text = legacyText(d['nomorTelepon']);
       _karuniaController.text = legacyText(d['karuniaPelayanan']);
       _catatanController.text = legacyText(d['catatanTambahan']);
+      _noKKController.text = legacyText(d['nomorKK']);
+      _nikController.text = legacyText(d['nik']);
+      _pendidikanController.text = legacyText(d['pendidikan']);
+      _pekerjaanController.text = legacyText(d['pekerjaan']);
       _existingPhotoUrl = d['fotoProfil']?.toString();
       _jenisKelamin = ['Pria', 'Wanita'].contains(d['jenisKelamin']) ? d['jenisKelamin'].toString() : 'Pria';
       _statusNikah = ['Belum Menikah', 'Menikah', 'Janda/Duda'].contains(d['statusPernikahan']) ? d['statusPernikahan'].toString() : 'Belum Menikah';
@@ -133,6 +142,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
       // 2. Siapkan Map Data (Sesuai Firestore Bos)
       final jemaatMap = {
         "namaLengkap": _namaController.text.trim(),
+        "nomorKK": _noKKController.text.trim(),
+        "nik": _nikController.text.trim(),
+        "pendidikan": _pendidikanController.text.trim(),
+        "pekerjaan": _pekerjaanController.text.trim(),
         if (widget.jemaatData == null || _imageFile != null) "fotoProfil": photoUrl,
         if (_imageFile != null) "photoBase64": null,
         "jenisKelamin": _jenisKelamin,
@@ -221,6 +234,10 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
     _noTelpController.dispose();
     _karuniaController.dispose();
     _catatanController.dispose();
+    _noKKController.dispose();
+    _nikController.dispose();
+    _pendidikanController.dispose();
+    _pekerjaanController.dispose();
     super.dispose();
   }
 
@@ -254,6 +271,27 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
                   controller: _namaController, 
                   decoration: const InputDecoration(labelText: "Nama Lengkap *", border: OutlineInputBorder()),
                   validator: (v) => (v ?? '').trim().isEmpty ? "Wajib diisi" : null
+                ),
+                const SizedBox(height: 15),
+
+                _buildIdentityField('No. KK', _noKKController),
+                const SizedBox(height: 15),
+                _buildIdentityField('NIK', _nikController),
+                const SizedBox(height: 15),
+                TextFormField(
+                  controller: _pendidikanController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Pendidikan',
+                    hintText: 'Contoh: SMA, S1 Teologi, belum sekolah',
+                    border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 15),
+                TextFormField(
+                  controller: _pekerjaanController,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Pekerjaan',
+                    hintText: 'Contoh: petani, guru, pelajar',
+                    border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 15),
 
@@ -311,6 +349,20 @@ class _AddEditJemaatPageState extends State<AddEditJemaatPage> {
           ),
     );
   }
+
+  Widget _buildIdentityField(String label, TextEditingController controller) => TextFormField(
+    controller: controller,
+    keyboardType: TextInputType.number,
+    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+    maxLength: 16,
+    decoration: InputDecoration(labelText: label,
+      helperText: 'Opsional • 16 digit angka', border: const OutlineInputBorder()),
+    validator: (value) {
+      final text = value?.trim() ?? '';
+      return text.isEmpty || RegExp(r'^\d{16}$').hasMatch(text)
+          ? null : '$label harus terdiri dari 16 digit angka';
+    },
+  );
 
   Widget _buildDropdown(String label, List<String> items, String current, Function(String?) onChanged) {
     return Padding(

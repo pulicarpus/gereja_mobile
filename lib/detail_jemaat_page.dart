@@ -23,8 +23,8 @@ class DetailJemaatPage extends StatelessWidget {
     String nama = legacyText(jemaatData['namaLengkap'], 'Tanpa Nama');
     final rawFoto = jemaatData['fotoProfil']?.toString().trim() ?? '';
     String? fotoUrl = rawFoto.isEmpty ? null : rawFoto;
-    String noHp =
-        (jemaatData['nomorTelepon'] ?? jemaatData['noHp'] ?? "-").toString();
+    String noHp = (jemaatData['nomorTelepon'] ?? jemaatData['noHp'] ?? "-")
+        .toString();
     String alamat = legacyText(jemaatData['alamat'], '-');
     String status = legacyText(jemaatData['statusKeluarga'], '-');
     String kategorial =
@@ -32,16 +32,14 @@ class DetailJemaatPage extends StatelessWidget {
             .toString();
 
     final rawBirth = jemaatData['tanggalLahir'];
-    final birthDate =
-        rawBirth is Timestamp
-            ? rawBirth.toDate()
-            : rawBirth is DateTime
-            ? rawBirth
-            : null;
-    final birthText =
-        birthDate == null
-            ? legacyText(rawBirth, '-')
-            : DateFormat('dd-MM-yyyy').format(birthDate);
+    final birthDate = rawBirth is Timestamp
+        ? rawBirth.toDate()
+        : rawBirth is DateTime
+        ? rawBirth
+        : null;
+    final birthText = birthDate == null
+        ? legacyText(rawBirth, '-')
+        : DateFormat('dd-MM-yyyy').format(birthDate);
     final familyId = legacyText(jemaatData['idKepalaKeluarga']).trim();
     final hasPhone = noHp.trim().isNotEmpty && noHp.trim() != '-';
 
@@ -60,49 +58,40 @@ class DetailJemaatPage extends StatelessWidget {
           children: [
             const SizedBox(height: 20),
             GestureDetector(
-              onTap:
-                  fotoUrl == null
-                      ? null
-                      : () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder:
-                              (_) => FullScreenImagePage(
-                                imageUrl: fotoUrl,
-                                heroTag: 'foto_${jemaatData['id']}',
-                              ),
+              onTap: fotoUrl == null
+                  ? null
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => FullScreenImagePage(
+                          imageUrl: fotoUrl,
+                          heroTag: 'foto_${jemaatData['id']}',
                         ),
                       ),
+                    ),
               child: CircleAvatar(
                 radius: 60,
                 backgroundColor: Colors.indigo.shade50,
-                child:
-                    fotoUrl == null
-                        ? const Icon(
-                          Icons.person,
-                          size: 60,
-                          color: Colors.indigo,
-                        )
-                        : ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: fotoUrl,
-                            width: 120,
-                            height: 120,
-                            fit: BoxFit.cover,
-                            placeholder:
-                                (context, imageUrl) => const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.indigo,
-                                ),
-                            errorWidget:
-                                (context, imageUrl, error) => const Icon(
-                                  Icons.person,
-                                  size: 60,
-                                  color: Colors.indigo,
-                                ),
+                child: fotoUrl == null
+                    ? const Icon(Icons.person, size: 60, color: Colors.indigo)
+                    : ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: fotoUrl,
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                          placeholder: (context, imageUrl) => const Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.indigo,
+                          ),
+                          errorWidget: (context, imageUrl, error) => const Icon(
+                            Icons.person,
+                            size: 60,
+                            color: Colors.indigo,
                           ),
                         ),
+                      ),
               ),
             ),
             const SizedBox(height: 20),
@@ -139,6 +128,26 @@ class DetailJemaatPage extends StatelessWidget {
             ),
             _buildInfoRow(Icons.phone, "Nomor Telepon", noHp),
             _buildInfoRow(Icons.location_on, "Alamat", alamat),
+            _buildInfoRow(
+              Icons.badge_outlined,
+              "No. KK",
+              _biodataText('nomorKK'),
+            ),
+            _buildInfoRow(
+              Icons.credit_card_outlined,
+              "NIK",
+              _biodataText('nik'),
+            ),
+            _buildInfoRow(
+              Icons.school_outlined,
+              "Pendidikan",
+              _biodataText('pendidikan'),
+            ),
+            _buildInfoRow(
+              Icons.work_outline,
+              "Pekerjaan",
+              _biodataText('pekerjaan'),
+            ),
             _buildInfoRow(Icons.category, "Kategorial", kategorial),
             _buildInfoRow(Icons.cake, "Tanggal Lahir", birthText),
             const SizedBox(height: 20),
@@ -157,11 +166,10 @@ class DetailJemaatPage extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder:
-                        (_) => AnggotaKeluargaPage(
-                          idKepalaKeluarga: familyId,
-                          namaKepalaKeluarga: nama,
-                        ),
+                    builder: (_) => AnggotaKeluargaPage(
+                      idKepalaKeluarga: familyId,
+                      namaKepalaKeluarga: nama,
+                    ),
                   ),
                 );
               },
@@ -170,8 +178,8 @@ class DetailJemaatPage extends StatelessWidget {
               OutlinedButton.icon(
                 icon: const Icon(Icons.call),
                 label: const Text('Hubungi Jemaat'),
-                onPressed:
-                    () => launchUrl(Uri(scheme: 'tel', path: noHp.trim())),
+                onPressed: () =>
+                    launchUrl(Uri(scheme: 'tel', path: noHp.trim())),
               ),
             if (hasPhone && showBirthdayGreeting)
               OutlinedButton.icon(
@@ -179,10 +187,9 @@ class DetailJemaatPage extends StatelessWidget {
                 label: const Text('Ucapkan Selamat Ulang Tahun'),
                 onPressed: () {
                   final clean = noHp.replaceAll(RegExp(r'[^0-9+]'), '');
-                  final number =
-                      clean.startsWith('0')
-                          ? '62${clean.substring(1)}'
-                          : clean.replaceFirst('+', '');
+                  final number = clean.startsWith('0')
+                      ? '62${clean.substring(1)}'
+                      : clean.replaceFirst('+', '');
                   launchUrl(
                     Uri.https('wa.me', '/$number', {
                       'text':
@@ -196,6 +203,13 @@ class DetailJemaatPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _biodataText(String key) {
+    final value = legacyText(jemaatData[key]).trim();
+    return value.isEmpty || value.toLowerCase() == 'null'
+        ? 'Belum diisi'
+        : value;
   }
 
   Widget _buildInfoRow(IconData icon, String title, String value) {

@@ -1,3 +1,4 @@
+import 'profile_service.dart';
 import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'church_pastors_widget.dart';
@@ -511,13 +512,19 @@ class _MainActivityState extends State<MainActivity> with WidgetsBindingObserver
 
           final linkedArea = await linkedPastorRegion(data, firebaseUser.uid);
           if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) return;
+          final profilePhoto = await resolveProfilePhoto(FirebaseProfileGateway(),
+              ProfileAccount(firebaseUser.uid, {
+                ...data,
+                if (!data.containsKey('photoUrl')) 'photoUrl': firebaseUser.photoURL,
+              }));
+          if (!mounted || _auth.currentUser?.uid != firebaseUser.uid) return;
           await userManager.setUser(
             role: data['role']?.toString() ?? "user",
             churchId: firestoreChurchId,
             churchName: firestoreChurchName,
             uId: firebaseUser.uid,
             uNama: data['namaLengkap']?.toString() ?? firebaseUser.displayName ?? "Jemaat",
-            uFoto: data['photoUrl']?.toString() ?? firebaseUser.photoURL,
+            uFoto: profilePhoto,
             uKomisi: data['kelompok']?.toString() ?? "Umum",
             uIsPastor: data['isPastor'] == true,
             uIsPengurus: data['isPengurus'] == true,

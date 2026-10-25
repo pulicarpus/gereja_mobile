@@ -12,6 +12,7 @@ class FakeProfileGateway extends ProfileGateway {
   ProfileAccount account = ProfileAccount('u', {'namaLengkap': 'Nama Lama', 'photoUrl': '', 'role': 'user', 'churchId': 'A', 'churchName': 'Gereja Asal', 'jemaatId': ''});
   ProfileBook book = ProfileBook({'namaLengkap': 'Nama Resmi', 'tanggalLahir': DateTime(2000, 1, 1), 'nomorTelepon': 81234567890, 'karuniaPelayanan': ['Musik', 'Mengajar']});
   Future<ProfileAccount> Function()? loading;
+  Future<ProfileBook> Function()? loadingBook;
   Future<ProfileSaved> Function(ProfileAccount, String)? saving;
   Future<void> Function()? loggingOut;
   Future<ProfileCandidate> Function()? searching;
@@ -22,7 +23,7 @@ class FakeProfileGateway extends ProfileGateway {
   @override Stream<String?> get authChanges => auth.stream;
   @override ProfileAccount? get cachedAccount => uid == account.uid ? account : null;
   @override Future<ProfileAccount> loadAccount() async { loads++; return loading == null ? account : await loading!(); }
-  @override Future<ProfileBook> loadBook(ProfileAccount account) async => book;
+  @override Future<ProfileBook> loadBook(ProfileAccount account) async => loadingBook == null ? book : await loadingBook!();
   @override Future<ProfileSaved> save(ProfileAccount original, String name, {File? photo, bool useBookPhoto = false}) async {
     saves++;
     if (saving != null) return saving!(original, name);
@@ -44,6 +45,28 @@ class FakeProfileGateway extends ProfileGateway {
   @override Future<void> logout() async { if (loggingOut != null) await loggingOut!(); uid = null; }
 }
 void main() {
+  test('Drawer and login resolve linked photo without replacing a custom upload', () async {
+    final gateway = FakeProfileGateway();
+    gateway.account = gateway.account.withChanges({
+      'jemaatId': 'j', 'photoUrl': 'https://example.com/google.jpg',
+    });
+    gateway.book = const ProfileBook({'fotoProfil': 'https://example.com/book.jpg'});
+    expect(await resolveProfilePhoto(gateway, gateway.account), 'https://example.com/book.jpg');
+    const custom = 'https://firebasestorage.googleapis.com/v0/b/b/o/users%2Fu%2Fprofil_u_unique.jpg';
+    gateway.account = gateway.account.withChanges({'photoUrl': custom});
+    gateway.loadingBook = () async => throw StateError('Book offline');
+    expect(await resolveProfilePhoto(gateway, gateway.account), custom);
+    gateway.account = gateway.account.withChanges({'photoUrl': 'https://example.com/google.jpg'});
+    expect(await resolveProfilePhoto(gateway, gateway.account), 'https://example.com/google.jpg');
+    gateway.account = gateway.account.withChanges({'photoUrl': null});
+    expect(await resolveProfilePhoto(gateway, gateway.account), isNull);
+    final pending = Completer<ProfileBook>();
+    gateway.loadingBook = () => pending.future;
+    final resolving = resolveProfilePhoto(gateway, gateway.account);
+    gateway.uid = 'other';
+    pending.complete(const ProfileBook({'fotoProfil': 'https://example.com/book.jpg'}));
+    expect(await resolving, isNull);
+  });
   test('Year verification rejects substrings and invalid calendar dates', () {
     expect(profileVerifyYear('01-01-2000', '2000'), isTrue);
     for (final invalid in ['01-0', '01-2', '0000', '200', 'abcd', '2001']) {

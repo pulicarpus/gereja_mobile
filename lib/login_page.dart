@@ -1,3 +1,4 @@
+import 'profile_service.dart';
 import 'region_access.dart';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
@@ -87,7 +88,12 @@ class _LoginPageState extends State<LoginPage> {
         String? jemaatId = data['jemaatId']?.toString(); 
         String churchName = data['churchName']?.toString() ?? "";
         String nama = data['namaLengkap']?.toString() ?? user.displayName ?? "Jemaat";
-        String? foto = data['photoUrl']?.toString() ?? user.photoURL;
+        final foto = await resolveProfilePhoto(FirebaseProfileGateway(),
+            ProfileAccount(user.uid, {
+              ...data,
+              if (!data.containsKey('photoUrl')) 'photoUrl': user.photoURL,
+            }));
+        if (!mounted || _auth.currentUser?.uid != user.uid) return;
         bool statusPengurus = data['isPengurus'] == true;
         
         // 👇 AMBIL DATA DAERAH DARI FIRESTORE 👇

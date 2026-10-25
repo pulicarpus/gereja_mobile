@@ -49,6 +49,21 @@ abstract class ProfileGateway {
   Future<bool> link(ProfileCandidate candidate, String year);
   Future<void> logout();
 }
+// Use the same photo policy in login, the drawer and the profile page.
+Future<String?> resolveProfilePhoto(ProfileGateway gateway, ProfileAccount account) async {
+  if (gateway.signedInUid != account.uid) return null;
+  dynamic bookPhoto;
+  if (account.linked && !profileCustomPhoto(account.photo, account.uid)) {
+    try {
+      bookPhoto = (await gateway.loadBook(account)).data?['fotoProfil'];
+    } catch (_) {
+      // A missing/unavailable book must not prevent login.
+    }
+  }
+  if (gateway.signedInUid != account.uid) return null;
+  return profileDisplayPhoto(uid: account.uid, accountPhoto: account.photo, bookPhoto: bookPhoto);
+}
+
 String profileError(Object error) {
   if (error is TimeoutException) return 'Koneksi terlalu lama. Jika sedang menyimpan, hasilnya belum dapat dipastikan. Periksa data terbaru sebelum mengirim ulang.';
   if (error is StateError) return error.message.toString();
@@ -88,7 +103,7 @@ class FirebaseProfileGateway implements ProfileGateway {
     if (!snapshot.exists) throw StateError('Dokumen akun tidak ditemukan. Hubungi Admin Gereja.');
     final data = snapshot.data() ?? <String, dynamic>{};
     if (data['isBlocked'] == true) throw StateError('Akun sedang dinonaktifkan. Hubungi Admin Gereja.');
-    return ProfileAccount(uid, {...data, if (!data.containsKey('photoUrl') || data['photoUrl'] == null) 'photoUrl': _auth.currentUser?.photoURL});
+    return ProfileAccount(uid, {...data, if (!data.containsKey('photoUrl')) 'photoUrl': _auth.currentUser?.photoURL});
   }
   @override Future<ProfileBook> loadBook(ProfileAccount account) async {
     _guard(account.uid);
@@ -132,7 +147,11 @@ class FirebaseProfileGateway implements ProfileGateway {
     final result = fresh.withChanges(changes);
     var cached = false;
     if (signedInUid == account.uid && _manager.userId == account.uid) {
-      try { await _manager.updateProfil(result.name, result.photo).timeout(const Duration(seconds: 10)); cached = true; } catch (_) {}
+      try {
+        final displayPhoto = await resolveProfilePhoto(this, result);
+        _guard(account.uid);
+        if (_manager.userId != account.uid) throw StateError('Sesi akun berubah.');
+        await _manager.updateProfil(result.name, displayPhoto).timeout(const Duration(seconds: 10)); cached = true; } catch (_) {}
     }
     return ProfileSaved(result, cacheSaved: cached);
   }

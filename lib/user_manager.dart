@@ -125,7 +125,7 @@ class UserManager {
 
     userId = prefs.getString(_keyUserId);
     userNama = prefs.getString(_keyUserNama) ?? "Jemaat";
-    userFotoUrl = prefs.getString(_keyUserFoto);
+    userFotoUrl = nonEmpty(prefs.getString(_keyUserFoto));
     userKomisi = prefs.getString(_keyUserKomisi) ?? "Umum";
     originalChurchId = prefs.getString(_keyOriginalChurchId);
     originalChurchName = prefs.getString(_keyOriginalChurchName);

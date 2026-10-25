@@ -1,3 +1,4 @@
+import 'sermon_page.dart';
 import 'note_numbering.dart';
 import 'note_number_dialog.dart';
 import 'dart:convert';
@@ -700,6 +701,41 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     }
   }
 
+  Future<void> _startSermon() async {
+    if (_quillCtrl.document.toPlainText().trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Isi catatan terlebih dahulu.')),
+      );
+      return;
+    }
+    if (_fingerprint() != _savedFingerprint) _dirty = true;
+    if ((_dirty || _isSaving) && !await _saveNote(quiet: true)) return;
+    if (!mounted) return;
+    _editorFocus.unfocus();
+    final note = NoteModel(
+      key: _noteKey,
+      nas: widget.nas,
+      title: _titleCtrl.text,
+      preacher: _preacherCtrl.text,
+      date: _currentDate,
+      content: _contentCtrl.text,
+      richDelta: _quillCtrl.document.toDelta().toJson(),
+      rawData: '',
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SermonPage(
+          note: note,
+          db: widget.db,
+          books: widget.allBooks,
+          prefs: widget.prefs,
+          ownerUid: _store.uid,
+        ),
+      ),
+    );
+  }
+
   void _showFloatingAyat({String? customNas}) async {
     String nasToSearch = customNas ?? widget.nas;
 
@@ -934,6 +970,11 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           backgroundColor: Colors.indigo[900],
           foregroundColor: Colors.white,
           actions: [
+            IconButton(
+              tooltip: 'Mulai khotbah',
+              onPressed: _isSaving ? null : _startSermon,
+              icon: const Icon(Icons.record_voice_over_outlined),
+            ),
             if (_isEditing)
               IconButton(
                 icon: const Icon(Icons.save),

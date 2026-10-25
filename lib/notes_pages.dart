@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -251,10 +252,13 @@ class _NoteListPageState extends State<NoteListPage> {
         String rawData = legacy is String ? legacy : '';
         if (structured is String && structured.isNotEmpty) {
           try {
-            final decoded = NoteModel.fromRaw(key, structured);
-            if (decoded.rawData == structured &&
-                (structured.contains('"bible-note-v2"') ||
-                    structured.contains('"bible-note-v3"'))) {
+            final decoded = jsonDecode(structured);
+            if (decoded is Map &&
+                (decoded['format'] == 'bible-note-v2' ||
+                    decoded['format'] == 'bible-note-v3') &&
+                decoded['nas'] is String &&
+                decoded['title'] is String &&
+                decoded['content'] is String) {
               rawData = structured;
             }
           } catch (_) {

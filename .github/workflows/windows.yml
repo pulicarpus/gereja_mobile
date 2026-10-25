@@ -2,7 +2,7 @@ name: Windows Desktop Preview
 on:
   workflow_dispatch:
   push:
-    branches: [fitur-windows, fix/windows-n4500]
+    branches: [fitur-windows, fix/windows-n4500, feat/notes-richtext-foundation]
     paths: ['lib/**', 'test/**', 'pubspec.yaml', 'tool/**', 'windows/**', '.github/workflows/windows.yml']
 permissions:
   contents: read

@@ -1,3 +1,5 @@
+import 'note_numbering.dart';
+import 'note_number_dialog.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
@@ -491,6 +493,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   StreamSubscription? _documentChanges;
   Future<bool>? _activeSave;
   bool _dirty = false, _leaving = false, _hasRichText = false;
+  Map<int, NoteListNumber> _numberLabels = {};
   late String _savedFingerprint;
   String _fingerprint() => jsonEncode([
     _titleCtrl.text,
@@ -567,6 +570,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
     _hasRichText = saved?.richDelta != null;
     _quillCtrl.readOnly = !_isEditing;
+    _numberLabels = noteListNumbers(_quillCtrl.document.toDelta().toJson());
     _savedFingerprint = _fingerprint();
     _documentChanges = _quillCtrl.document.changes.listen(
       (_) => _scheduleAutosave(),
@@ -577,6 +581,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   void _scheduleAutosave() {
     if (!_isEditing || !mounted) return;
+    _numberLabels = noteListNumbers(_quillCtrl.document.toDelta().toJson());
     setState(() => _dirty = true);
     _startAutosaveTimer();
   }
@@ -606,7 +611,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   Future<bool> _persistNote({required bool quiet}) async {
     _autosaveTimer?.cancel();
-    final plain = _quillCtrl.document.toPlainText();
+    final plain = notePlainText(_quillCtrl.document.toDelta().toJson());
     // Only the final document terminator is synthetic; keep intentional whitespace.
     final content = plain.endsWith('\n')
         ? plain.substring(0, plain.length - 1)
@@ -900,6 +905,30 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       },
       child: Scaffold(
         backgroundColor: Colors.white,
+        resizeToAvoidBottomInset: true,
+        bottomNavigationBar: _isEditing
+            ? Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Material(
+                    key: const ValueKey('note-keyboard-toolbar'),
+                    color: Theme.of(context).colorScheme.surfaceContainerLow,
+                    child: SizedBox(
+                      height: 52,
+                      child: quill.QuillSimpleToolbar(
+                        controller: _quillCtrl,
+                        config: const quill.QuillSimpleToolbarConfig(
+                          multiRowsDisplay: false,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            : null,
         appBar: AppBar(
           title: Text(_isEditing ? "Edit Catatan" : "Catatan"),
           backgroundColor: Colors.indigo[900],
@@ -921,7 +950,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           ],
         ),
         body: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: _isEditing
+              ? const EdgeInsets.fromLTRB(16, 8, 16, 0)
+              : const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -961,7 +992,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: _isEditing ? 8 : 20),
 
               Expanded(child: _isEditing ? _buildEditMode() : _buildReadMode()),
             ],
@@ -1004,9 +1035,10 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
               focusNode: _editorFocus,
               scrollController: _editorScroll,
               controller: _quillCtrl,
-              config: const quill.QuillEditorConfig(
+              config: quill.QuillEditorConfig(
                 scrollable: false,
                 showCursor: false,
+                customLeadingBlockBuilder: _numberLeading,
               ),
             ),
             _buildClickableContent(
@@ -1019,56 +1051,138 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
-  Widget _buildEditMode() {
-    return ListView(
-      children: [
-        TextField(
-          controller: _titleCtrl,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          decoration: const InputDecoration(
-            labelText: "Judul Khotbah/Catatan",
-            border: OutlineInputBorder(),
+  Future<void> _editMetadata() async {
+    _editorFocus.unfocus();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _titleCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Judul Khotbah/Catatan',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _preacherCtrl,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Nama Pengkhotbah (Opsional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(sheetContext),
+                child: const Text('Selesai'),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _preacherCtrl,
-          decoration: const InputDecoration(
-            labelText: "Nama Pengkhotbah (Opsional)",
-            prefixIcon: Icon(Icons.person),
-            border: OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            _isSaving
-                ? 'Menyimpan…'
-                : _dirty
-                ? 'Perubahan belum disimpan'
-                : 'Tersimpan di perangkat',
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ),
-        const SizedBox(height: 8),
-        quill.QuillSimpleToolbar(
-          controller: _quillCtrl,
-          config: const quill.QuillSimpleToolbarConfig(multiRowsDisplay: false),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 360,
-          child: quill.QuillEditor.basic(
-            focusNode: _editorFocus,
-            scrollController: _editorScroll,
-            controller: _quillCtrl,
-            config: const quill.QuillEditorConfig(
-              placeholder: 'Tulis khotbah atau catatan...',
-            ),
-          ),
-        ),
-      ],
+      ),
     );
   }
+
+  Widget? _numberLeading(quill.Node node, quill.LeadingConfig config) {
+    if (config.attribute.value != 'ordered' || node is! quill.Line) return null;
+    final number =
+        _numberLabels[node.documentOffset] ??
+        NoteListNumber(config.index ?? 1, 0);
+    return GestureDetector(
+      key: ValueKey('note-list-number-${node.documentOffset}'),
+      behavior: HitTestBehavior.opaque,
+      onDoubleTap: _isEditing
+          ? () => _editListNumber(node, number.value)
+          : null,
+      onLongPress: _isEditing
+          ? () => _editListNumber(node, number.value)
+          : null,
+      child: Tooltip(
+        message: _isEditing
+            ? 'Ketuk dua kali untuk mengubah nomor'
+            : '${number.label}.',
+        child: Container(
+          width: config.width,
+          alignment: AlignmentDirectional.topEnd,
+          padding: EdgeInsetsDirectional.only(end: config.padding ?? 0),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text('${number.label}.', style: config.style),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editListNumber(quill.Line line, int current) async {
+    final number = await showDialog<int>(
+      context: context,
+      builder: (_) => NoteNumberDialog(initialNumber: current),
+    );
+    if (!mounted || number == null || !_isEditing || line.parent == null)
+      return;
+    _quillCtrl.formatText(
+      line.documentOffset,
+      0,
+      quill.Attribute<String>(
+        noteListStartKey,
+        quill.AttributeScope.block,
+        '${DateTime.now().microsecondsSinceEpoch}:$number',
+      ),
+    );
+    _editorFocus.requestFocus();
+  }
+
+  Widget _buildEditMode() => Column(
+    children: [
+      ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: Text(
+          _titleCtrl.text.isEmpty ? 'Judul Khotbah/Catatan' : _titleCtrl.text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          _isSaving
+              ? 'Menyimpan…'
+              : _dirty
+              ? 'Perubahan belum disimpan'
+              : 'Tersimpan di perangkat',
+        ),
+        trailing: const Icon(Icons.edit_outlined),
+        onTap: _editMetadata,
+      ),
+      Expanded(
+        child: quill.QuillEditor.basic(
+          key: const ValueKey('note-full-editor'),
+          focusNode: _editorFocus,
+          scrollController: _editorScroll,
+          controller: _quillCtrl,
+          config: quill.QuillEditorConfig(
+            expands: true,
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 40),
+            scrollBottomInset: 24,
+            placeholder: 'Tulis khotbah atau catatan...',
+            customLeadingBlockBuilder: _numberLeading,
+          ),
+        ),
+      ),
+    ],
+  );
 }

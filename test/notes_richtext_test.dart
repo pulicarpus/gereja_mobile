@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 import '../lib/bible_models.dart';
 import '../lib/bible_local_store.dart';
 import '../lib/notes_pages.dart';
+import '../lib/note_numbering.dart';
 
 class UnusedBibleDatabase implements Database {
   @override
@@ -178,6 +179,117 @@ void main() {
         true,
       );
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'Editor fills screen, toolbar docks above keyboard and double tap edits numbering',
+    (tester) async {
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetViewInsets);
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final auth = MockFirebaseAuth(
+        mockUser: MockUser(uid: 'reader'),
+        signedIn: true,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: const [
+            quill.FlutterQuillLocalizations.delegate,
+          ],
+          home: NoteEditorPage(
+            nas: 'Mazmur 4:1-9',
+            prefs: prefs,
+            db: UnusedBibleDatabase(),
+            allBooks: [],
+            auth: auth,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.widget<quill.QuillEditor>(
+        find.byType(quill.QuillEditor),
+      );
+      editor.controller.document.insert(
+        0,
+        [
+          ...List.generate(40, (i) => 'Baris ${i + 1}'),
+          'Akhir catatan',
+        ].join('\n'),
+      );
+      editor.controller.document.format(
+        0,
+        editor.controller.document.length - 1,
+        quill.Attribute.ol,
+      );
+      await tester.pump();
+      await tester.pump();
+      final fullHeight = tester
+          .getSize(find.byKey(const ValueKey('note-full-editor')))
+          .height;
+      expect(fullHeight, greaterThan(500));
+      tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+      await tester.pumpAndSettle();
+      final toolbar = tester.getRect(
+        find.byKey(const ValueKey('note-keyboard-toolbar')),
+      );
+      expect(toolbar.bottom, closeTo(640, 1));
+      expect(
+        tester.getRect(find.byKey(const ValueKey('note-full-editor'))).bottom,
+        lessThanOrEqualTo(toolbar.top),
+      );
+      expect(
+        tester.getSize(find.byKey(const ValueKey('note-full-editor'))).height,
+        lessThan(fullHeight),
+      );
+      editor.scrollController.jumpTo(
+        editor.scrollController.position.maxScrollExtent,
+      );
+      await tester.pumpAndSettle();
+      final lastLine = find
+          .textContaining('Akhir catatan', findRichText: true)
+          .last;
+      expect(tester.getRect(lastLine).bottom, lessThanOrEqualTo(toolbar.top));
+      editor.scrollController.jumpTo(0);
+      await tester.pumpAndSettle();
+      final marker = find.byKey(const ValueKey('note-list-number-0'));
+      await tester.tap(marker);
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(marker);
+      await tester.pumpAndSettle();
+      expect(find.text('Ubah nomor daftar'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('note-list-start-input')),
+        '2',
+      );
+      await tester.tap(find.text('Terapkan'));
+      await tester.pumpAndSettle();
+      expect(
+        noteListNumbers(
+          editor.controller.document.toDelta().toJson(),
+        ).values.first.value,
+        2,
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      final store = BibleLocalStore(prefs, 'reader');
+      final saved = NoteModel.fromRaw(
+        store.noteKeys.single,
+        store.readNote(store.noteKeys.single)!,
+      );
+      expect(
+        noteListNumbers(
+          quill.Document.fromJson(saved.richDelta!).toDelta().toJson(),
+        ).values.first.value,
+        2,
+      );
+      expect(saved.content, startsWith('2. Baris 1'));
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
     },
   );

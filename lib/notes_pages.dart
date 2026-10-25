@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter/material.dart';
@@ -488,7 +489,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   StreamSubscription? _documentChanges;
   Future<bool>? _activeSave;
   bool _dirty = false, _leaving = false, _hasRichText = false;
-  int _revision = 0;
+  late String _savedFingerprint;
+  String _fingerprint() => jsonEncode([
+    _titleCtrl.text,
+    _preacherCtrl.text,
+    _quillCtrl.document.toDelta().toJson(),
+  ]);
 
   bool _isEditing = false;
   String _currentDate = "";
@@ -557,6 +563,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
     _hasRichText = saved?.richDelta != null;
     _quillCtrl.readOnly = !_isEditing;
+    _savedFingerprint = _fingerprint();
     _documentChanges = _quillCtrl.document.changes.listen(
       (_) => _scheduleAutosave(),
     );
@@ -566,7 +573,6 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   void _scheduleAutosave() {
     if (!_isEditing || !mounted) return;
-    _revision++;
     setState(() => _dirty = true);
     _startAutosaveTimer();
   }
@@ -614,7 +620,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         );
       return false;
     }
-    final revision = _revision;
+    final fingerprint = _fingerprint();
     setState(() => _isSaving = true);
     try {
       if (_auth.currentUser?.uid != _store.uid)
@@ -632,8 +638,9 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       await _store.saveNote(_noteKey, note.toLocalJson());
       if (!mounted) return false;
       _hasRichText = true;
-      if (revision == _revision) {
-        _dirty = false;
+      _savedFingerprint = fingerprint;
+      _dirty = _fingerprint() != fingerprint;
+      if (!_dirty) {
         _contentCtrl.text = content;
         if (!quiet) {
           _quillCtrl.readOnly = true;
@@ -656,7 +663,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     } finally {
       if (mounted) {
         setState(() => _isSaving = false);
-        if (_dirty && _revision != revision) _startAutosaveTimer();
+        if (_dirty && _fingerprint() != fingerprint) _startAutosaveTimer();
       }
     }
   }
@@ -665,7 +672,18 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     if (_leaving) return;
     _leaving = true;
     try {
-      if ((_dirty || _isSaving) && !await _saveNote(quiet: true)) return;
+      if (_fingerprint() != _savedFingerprint) _dirty = true;
+      if ((_dirty || _isSaving) && !await _saveNote(quiet: true)) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Catatan belum tersimpan. Periksa isi catatan, lalu tekan Simpan.',
+              ),
+            ),
+          );
+        return;
+      }
       if (mounted) Navigator.pop(context, destination);
     } finally {
       _leaving = false;
@@ -871,7 +889,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_dirty && !_isSaving,
+      canPop: !_isEditing && !_dirty && !_isSaving,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _leave();
       },

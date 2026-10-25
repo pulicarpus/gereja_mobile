@@ -14,6 +14,8 @@ class BibleBook {
 
 class NoteModel {
   final String key, nas, title, date, content, rawData, preacher;
+  // Quill Delta ops. Null means a legacy plain-text note.
+  final List<dynamic>? richDelta;
   NoteModel({
     required this.key,
     required this.nas,
@@ -22,13 +24,16 @@ class NoteModel {
     required this.content,
     required this.rawData,
     this.preacher = '',
+    this.richDelta,
   });
 
   factory NoteModel.fromRaw(String key, String raw) {
     if (raw.startsWith('{')) {
       try {
         final data = jsonDecode(raw);
-        if (data is Map && data['format'] == 'bible-note-v2') {
+        if (data is Map &&
+            (data['format'] == 'bible-note-v2' ||
+                data['format'] == 'bible-note-v3')) {
           return NoteModel(
             key: key,
             nas: data['nas'] as String,
@@ -37,6 +42,9 @@ class NoteModel {
             date: data['date'] as String,
             content: data['content'] as String,
             rawData: raw,
+            richDelta: data['richDelta'] is List
+                ? List<dynamic>.from(data['richDelta'] as List)
+                : null,
           );
         }
       } catch (_) {
@@ -56,12 +64,13 @@ class NoteModel {
   }
 
   String toLocalJson() => jsonEncode({
-    'format': 'bible-note-v2',
+    'format': richDelta == null ? 'bible-note-v2' : 'bible-note-v3',
     'nas': nas,
     'title': title,
     'preacher': preacher,
     'date': date,
     'content': content,
+    if (richDelta != null) 'richDelta': richDelta,
   });
 
   // Kontrak raw_data cloud tetap dapat dibaca APK lama.

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -497,6 +499,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   late TextEditingController _titleCtrl;
   late TextEditingController _preacherCtrl;
   late TextEditingController _contentCtrl;
+  late quill.QuillController _quillCtrl;
+  Timer? _autosaveTimer;
 
   bool _isEditing = false;
   String _currentDate = "";
@@ -509,6 +513,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void dispose() {
     _titleCtrl.dispose();
     _preacherCtrl.dispose();
+    _autosaveTimer?.cancel();
+    _quillCtrl.dispose();
     _contentCtrl.dispose();
     for (final recognizer in _recognizers) {
       recognizer.dispose();
@@ -545,13 +551,33 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     _titleCtrl = TextEditingController(text: t);
     _preacherCtrl = TextEditingController(text: p);
     _contentCtrl = TextEditingController(text: c);
+    final saved = widget.existingKey == null ? null : NoteModel.fromRaw(widget.existingKey!, _store.readNote(widget.existingKey!) ?? '');
+    quill.Document document;
+    try {
+      document = saved?.richDelta == null ? (quill.Document()..insert(0, c)) : quill.Document.fromJson(saved!.richDelta!);
+    } catch (_) {
+      document = quill.Document()..insert(0, c);
+    }
+    _quillCtrl = quill.QuillController(document: document, selection: const TextSelection.collapsed(offset: 0));
+    _quillCtrl.document.changes.listen((_) => _scheduleAutosave());
+    _titleCtrl.addListener(_scheduleAutosave);
+    _preacherCtrl.addListener(_scheduleAutosave);
   }
 
-  Future<void> _saveNote() async {
+  void _scheduleAutosave() {
+    if (!_isEditing || !mounted) return;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(seconds: 3), () {
+      if (!_isSaving) _saveNote(quiet: true);
+    });
+  }
+
+  Future<void> _saveNote({bool quiet = false}) async {
     if (_isSaving) return;
+    final plain = _quillCtrl.document.toPlainText().trimRight();
     if (_titleCtrl.text.contains('~|~') ||
         _preacherCtrl.text.contains('~|~') ||
-        _contentCtrl.text.contains('~|~')) {
+        plain.contains('~|~')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -569,15 +595,17 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         title: _titleCtrl.text,
         preacher: _preacherCtrl.text,
         date: _currentDate,
-        content: _contentCtrl.text,
+        content: plain,
+        richDelta: _quillCtrl.document.toDelta().toJson(),
         rawData: '',
       );
       await _store.saveNote(_noteKey, note.toLocalJson());
       if (!mounted) return;
-      setState(() => _isEditing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Catatan disimpan di perangkat.')),
-      );
+      _contentCtrl.text = plain;
+      if (!quiet) {
+        setState(() => _isEditing = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Catatan disimpan di perangkat.')));
+      }
     } catch (_) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
@@ -892,23 +920,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           ),
         ),
         const SizedBox(height: 12),
+        quill.QuillSimpleToolbar(controller: _quillCtrl, config: const quill.QuillSimpleToolbarConfig()),
+        const SizedBox(height: 8),
         Expanded(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: TextField(
-              controller: _contentCtrl,
-              maxLines: null,
-              keyboardType: TextInputType.multiline,
-              textInputAction: TextInputAction.newline,
-              decoration: const InputDecoration(
-                hintText: "Tulis isi catatan di sini...",
-                border: InputBorder.none,
-              ),
-            ),
+          child: quill.QuillEditor.basic(
+            controller: _quillCtrl,
+            config: const quill.QuillEditorConfig(placeholder: 'Tulis khotbah atau catatan...'),
           ),
         ),
       ],

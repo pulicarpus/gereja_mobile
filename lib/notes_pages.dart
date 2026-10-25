@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -247,26 +246,8 @@ class _NoteListPageState extends State<NoteListPage> {
 
       for (var doc in snap.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-        String key = data['key'] ?? doc.id;
-        final structured = data['structured_data'];
-        final legacy = data['raw_data'];
-        // Prefer structured payload, but never trust an unvalidated cloud value.
-        String rawData = legacy is String ? legacy : '';
-        if (structured is String && structured.isNotEmpty) {
-          try {
-            final decoded = jsonDecode(structured);
-            if (decoded is Map &&
-                (decoded['format'] == 'bible-note-v2' ||
-                    decoded['format'] == 'bible-note-v3') &&
-                decoded['nas'] is String &&
-                decoded['title'] is String &&
-                decoded['content'] is String) {
-              rawData = structured;
-            }
-          } catch (_) {
-            // Retain legacy backup as a fallback.
-          }
-        }
+        final key = data['key'] is String ? data['key'] as String : doc.id;
+        final rawData = NoteModel.backupPayload(key, data);
 
         if (rawData.isNotEmpty) {
           // Restore melengkapi data, tanpa menimpa edit atau penghapusan lokal.
@@ -481,11 +462,13 @@ class NoteEditorPage extends StatefulWidget {
   final SharedPreferences prefs;
   final Database db;
   final List<BibleBook> allBooks;
+  final FirebaseAuth? auth;
 
   const NoteEditorPage({
     super.key,
     required this.nas,
     this.existingKey,
+    this.auth,
     required this.prefs,
     required this.db,
     required this.allBooks,
@@ -500,7 +483,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   late TextEditingController _preacherCtrl;
   late TextEditingController _contentCtrl;
   late quill.QuillController _quillCtrl;
+  FirebaseAuth get _auth => widget.auth ?? FirebaseAuth.instance;
   Timer? _autosaveTimer;
+  StreamSubscription? _documentChanges;
+  Future<bool>? _activeSave;
+  bool _dirty = false, _leaving = false, _hasRichText = false;
+  int _revision = 0;
 
   bool _isEditing = false;
   String _currentDate = "";
@@ -514,6 +502,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     _titleCtrl.dispose();
     _preacherCtrl.dispose();
     _autosaveTimer?.cancel();
+    _documentChanges?.cancel();
     _quillCtrl.dispose();
     _contentCtrl.dispose();
     for (final recognizer in _recognizers) {
@@ -526,10 +515,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   void initState() {
     super.initState();
 
-    _store = BibleLocalStore(
-      widget.prefs,
-      FirebaseAuth.instance.currentUser?.uid,
-    );
+    _store = BibleLocalStore(widget.prefs, _auth.currentUser?.uid);
     _noteKey =
         widget.existingKey ?? "Note_${DateTime.now().microsecondsSinceEpoch}";
     _isEditing = widget.existingKey == null;
@@ -551,68 +537,138 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     _titleCtrl = TextEditingController(text: t);
     _preacherCtrl = TextEditingController(text: p);
     _contentCtrl = TextEditingController(text: c);
-    final saved = widget.existingKey == null ? null : NoteModel.fromRaw(widget.existingKey!, _store.readNote(widget.existingKey!) ?? '');
+    final saved = widget.existingKey == null
+        ? null
+        : NoteModel.fromRaw(
+            widget.existingKey!,
+            _store.readNote(widget.existingKey!) ?? '',
+          );
     quill.Document document;
     try {
-      document = saved?.richDelta == null ? (quill.Document()..insert(0, c)) : quill.Document.fromJson(saved!.richDelta!);
+      document = saved?.richDelta == null
+          ? (quill.Document()..insert(0, c))
+          : quill.Document.fromJson(saved!.richDelta!);
     } catch (_) {
       document = quill.Document()..insert(0, c);
     }
-    _quillCtrl = quill.QuillController(document: document, selection: const TextSelection.collapsed(offset: 0));
-    _quillCtrl.document.changes.listen((_) => _scheduleAutosave());
+    _quillCtrl = quill.QuillController(
+      document: document,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+    _hasRichText = saved?.richDelta != null;
+    _quillCtrl.readOnly = !_isEditing;
+    _documentChanges = _quillCtrl.document.changes.listen(
+      (_) => _scheduleAutosave(),
+    );
     _titleCtrl.addListener(_scheduleAutosave);
     _preacherCtrl.addListener(_scheduleAutosave);
   }
 
   void _scheduleAutosave() {
     if (!_isEditing || !mounted) return;
-    _autosaveTimer?.cancel();
-    _autosaveTimer = Timer(const Duration(seconds: 3), () {
-      if (!_isSaving) _saveNote(quiet: true);
-    });
+    _revision++;
+    setState(() => _dirty = true);
+    _startAutosaveTimer();
   }
 
-  Future<void> _saveNote({bool quiet = false}) async {
-    if (_isSaving) return;
-    final plain = _quillCtrl.document.toPlainText().trimRight();
+  void _startAutosaveTimer() {
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(
+      const Duration(seconds: 3),
+      () => _saveNote(quiet: true),
+    );
+  }
+
+  Future<bool> _saveNote({bool quiet = false}) async {
+    while (_activeSave != null) {
+      await _activeSave;
+      if (!_dirty) return true;
+    }
+    if (!mounted) return false;
+    final operation = _persistNote(quiet: quiet);
+    _activeSave = operation;
+    try {
+      return await operation;
+    } finally {
+      if (identical(_activeSave, operation)) _activeSave = null;
+    }
+  }
+
+  Future<bool> _persistNote({required bool quiet}) async {
+    _autosaveTimer?.cancel();
+    final plain = _quillCtrl.document.toPlainText();
+    // Only the final document terminator is synthetic; keep intentional whitespace.
+    final content = plain.endsWith('\n')
+        ? plain.substring(0, plain.length - 1)
+        : plain;
     if (_titleCtrl.text.contains('~|~') ||
         _preacherCtrl.text.contains('~|~') ||
-        plain.contains('~|~')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Gunakan pemisah lain selain ~|~ agar backup kompatibel dengan aplikasi lama.',
+        content.contains('~|~')) {
+      if (!quiet)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Gunakan pemisah lain selain ~|~ agar backup kompatibel dengan aplikasi lama.',
+            ),
           ),
-        ),
-      );
-      return;
+        );
+      return false;
     }
+    final revision = _revision;
     setState(() => _isSaving = true);
     try {
+      if (_auth.currentUser?.uid != _store.uid)
+        throw StateError('Sesi berubah.');
       final note = NoteModel(
         key: _noteKey,
         nas: widget.nas,
         title: _titleCtrl.text,
         preacher: _preacherCtrl.text,
         date: _currentDate,
-        content: plain,
+        content: content,
         richDelta: _quillCtrl.document.toDelta().toJson(),
         rawData: '',
       );
       await _store.saveNote(_noteKey, note.toLocalJson());
-      if (!mounted) return;
-      _contentCtrl.text = plain;
-      if (!quiet) {
-        setState(() => _isEditing = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Catatan disimpan di perangkat.')));
+      if (!mounted) return false;
+      _hasRichText = true;
+      if (revision == _revision) {
+        _dirty = false;
+        _contentCtrl.text = content;
+        if (!quiet) {
+          _quillCtrl.readOnly = true;
+          _isEditing = false;
+        }
       }
+      if (!quiet)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Catatan disimpan di perangkat.')),
+        );
+      return !_dirty;
     } catch (_) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal menyimpan. Coba lagi.')),
+          const SnackBar(
+            content: Text('Gagal menyimpan. Periksa sesi dan coba lagi.'),
+          ),
         );
+      return false;
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+        if (_dirty && _revision != revision) _startAutosaveTimer();
+      }
+    }
+  }
+
+  Future<void> _leave([Map<String, int>? destination]) async {
+    if (_leaving) return;
+    _leaving = true;
+    try {
+      if ((_dirty || _isSaving) && !await _saveNote(quiet: true)) return;
+      if (mounted) Navigator.pop(context, destination);
+    } finally {
+      _leaving = false;
     }
   }
 
@@ -732,7 +788,25 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         );
       },
     );
-    if (mounted && destination != null) Navigator.pop(context, destination);
+    if (mounted && destination != null) await _leave(destination);
+  }
+
+  Iterable<String> _verseReferences(String text) {
+    final names =
+        widget.allBooks
+            .expand((b) => [b.name, b.shortName])
+            .where((name) => name.trim().isNotEmpty)
+            .map((name) => RegExp.escape(name.trim()))
+            .toList()
+          ..sort((a, b) => b.length.compareTo(a.length));
+    if (names.isEmpty) return [];
+    final pattern =
+        '(${names.join('|')})' +
+        r'\s+(\d+):(\d+)(?:-(\d+))?(?:,\s*\d+(?:-\d+)?)*';
+    return RegExp(
+      pattern,
+      caseSensitive: false,
+    ).allMatches(text).map((m) => m.group(0)!).toSet();
   }
 
   Widget _buildClickableContent(String text) {
@@ -796,70 +870,79 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text(_isEditing ? "Edit Catatan" : "Catatan"),
-        backgroundColor: Colors.indigo[900],
-        foregroundColor: Colors.white,
-        actions: [
-          if (_isEditing)
-            IconButton(
-              icon: const Icon(Icons.save),
-              onPressed: _isSaving ? null : _saveNote,
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => setState(() => _isEditing = true),
-            ),
-        ],
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: () => _showFloatingAyat(),
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.auto_stories,
-                      color: Colors.blue,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        widget.nas,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.blue,
-                          fontSize: 16,
+    return PopScope(
+      canPop: !_dirty && !_isSaving,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          title: Text(_isEditing ? "Edit Catatan" : "Catatan"),
+          backgroundColor: Colors.indigo[900],
+          foregroundColor: Colors.white,
+          actions: [
+            if (_isEditing)
+              IconButton(
+                icon: const Icon(Icons.save),
+                onPressed: _isSaving ? null : _saveNote,
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => setState(() {
+                  _quillCtrl.readOnly = false;
+                  _isEditing = true;
+                }),
+              ),
+          ],
+        ),
+        body: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () => _showFloatingAyat(),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.auto_stories,
+                        color: Colors.blue,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          widget.nas,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
-            Expanded(child: _isEditing ? _buildEditMode() : _buildReadMode()),
-          ],
+              Expanded(child: _isEditing ? _buildEditMode() : _buildReadMode()),
+            ],
+          ),
         ),
       ),
     );
@@ -893,14 +976,26 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             ],
           ),
           const Divider(height: 30, thickness: 1),
-          _buildClickableContent(_contentCtrl.text),
+          if (_hasRichText) ...[
+            quill.QuillEditor.basic(
+              controller: _quillCtrl,
+              config: const quill.QuillEditorConfig(
+                scrollable: false,
+                showCursor: false,
+              ),
+            ),
+            _buildClickableContent(
+              _verseReferences(_contentCtrl.text).join(' • '),
+            ),
+          ] else
+            _buildClickableContent(_contentCtrl.text),
         ],
       ),
     );
   }
 
   Widget _buildEditMode() {
-    return Column(
+    return ListView(
       children: [
         TextField(
           controller: _titleCtrl,
@@ -919,13 +1014,31 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
             border: OutlineInputBorder(),
           ),
         ),
-        const SizedBox(height: 12),
-        quill.QuillSimpleToolbar(controller: _quillCtrl, config: const quill.QuillSimpleToolbarConfig()),
         const SizedBox(height: 8),
-        Expanded(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            _isSaving
+                ? 'Menyimpan…'
+                : _dirty
+                ? 'Perubahan belum disimpan'
+                : 'Tersimpan di perangkat',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 8),
+        quill.QuillSimpleToolbar(
+          controller: _quillCtrl,
+          config: const quill.QuillSimpleToolbarConfig(multiRowsDisplay: false),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 360,
           child: quill.QuillEditor.basic(
             controller: _quillCtrl,
-            config: const quill.QuillEditorConfig(placeholder: 'Tulis khotbah atau catatan...'),
+            config: const quill.QuillEditorConfig(
+              placeholder: 'Tulis khotbah atau catatan...',
+            ),
           ),
         ),
       ],

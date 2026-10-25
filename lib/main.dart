@@ -1,3 +1,5 @@
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'church_pastors_widget.dart';
 import 'region_access.dart';
 import 'mobile_notifications.dart';
@@ -123,6 +125,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: navigatorKey,
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        FlutterQuillLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('id'), Locale('en')],
       debugShowCheckedModeBanner: false,
       title: 'GKII Mobile',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo), useMaterial3: true),

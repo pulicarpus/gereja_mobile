@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
     
-  wakelock_plus: ^1.8.2
+  wakelock_plus: ">=1.4.0 <1.6.0"
   window_manager: ^0.5.2
   flutter_quill: ^11.6.0
   flutter_localizations:

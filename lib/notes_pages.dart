@@ -152,6 +152,9 @@ class _NoteListPageState extends State<NoteListPage> {
           batch.set(notesRef.doc(k), {
             'key': k,
             'raw_data': NoteModel.fromRaw(k, rawData).toLegacyRaw(),
+            // New clients restore the full JSON (including future rich-text ops).
+            // Keep raw_data unchanged for older APKs.
+            'structured_data': NoteModel.fromRaw(k, rawData).toLocalJson(),
             'updatedAt': FieldValue.serverTimestamp(),
           });
           pending++;
@@ -242,7 +245,22 @@ class _NoteListPageState extends State<NoteListPage> {
       for (var doc in snap.docs) {
         Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
         String key = data['key'] ?? doc.id;
-        String rawData = data['raw_data'] ?? "";
+        final structured = data['structured_data'];
+        final legacy = data['raw_data'];
+        // Prefer structured payload, but never trust an unvalidated cloud value.
+        String rawData = legacy is String ? legacy : '';
+        if (structured is String && structured.isNotEmpty) {
+          try {
+            final decoded = NoteModel.fromRaw(key, structured);
+            if (decoded.rawData == structured &&
+                (structured.contains('"bible-note-v2"') ||
+                    structured.contains('"bible-note-v3"'))) {
+              rawData = structured;
+            }
+          } catch (_) {
+            // Retain legacy backup as a fallback.
+          }
+        }
 
         if (rawData.isNotEmpty) {
           // Restore melengkapi data, tanpa menimpa edit atau penghapusan lokal.

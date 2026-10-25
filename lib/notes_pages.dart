@@ -484,6 +484,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
   late TextEditingController _preacherCtrl;
   late TextEditingController _contentCtrl;
   late quill.QuillController _quillCtrl;
+  final _editorFocus = FocusNode();
+  final _editorScroll = ScrollController();
   FirebaseAuth get _auth => widget.auth ?? FirebaseAuth.instance;
   Timer? _autosaveTimer;
   StreamSubscription? _documentChanges;
@@ -509,6 +511,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     _preacherCtrl.dispose();
     _autosaveTimer?.cancel();
     _documentChanges?.cancel();
+    _editorFocus.dispose();
+    _editorScroll.dispose();
     _quillCtrl.dispose();
     _contentCtrl.dispose();
     for (final recognizer in _recognizers) {
@@ -643,6 +647,7 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
       if (!_dirty) {
         _contentCtrl.text = content;
         if (!quiet) {
+          _editorFocus.unfocus();
           _quillCtrl.readOnly = true;
           _isEditing = false;
         }
@@ -996,6 +1001,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
           const Divider(height: 30, thickness: 1),
           if (_hasRichText) ...[
             quill.QuillEditor.basic(
+              focusNode: _editorFocus,
+              scrollController: _editorScroll,
               controller: _quillCtrl,
               config: const quill.QuillEditorConfig(
                 scrollable: false,
@@ -1053,6 +1060,8 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         SizedBox(
           height: 360,
           child: quill.QuillEditor.basic(
+            focusNode: _editorFocus,
+            scrollController: _editorScroll,
             controller: _quillCtrl,
             config: const quill.QuillEditorConfig(
               placeholder: 'Tulis khotbah atau catatan...',

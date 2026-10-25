@@ -121,7 +121,26 @@ void main() {
       editor.controller.document.insert(0, 'Kasih');
       editor.controller.document.format(0, 5, quill.Attribute.bold);
       await tester.pump();
-      // Leave before the three-second autosave timer fires.
+      await tester.pump();
+      expect(
+        tester
+            .widget<quill.QuillEditor>(find.byType(quill.QuillEditor))
+            .focusNode,
+        same(editor.focusNode),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(store.noteKeys.length, 1);
+      expect(
+        NoteModel.fromRaw(
+          store.noteKeys.single,
+          store.readNote(store.noteKeys.single)!,
+        ).content,
+        'Kasih',
+      );
+      editor.controller.document.insert(5, ' baru');
+      await tester.pump();
+      // Leave before the next three-second autosave timer fires.
       final nav = tester.state<NavigatorState>(find.byType(Navigator).first);
       await nav.maybePop();
       await tester.pumpAndSettle();
@@ -129,7 +148,7 @@ void main() {
       expect(store.noteKeys.length, 1);
       final key = store.noteKeys.single;
       final saved = NoteModel.fromRaw(key, store.readNote(key)!);
-      expect(saved.content, 'Kasih');
+      expect(saved.content, 'Kasih baru');
       expect(saved.richDelta!.first['attributes']['bold'], true);
       await tester.pumpWidget(
         MaterialApp(

@@ -109,6 +109,9 @@ String cleanBibleText(String input) {
       .trim();
 }
 
+String normalizedBibleBookName(String name) =>
+    name.trim().toLowerCase().replaceAll('ë', 'e');
+
 class BibleReference {
   final int bookId;
   final int chapter;
@@ -120,11 +123,11 @@ class BibleReference {
       r'^\s*(.+?)\s+(\d+):([\d,\s-]+)\s*$',
     ).firstMatch(value);
     if (match == null) return null;
-    final name = match[1]!.trim().toLowerCase();
+    final name = normalizedBibleBookName(match[1]!);
     BibleBook? book;
     for (final candidate in books) {
-      if (candidate.name.trim().toLowerCase() == name ||
-          candidate.shortName.trim().toLowerCase() == name) {
+      if (normalizedBibleBookName(candidate.name) == name ||
+          normalizedBibleBookName(candidate.shortName) == name) {
         book = candidate;
         break;
       }

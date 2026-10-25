@@ -1,3 +1,4 @@
+import 'bible_translation.dart';
 import 'bible_number_grid.dart';
 import 'dart:io';
 import 'dart:async';
@@ -41,7 +42,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   Map<String, dynamic> _highlights = {};
 
-  String _currentVersion = "TB.SQLite3";
+  String _currentVersion = BibleTranslation.tb.databaseFile;
+  String _storiesOrder = 'verse ASC';
+  BibleTranslation get _translation =>
+      BibleTranslation.fromFile(_currentVersion);
   int _currentBookNum = 10;
   int _currentChapter = 1;
   int _currentVerse = 1;
@@ -133,6 +137,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       _store = BibleLocalStore(_prefs, FirebaseAuth.instance.currentUser?.uid);
+      _currentVersion = BibleTranslation.fromFile(
+        _prefs.getString(_positionKey('translation')),
+      ).databaseFile;
       _currentBookNum =
           _prefs.getInt(_positionKey('book')) ??
           _prefs.getInt('LAST_BOOK_NUM') ??
@@ -196,6 +203,89 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
+  Future<void> _changeTranslation(String? file) async {
+    if (file == null ||
+        file == _currentVersion ||
+        _isLoading ||
+        _isAudioLoading)
+      return;
+    final version = BibleTranslation.fromFile(file);
+    final previous = _currentVersion;
+    _contentRequest++;
+    _highlightTimer?.cancel();
+    setState(() => _isLoading = true);
+    try {
+      if (_audioIdentity != null || _isPlaying || _audioPaused) {
+        await _stopAudio();
+        if (_audioIdentity != null || _isPlaying || _audioPaused) {
+          if (mounted) setState(() => _isLoading = false);
+          return;
+        }
+      }
+      if (!mounted) return;
+      _currentVersion = version.databaseFile;
+      await _loadDatabase();
+      if (!mounted) return;
+      if (_loadError != null) {
+        _currentVersion = previous;
+        await _loadDatabase();
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Terjemahan belum dapat dibuka. Versi sebelumnya dimuat kembali.',
+              ),
+            ),
+          );
+        return;
+      }
+      await _prefs.setString(_positionKey('translation'), _currentVersion);
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pilihan terjemahan belum tersimpan. Coba lagi.'),
+          ),
+        );
+    }
+  }
+
+  Widget _translationSelector(bool enabled) => Container(
+    height: 44,
+    color: Colors.indigo[800],
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Row(
+      children: [
+        const Text('Versi:', style: TextStyle(color: Colors.white70)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _currentVersion,
+              isExpanded: true,
+              dropdownColor: Colors.indigo[800],
+              iconEnabledColor: Colors.white,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+              onChanged: enabled ? _changeTranslation : null,
+              items: BibleTranslation.values
+                  .map(
+                    (version) => DropdownMenuItem(
+                      value: version.databaseFile,
+                      child: Text(
+                        '${version.label} (${version.code})',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
   Future<void> _loadDatabase() async {
     if (!mounted) return;
     setState(() {
@@ -229,6 +319,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
           if (check.isEmpty || check.first.values.first != 'ok') {
             throw StateError('Database tidak valid.');
           }
+          final columns = await opened.rawQuery('PRAGMA table_info(stories)');
+          _storiesOrder =
+              columns.any((row) => row['name'] == 'order_if_several')
+              ? 'verse ASC, order_if_several ASC'
+              : 'verse ASC';
           final rows = await opened.query('books', orderBy: 'book_number ASC');
           if (rows.isEmpty) throw StateError('Daftar kitab kosong.');
           if (!mounted) {
@@ -333,7 +428,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
           'stories',
           where: 'book_number = ? AND chapter = ?',
           whereArgs: [targetBook, targetChapter],
-          orderBy: 'verse ASC, order_if_several ASC',
+          orderBy: _storiesOrder,
         );
       } on DatabaseException {
         /* Versi tanpa perikop tetap dapat dibaca. */
@@ -426,7 +521,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             leading: const Icon(Icons.copy),
             title: const Text("Salin Ayat"),
             onTap: () {
-              String txt = "$nas\n";
+              String txt = "$nas (${_translation.code})\n";
               for (var v in sorted) {
                 var d = _verses.firstWhere((e) => e['verse'] == v);
                 txt += "$v. ${_cleanText(d['text'])}\n";
@@ -475,8 +570,10 @@ class _AlkitabPageState extends State<AlkitabPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (c) =>
-                      BuatGambarPage(ayatTeks: txt.trim(), referensi: nas),
+                  builder: (c) => BuatGambarPage(
+                    ayatTeks: txt.trim(),
+                    referensi: '$nas (${_translation.code})',
+                  ),
                 ),
               );
               setState(() => _selectedVerses.clear());
@@ -830,7 +927,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _playPauseAudio() async {
-    if (_isLoading || _isAudioLoading || _loadError != null) return;
+    if (_isLoading ||
+        _isAudioLoading ||
+        _loadError != null ||
+        _translation != BibleTranslation.tb)
+      return;
     final ordinal = bibleOrdinal(_currentBookNum);
     if (ordinal == null) return;
     final identity = '$_currentBookNum:$_currentChapter';
@@ -901,6 +1002,94 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
     final ready =
         !_isLoading && !_isAudioLoading && _loadError == null && _db != null;
+    final audioControls =
+        (_isPlaying ||
+            _isAudioLoading ||
+            _audioPaused ||
+            _position > Duration.zero)
+        ? PreferredSize(
+            preferredSize: const Size.fromHeight(30),
+            child: Container(
+              height: 30,
+              color: Colors.indigo[800],
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [
+                  if (_audioLabel != null)
+                    Tooltip(
+                      message: _audioLabel!,
+                      child: const Icon(
+                        Icons.headphones,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  _isAudioLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            color: Colors.orange,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : InkWell(
+                          onTap: _playPauseAudio,
+                          child: Icon(
+                            _isPlaying
+                                ? Icons.pause_circle_filled
+                                : Icons.play_circle_fill,
+                            color: Colors.orange,
+                            size: 22,
+                          ),
+                        ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 5,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 10,
+                        ),
+                      ),
+                      child: Slider(
+                        activeColor: Colors.orange,
+                        inactiveColor: Colors.white30,
+                        min: 0,
+                        max: _duration.inSeconds.toDouble() > 0
+                            ? _duration.inSeconds.toDouble()
+                            : 1,
+                        value: _position.inSeconds.toDouble().clamp(
+                          0,
+                          _duration.inSeconds.toDouble() > 0
+                              ? _duration.inSeconds.toDouble()
+                              : 1,
+                        ),
+                        onChanged: _isAudioLoading ? null : _seekAudio,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    "${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}",
+                    style: const TextStyle(color: Colors.white, fontSize: 10),
+                  ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _isAudioLoading ? null : _stopAudio,
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white54,
+                      size: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : null;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
@@ -954,7 +1143,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
               color: Colors.orange,
               size: 28,
             ),
-            onPressed: ready && !_isAudioLoading ? _playPauseAudio : null,
+            tooltip: _translation == BibleTranslation.tb
+                ? 'Putar audio TB'
+                : 'Audio tersedia untuk TB',
+            onPressed:
+                ready && !_isAudioLoading && _translation == BibleTranslation.tb
+                ? _playPauseAudio
+                : null,
           ),
           PopupMenuButton<String>(
             enabled: ready,
@@ -987,7 +1182,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
                   children: [
                     Icon(Icons.download, color: Colors.blue),
                     SizedBox(width: 10),
-                    Text("Audio Offline"),
+                    Text("Audio Offline (TB)"),
                   ],
                 ),
               ),
@@ -1004,97 +1199,18 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ],
           ),
         ],
-        bottom:
-            (_isPlaying ||
-                _isAudioLoading ||
-                _audioPaused ||
-                _position > Duration.zero)
-            ? PreferredSize(
-                preferredSize: const Size.fromHeight(30),
-                child: Container(
-                  height: 30,
-                  color: Colors.indigo[800],
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  child: Row(
-                    children: [
-                      if (_audioLabel != null)
-                        Tooltip(
-                          message: _audioLabel!,
-                          child: const Icon(
-                            Icons.headphones,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                        ),
-                      _isAudioLoading
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                color: Colors.orange,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : InkWell(
-                              onTap: _playPauseAudio,
-                              child: Icon(
-                                _isPlaying
-                                    ? Icons.pause_circle_filled
-                                    : Icons.play_circle_fill,
-                                color: Colors.orange,
-                                size: 22,
-                              ),
-                            ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            trackHeight: 2,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 5,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 10,
-                            ),
-                          ),
-                          child: Slider(
-                            activeColor: Colors.orange,
-                            inactiveColor: Colors.white30,
-                            min: 0,
-                            max: _duration.inSeconds.toDouble() > 0
-                                ? _duration.inSeconds.toDouble()
-                                : 1,
-                            value: _position.inSeconds.toDouble().clamp(
-                              0,
-                              _duration.inSeconds.toDouble() > 0
-                                  ? _duration.inSeconds.toDouble()
-                                  : 1,
-                            ),
-                            onChanged: _isAudioLoading ? null : _seekAudio,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        "${_position.inMinutes}:${(_position.inSeconds % 60).toString().padLeft(2, '0')}",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      InkWell(
-                        onTap: _isAudioLoading ? null : _stopAudio,
-                        child: const Icon(
-                          Icons.close,
-                          color: Colors.white54,
-                          size: 16,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            : null,
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(
+            44.0 + (audioControls?.preferredSize.height ?? 0.0),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _translationSelector(!_isLoading && !_isAudioLoading),
+              if (audioControls != null) audioControls,
+            ],
+          ),
+        ),
       ),
 
       body: _isLoading

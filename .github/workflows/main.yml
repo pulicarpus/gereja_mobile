@@ -90,6 +90,9 @@ jobs:
           flutter test
           dart test/bible_data_check.dart test/fixtures/bible-audit-fixture.json
 
+      - name: Verify both offline Bible translations
+        run: python -m unittest discover -s test/native -p 'test_bible_translations.py'
+
       - name: Build APK
         run: flutter build apk --release --build-name=1.1.0 --build-number=${{ github.run_number }}
         working-directory: .
@@ -100,7 +103,7 @@ jobs:
           import hashlib, pathlib, zipfile
           apk = pathlib.Path('build/app/outputs/flutter-apk/app-release.apk')
           with zipfile.ZipFile(apk) as package:
-              for asset in ('assets/dictionary/offline.sqlite', 'assets/TB.SQLite3'):
+              for asset in ('assets/dictionary/offline.sqlite', 'assets/TB.SQLite3', 'assets/TJL.SQLite3'):
                   packed = package.read('assets/flutter_assets/' + asset)
                   expected = pathlib.Path(asset).read_bytes()
                   assert hashlib.sha256(packed).digest() == hashlib.sha256(expected).digest(), asset

@@ -250,39 +250,42 @@ class _AlkitabPageState extends State<AlkitabPage> {
     }
   }
 
-  Widget _translationSelector(bool enabled) => Container(
-    height: 44,
-    color: Colors.indigo[800],
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    child: Row(
-      children: [
-        const Text('Versi:', style: TextStyle(color: Colors.white70)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _currentVersion,
-              isExpanded: true,
-              dropdownColor: Colors.indigo[800],
-              iconEnabledColor: Colors.white,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-              onChanged: enabled ? _changeTranslation : null,
-              items: BibleTranslation.values
-                  .map(
-                    (version) => DropdownMenuItem(
-                      value: version.databaseFile,
-                      child: Text(
-                        '${version.label} (${version.code})',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
+  Widget _translationSelector(bool enabled) => PopupMenuButton<String>(
+    enabled: enabled,
+    tooltip: 'Pilih terjemahan (${_translation.code})',
+    initialValue: _currentVersion,
+    onSelected: _changeTranslation,
+    itemBuilder: (_) => BibleTranslation.values
+        .map(
+          (version) => PopupMenuItem<String>(
+            value: version.databaseFile,
+            child: Row(
+              children: [
+                Expanded(child: Text('${version.label} (${version.code})')),
+                if (version.databaseFile == _currentVersion)
+                  const Icon(Icons.check, color: Colors.indigo),
+              ],
             ),
           ),
-        ),
-      ],
+        )
+        .toList(),
+    child: SizedBox(
+      width: 48,
+      height: 48,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            _translation.code,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: enabled ? Colors.white : Colors.white54,
+            ),
+          ),
+          const Icon(Icons.arrow_drop_down, size: 16),
+        ],
+      ),
     ),
   );
 
@@ -1093,6 +1096,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
+        titleSpacing: 0,
         backgroundColor: Colors.indigo[900],
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
@@ -1137,6 +1141,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
           ],
         ),
         actions: [
+          _translationSelector(!_isLoading && !_isAudioLoading),
           IconButton(
             icon: Icon(
               _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill,
@@ -1199,18 +1204,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             ],
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: Size.fromHeight(
-            44.0 + (audioControls?.preferredSize.height ?? 0.0),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _translationSelector(!_isLoading && !_isAudioLoading),
-              if (audioControls != null) audioControls,
-            ],
-          ),
-        ),
+        bottom: audioControls,
       ),
 
       body: _isLoading

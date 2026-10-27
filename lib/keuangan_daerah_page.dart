@@ -1,3 +1,4 @@
+import 'region_finance_report.dart';
 import 'region_label.dart';
 import 'region_names.dart';
 import 'dart:io';
@@ -15,13 +16,20 @@ import 'app_safety.dart';
 // 👇 MESIN FORMAT TITIK OTOMATIS SAAT MENGETIK RUPIAH 👇
 class CurrencyInputFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     if (newValue.text.isEmpty) return newValue;
     String cleanText = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleanText.isEmpty) return const TextEditingValue(text: '');
     final int? value = int.tryParse(cleanText);
     if (value == null) return oldValue;
-    final String formatted = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(value);
+    final String formatted = NumberFormat.currency(
+      locale: 'id_ID',
+      symbol: '',
+      decimalDigits: 0,
+    ).format(value);
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
@@ -31,24 +39,39 @@ class CurrencyInputFormatter extends TextInputFormatter {
 
 class KeuanganDaerahPage extends StatelessWidget {
   final String namaDaerah;
+  final FirebaseFirestore? firestore;
 
-  const KeuanganDaerahPage({super.key, required this.namaDaerah});
+  const KeuanganDaerahPage({
+    super.key,
+    required this.namaDaerah,
+    this.firestore,
+  });
 
   @override
   Widget build(BuildContext context) {
     final user = UserManager();
     final target = namaDaerah.trim();
-    final hasAreaAccess = user.canViewRegion(target) ||
+    final hasAreaAccess =
+        user.canViewRegion(target) ||
         (user.isBPJ() && user.userDaerah?.trim() == target);
     if (!hasAreaAccess) {
-      return const Scaffold(body: Center(child: Text("Anda tidak memiliki akses ke keuangan daerah ini.")));
+      return const Scaffold(
+        body: Center(
+          child: Text("Anda tidak memiliki akses ke keuangan daerah ini."),
+        ),
+      );
     }
 
     return DefaultTabController(
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: RegionLabel(area: namaDaerah, prefix: 'Keuangan ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          title: RegionLabel(
+            area: namaDaerah,
+            prefix: 'Keuangan ',
+            firestore: firestore,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           backgroundColor: Colors.indigo[900],
           foregroundColor: Colors.white,
           elevation: 0,
@@ -59,15 +82,24 @@ class KeuanganDaerahPage extends StatelessWidget {
             unselectedLabelColor: Colors.white54,
             labelStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
             tabs: [
-              Tab(icon: Icon(Icons.account_balance_wallet), text: "KAS OPERASIONAL"),
+              Tab(
+                icon: Icon(Icons.account_balance_wallet),
+                text: "KAS OPERASIONAL",
+              ),
               Tab(icon: Icon(Icons.volunteer_activism), text: "PERPULUHAN"),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _KasDaerahTab(namaDaerah: namaDaerah),
-            _PerpuluhanTab(namaDaerah: namaDaerah),
+            _KasDaerahTab(
+              namaDaerah: namaDaerah,
+              db: firestore ?? FirebaseFirestore.instance,
+            ),
+            _PerpuluhanTab(
+              namaDaerah: namaDaerah,
+              db: firestore ?? FirebaseFirestore.instance,
+            ),
           ],
         ),
       ),
@@ -80,7 +112,8 @@ class KeuanganDaerahPage extends StatelessWidget {
 // ============================================================================
 class _KasDaerahTab extends StatefulWidget {
   final String namaDaerah;
-  const _KasDaerahTab({required this.namaDaerah});
+  final FirebaseFirestore db;
+  const _KasDaerahTab({required this.namaDaerah, required this.db});
 
   @override
   State<_KasDaerahTab> createState() => _KasDaerahTabState();
@@ -88,21 +121,54 @@ class _KasDaerahTab extends StatefulWidget {
 
 class _KasDaerahTabState extends State<_KasDaerahTab> {
   bool get _canEdit => UserManager().canEditRegion(widget.namaDaerah);
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  FirebaseFirestore get _db => widget.db;
+  late final Stream<QuerySnapshot> _stream;
+  final NumberFormat _currencyFormat = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  );
 
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
-  List<QueryDocumentSnapshot> _filteredDocs = []; 
+  List<QueryDocumentSnapshot> _filteredDocs = [];
   int _blnPemasukan = 0;
   int _blnPengeluaran = 0;
 
-  final List<int> _years = List.generate(DateTime.now().year - 2020 + 1, (index) => DateTime.now().year - index);
-  final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  final List<int> _years = List.generate(
+    DateTime.now().year - 2020 + 1,
+    (index) => DateTime.now().year - index,
+  );
+  final List<String> _months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _stream =
+        _db
+            .collection('keuangan_daerah')
+            .where('daerah', isEqualTo: widget.namaDaerah)
+            .snapshots();
+  }
 
   Future<void> _exportToPDF() async {
     if (_filteredDocs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada data untuk diekspor!")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Tidak ada data untuk diekspor!")),
+      );
       return;
     }
 
@@ -112,47 +178,85 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => [
-          pw.Text("Laporan Kas Operasional Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
-          pw.SizedBox(height: 20),
-          pw.TableHelper.fromTextArray(
-            headers: ['Tanggal', 'Jenis', 'Keterangan', 'Nominal (Rp)'],
-            data: _filteredDocs.map((doc) {
-              var d = doc.data() as Map<String, dynamic>;
-              final rawTanggal = d['tanggal'];
-              if (rawTanggal is! Timestamp) return ["-", "-", "Data tanggal tidak valid", "-"];
-              DateTime dt = rawTanggal.toDate();
-              return [
-                DateFormat('dd MMM yyyy').format(dt),
-                d['jenis']?.toString() ?? "-",
-                d['keterangan']?.toString() ?? "-",
-                _currencyFormat.format(d['nominal'] is num ? d['nominal'] : 0).replaceAll("Rp ", "")
-              ];
-            }).toList(),
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-            headerDecoration: const pw.BoxDecoration(color: PdfColors.indigo900),
-            cellAlignment: pw.Alignment.centerLeft,
-          ),
-          pw.SizedBox(height: 20),
-          pw.Text("Ringkasan Bulan Ini:", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-          pw.Text("Total Pemasukan: ${_currencyFormat.format(_blnPemasukan)}", style: const pw.TextStyle(color: PdfColors.green)),
-          pw.Text("Total Pengeluaran: ${_currencyFormat.format(_blnPengeluaran)}", style: const pw.TextStyle(color: PdfColors.red)),
-          pw.Text("Arus Bersih: ${_currencyFormat.format(_blnPemasukan - _blnPengeluaran)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-        ],
+        build:
+            (pw.Context context) => [
+              pw.Text(
+                "Laporan Kas Operasional Daerah ${widget.namaDaerah}",
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Text(
+                "Periode: $blnStr $_selectedYear",
+                style: const pw.TextStyle(fontSize: 14),
+              ),
+              pw.SizedBox(height: 20),
+              pw.TableHelper.fromTextArray(
+                headers: ['Tanggal', 'Jenis', 'Keterangan', 'Nominal (Rp)'],
+                data:
+                    _filteredDocs.map((doc) {
+                      var d = doc.data() as Map<String, dynamic>;
+                      final rawTanggal = d['tanggal'];
+                      if (rawTanggal is! Timestamp)
+                        return ["-", "-", "Data tanggal tidak valid", "-"];
+                      DateTime dt = rawTanggal.toDate();
+                      return [
+                        DateFormat('dd MMM yyyy').format(dt),
+                        d['jenis']?.toString() ?? "-",
+                        d['keterangan']?.toString() ?? "-",
+                        _currencyFormat
+                            .format(d['nominal'] is num ? d['nominal'] : 0)
+                            .replaceAll("Rp ", ""),
+                      ];
+                    }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.indigo900,
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                "Ringkasan Bulan Ini:",
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              ),
+              pw.Text(
+                "Total Pemasukan: ${_currencyFormat.format(_blnPemasukan)}",
+                style: const pw.TextStyle(color: PdfColors.green),
+              ),
+              pw.Text(
+                "Total Pengeluaran: ${_currencyFormat.format(_blnPengeluaran)}",
+                style: const pw.TextStyle(color: PdfColors.red),
+              ),
+              pw.Text(
+                "Arus Bersih: ${_currencyFormat.format(_blnPemasukan - _blnPengeluaran)}",
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              ),
+            ],
       ),
     );
 
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Kas_${widget.namaDaerah}_${blnStr}_$_selectedYear.pdf');
+    final file = File(
+      '${dir.path}/Kas_${widget.namaDaerah}_${blnStr}_$_selectedYear.pdf',
+    );
     await file.writeAsBytes(await pdf.save());
-    await Share.shareXFiles([XFile(file.path)], text: 'Laporan Kas Daerah ${widget.namaDaerah}');
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Laporan Kas Daerah ${widget.namaDaerah}');
   }
 
   String _safeCsvValue(String value) {
     final clean = value.replaceAll('"', '""');
     final trimmed = clean.trimLeft();
-    return (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@"))
+    return (trimmed.startsWith("=") ||
+            trimmed.startsWith("+") ||
+            trimmed.startsWith("-") ||
+            trimmed.startsWith("@"))
         ? "'$clean"
         : clean;
   }
@@ -172,61 +276,109 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
     final String blnStr = _months[_selectedMonth - 1];
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Kas_${widget.namaDaerah}_${blnStr}_$_selectedYear.csv');
+    final file = File(
+      '${dir.path}/Kas_${widget.namaDaerah}_${blnStr}_$_selectedYear.csv',
+    );
     await file.writeAsString(csvData);
-    await Share.shareXFiles([XFile(file.path)], text: 'Data CSV Kas ${widget.namaDaerah}');
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Data CSV Kas ${widget.namaDaerah}');
   }
 
   void _showExportOptions() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            const Padding(
-              padding: EdgeInsets.all(16), 
-              child: Text("Cetak / Ekspor Laporan", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.indigo))
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              title: const Text("Ekspor sebagai PDF", style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text("Format rapi untuk dicetak / dibagikan"),
-              onTap: () { Navigator.pop(ctx); _exportToPDF(); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.table_view, color: Colors.green),
-              title: const Text("Ekspor sebagai CSV (Excel)", style: TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: const Text("Format data mentah untuk diolah di Excel"),
-              onTap: () { Navigator.pop(ctx); _exportToCSV(); },
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    "Cetak / Ekspor Laporan",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.indigo,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                  title: const Text(
+                    "Ekspor sebagai PDF",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text("Format rapi untuk dicetak / dibagikan"),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportToPDF();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.table_view, color: Colors.green),
+                  title: const Text(
+                    "Ekspor sebagai CSV (Excel)",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    "Format data mentah untuk diolah di Excel",
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportToCSV();
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
     );
   }
 
-  void _showAddTransactionDialog(bool isPemasukan) => _showTransactionForm(isPemasukan: isPemasukan);
+  void _showAddTransactionDialog(bool isPemasukan) =>
+      _showTransactionForm(isPemasukan: isPemasukan);
 
-  Future<void> _showEditTransactionDialog(String docId, Map<String, dynamic> data) async {
+  Future<void> _showEditTransactionDialog(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
     try {
       final linked = await _db.collection("perpuluhan_daerah").doc(docId).get();
       if (linked.exists) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text("Transaksi ini berasal dari Perpuluhan. Edit melalui tab Perpuluhan agar data tetap sinkron."),
-            backgroundColor: Colors.orange,
-          ));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Transaksi ini berasal dari Perpuluhan. Edit melalui tab Perpuluhan agar data tetap sinkron.",
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
         }
         return;
       }
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal memeriksa sumber transaksi."), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Gagal memeriksa sumber transaksi."),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
       return;
     }
@@ -240,11 +392,21 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     );
   }
 
-  void _showTransactionForm({required bool isPemasukan, String? docId, String? initialNominal, String? initialKeterangan, DateTime? initialDate}) {
+  void _showTransactionForm({
+    required bool isPemasukan,
+    String? docId,
+    String? initialNominal,
+    String? initialKeterangan,
+    DateTime? initialDate,
+  }) {
     if (!_canEdit) return;
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
-      formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
+      formattedNominal = NumberFormat.currency(
+        locale: 'id_ID',
+        symbol: '',
+        decimalDigits: 0,
+      ).format(int.parse(initialNominal));
     }
 
     final etNominal = TextEditingController(text: formattedNominal);
@@ -259,110 +421,216 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(isEdit ? Icons.edit : (isPemasukan ? Icons.south_west : Icons.north_east), color: isEdit ? Colors.blue : (isPemasukan ? Colors.green : Colors.red)),
-              const SizedBox(width: 8),
-              Text(isEdit ? "Edit $jenis" : "Tambah $jenis", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InkWell(
-                  onTap: () async {
-                    final today = DateTime.now();
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(1900),
-                      lastDate: selectedDate.isAfter(today) ? selectedDate : today,
-                    );
-                    if (picked != null) setStateDialog(() => selectedDate = picked);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(5)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (context, setStateDialog) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: Row(
+                    children: [
+                      Icon(
+                        isEdit
+                            ? Icons.edit
+                            : (isPemasukan
+                                ? Icons.south_west
+                                : Icons.north_east),
+                        color:
+                            isEdit
+                                ? Colors.blue
+                                : (isPemasukan ? Colors.green : Colors.red),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEdit ? "Edit $jenis" : "Tambah $jenis",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(DateFormat('dd MMMM yyyy').format(selectedDate), style: const TextStyle(fontSize: 15)),
-                        const Icon(Icons.calendar_month, color: Colors.indigo),
+                        InkWell(
+                          onTap: () async {
+                            final today = DateTime.now();
+                            DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(1900),
+                              lastDate:
+                                  selectedDate.isAfter(today)
+                                      ? selectedDate
+                                      : today,
+                            );
+                            if (picked != null)
+                              setStateDialog(() => selectedDate = picked);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 15,
+                              vertical: 15,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade400),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  DateFormat(
+                                    'dd MMMM yyyy',
+                                  ).format(selectedDate),
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                                const Icon(
+                                  Icons.calendar_month,
+                                  color: Colors.indigo,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: etNominal,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CurrencyInputFormatter(),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: "Nominal",
+                            border: OutlineInputBorder(),
+                            prefixText: "Rp ",
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+                        TextField(
+                          controller: etKeterangan,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: const InputDecoration(
+                            labelText: "Keterangan",
+                            hintText: "Cth: Konsumsi Rapat",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: etNominal,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    CurrencyInputFormatter() 
+                  actions: [
+                    TextButton(
+                      onPressed:
+                          saving ? null : () => Navigator.pop(dialogContext),
+                      child: const Text("Batal"),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            isEdit
+                                ? Colors.blue
+                                : (isPemasukan ? Colors.green : Colors.red),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () async {
+                        if (etNominal.text.trim().isEmpty ||
+                            etKeterangan.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("⚠ Mohon isi semua kolom!"),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        int nominal =
+                            int.tryParse(
+                              etNominal.text.replaceAll(RegExp(r'[^0-9]'), ''),
+                            ) ??
+                            0;
+                        if (nominal <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("⚠ Nominal tidak valid!"),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (saving) return;
+                        setStateDialog(() => saving = true);
+                        try {
+                          await checkRegionWrite(
+                            widget.namaDaerah,
+                            allowPastors: false,
+                          );
+                          if (!mounted || !dialogContext.mounted) return;
+                          Map<String, dynamic> payload = {
+                            "daerah": widget.namaDaerah,
+                            "jenis": jenis,
+                            "nominal": nominal,
+                            "keterangan": etKeterangan.text.trim(),
+                            "tanggal": Timestamp.fromDate(selectedDate),
+                          };
+
+                          if (isEdit) {
+                            await saveRegionChanges(widget.namaDaerah, {
+                              _db.collection("keuangan_daerah").doc(docId):
+                                  payload,
+                            }, requireExisting: true);
+                            if (mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("✅ Transaksi berhasil diedit!"),
+                                  backgroundColor: Colors.blue,
+                                ),
+                              );
+                          } else {
+                            await saveRegionChanges(widget.namaDaerah, {
+                              _db.collection("keuangan_daerah").doc(newId):
+                                  payload,
+                            }, createOnly: true);
+                            if (mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("✅ $jenis berhasil dicatat!"),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                          }
+                          if (dialogContext.mounted)
+                            Navigator.pop(dialogContext);
+                        } catch (e) {
+                          if (mounted)
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("❌ Gagal menyimpan: $e"),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                        } finally {
+                          if (dialogContext.mounted)
+                            setStateDialog(() => saving = false);
+                        }
+                      },
+                      child: Text(
+                        saving
+                            ? "Menyimpan..."
+                            : isEdit
+                            ? "Simpan Perubahan"
+                            : "Simpan",
+                      ),
+                    ),
                   ],
-                  decoration: const InputDecoration(labelText: "Nominal", border: OutlineInputBorder(), prefixText: "Rp "),
                 ),
-                const SizedBox(height: 15),
-                TextField(
-                  controller: etKeterangan,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: "Keterangan", hintText: "Cth: Konsumsi Rapat", border: OutlineInputBorder()),
-                ),
-              ],
-            ),
           ),
-          actions: [
-            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text("Batal")),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: isEdit ? Colors.blue : (isPemasukan ? Colors.green : Colors.red), foregroundColor: Colors.white),
-              onPressed: () async {
-                if (etNominal.text.trim().isEmpty || etKeterangan.text.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Mohon isi semua kolom!"), backgroundColor: Colors.orange));
-                  return;
-                }
-                
-                int nominal = int.tryParse(etNominal.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-                if (nominal <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Nominal tidak valid!"), backgroundColor: Colors.orange));
-                  return;
-                }
-
-                if (saving) return;
-                setStateDialog(() => saving = true);
-                try {
-                  await checkRegionWrite(widget.namaDaerah, allowPastors: false);
-                  if (!mounted || !dialogContext.mounted) return;
-                  Map<String, dynamic> payload = {
-                    "daerah": widget.namaDaerah,
-                    "jenis": jenis,
-                    "nominal": nominal,
-                    "keterangan": etKeterangan.text.trim(),
-                    "tanggal": Timestamp.fromDate(selectedDate),
-                  };
-
-                  if (isEdit) {
-                    await saveRegionChanges(widget.namaDaerah, {_db.collection("keuangan_daerah").doc(docId): payload}, requireExisting: true);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Transaksi berhasil diedit!"), backgroundColor: Colors.blue));
-                  } else {
-                    await saveRegionChanges(widget.namaDaerah, {_db.collection("keuangan_daerah").doc(newId): payload}, createOnly: true);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ $jenis berhasil dicatat!"), backgroundColor: Colors.green));
-                  }
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
-                } finally {
-                  if (dialogContext.mounted) setStateDialog(() => saving = false);
-                }
-              },
-              child: Text(saving ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Simpan"),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -370,28 +638,50 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     if (!_canEdit) return;
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 10),
-            ListTile(
-              leading: const Icon(Icons.edit, color: Colors.blue),
-              title: const Text("Edit Transaksi", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _showEditTransactionDialog(docId, data); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text("Hapus Transaksi", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _showDeleteDialog(docId, data['keterangan']); },
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.edit, color: Colors.blue),
+                  title: const Text(
+                    "Edit Transaksi",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showEditTransactionDialog(docId, data);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text(
+                    "Hapus Transaksi",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDeleteDialog(docId, data['keterangan']);
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
     );
   }
 
@@ -399,38 +689,62 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
     if (!_canEdit) return;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Hapus Transaksi?"),
-        content: Text("Yakin ingin menghapus $keterangan?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                await checkRegionWrite(widget.namaDaerah, allowPastors: false);
-                final linkedRef = _db.collection("perpuluhan_daerah").doc(docId);
-                final linked = await linkedRef.get();
-                final changes = <DocumentReference, Map<String, dynamic>?>{};
-                changes[_db.collection("keuangan_daerah").doc(docId)] = null;
-                if (linked.exists) changes[linkedRef] = null;
-                await saveRegionChanges(widget.namaDaerah, changes);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
-              } catch (_) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal menghapus data."), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text("Hapus", style: TextStyle(color: Colors.white)),
-          )
-        ],
-      )
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text("Hapus Transaksi?"),
+            content: Text("Yakin ingin menghapus $keterangan?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Batal"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await checkRegionWrite(
+                      widget.namaDaerah,
+                      allowPastors: false,
+                    );
+                    final linkedRef = _db
+                        .collection("perpuluhan_daerah")
+                        .doc(docId);
+                    final linked = await linkedRef.get();
+                    final changes =
+                        <DocumentReference, Map<String, dynamic>?>{};
+                    changes[_db.collection("keuangan_daerah").doc(docId)] =
+                        null;
+                    if (linked.exists) changes[linkedRef] = null;
+                    await saveRegionChanges(widget.namaDaerah, changes);
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Data dihapus")),
+                      );
+                  } catch (_) {
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Gagal menghapus data."),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                  }
+                },
+                child: const Text(
+                  "Hapus",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold( // 👈 INI SUDAH DIBUAT JADI SCAFFOLD AGAR AMAN
+    return Scaffold(
+      // 👈 INI SUDAH DIBUAT JADI SCAFFOLD AGAR AMAN
       backgroundColor: const Color(0xFFF5F7FA),
       body: Column(
         children: [
@@ -441,18 +755,60 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
+                    key: ValueKey('month-$_selectedMonth'),
                     value: _months[_selectedMonth - 1],
-                    decoration: InputDecoration(labelText: "Bulan", contentPadding: const EdgeInsets.symmetric(horizontal: 15), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                    items: _months.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 14)))).toList(),
-                    onChanged: (val) => setState(() => _selectedMonth = _months.indexOf(val!) + 1),
+                    decoration: InputDecoration(
+                      labelText: "Bulan",
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items:
+                        _months
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                    onChanged:
+                        (val) => setState(
+                          () => _selectedMonth = _months.indexOf(val!) + 1,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 15),
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _selectedYear,
-                    decoration: InputDecoration(labelText: "Tahun", contentPadding: const EdgeInsets.symmetric(horizontal: 15), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                    items: _years.map((e) => DropdownMenuItem(value: e, child: Text(e.toString(), style: const TextStyle(fontSize: 14)))).toList(),
+                    decoration: InputDecoration(
+                      labelText: "Tahun",
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items:
+                        _years
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e.toString(),
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            )
+                            .toList(),
                     onChanged: (val) => setState(() => _selectedYear = val!),
                   ),
                 ),
@@ -462,22 +818,44 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _db.collection("keuangan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
+              stream: _stream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (snapshot.hasError) return const Center(child: Text("Gagal memuat kas daerah."));
-                
-                var docs = snapshot.data?.docs.toList() ?? [];
-                
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError)
+                  return const Center(child: Text("Gagal memuat kas daerah."));
+
+                final report = RegionFinanceYear(
+                  (snapshot.data?.docs ?? []).map(
+                    (doc) => doc.data() as Map<String, dynamic>,
+                  ),
+                  _selectedYear,
+                  tithe: false,
+                );
+                var docs =
+                    (snapshot.data?.docs ?? []).where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final amount = data['nominal'];
+                      return data['tanggal'] is Timestamp &&
+                          amount is num &&
+                          amount.isFinite &&
+                          amount >= 0 &&
+                          ['Pemasukan', 'Pengeluaran'].contains(data['jenis']);
+                    }).toList();
+
                 docs.sort((a, b) {
-                  Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
-                  Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
-                  return tB.compareTo(tA); 
+                  Timestamp tA =
+                      (a.data() as Map<String, dynamic>)['tanggal'] ??
+                      Timestamp.now();
+                  Timestamp tB =
+                      (b.data() as Map<String, dynamic>)['tanggal'] ??
+                      Timestamp.now();
+                  return tB.compareTo(tA);
                 });
-                
-                int thnPemasukan = 0, thnPengeluaran = 0;
-                _blnPemasukan = 0; _blnPengeluaran = 0;
-                _filteredDocs = []; 
+
+                _blnPemasukan = 0;
+                _blnPengeluaran = 0;
+                _filteredDocs = [];
 
                 for (var doc in docs) {
                   var data = doc.data() as Map<String, dynamic>;
@@ -493,12 +871,6 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   final isMasuk = jenis == "Pemasukan";
 
                   if (dt.year == _selectedYear) {
-                    if (isMasuk) {
-                      thnPemasukan += nom;
-                    } else {
-                      thnPengeluaran += nom;
-                    }
-                    
                     if (dt.month == _selectedMonth) {
                       if (isMasuk) {
                         _blnPemasukan += nom;
@@ -510,106 +882,101 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                   }
                 }
 
-                int thnSaldo = thnPemasukan - thnPengeluaran;
-                int blnSaldo = _blnPemasukan - _blnPengeluaran;
-
                 return ListView(
-                  padding: const EdgeInsets.all(20),
+                  key: const ValueKey('regional-cash-report'),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [Colors.indigo.shade900, Colors.blue.shade800], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    RegionFinanceReport(
+                      report: report,
+                      month: _selectedMonth,
+                      onMonthChanged:
+                          (month) => setState(() => _selectedMonth = month),
+                    ),
+                    if (_canEdit)
+                      Row(
                         children: [
-                          Text("SALDO TAHUN $_selectedYear", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 5),
-                          Text(_currencyFormat.format(thnSaldo), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 15),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                const Text("Masuk", style: TextStyle(color: Colors.greenAccent, fontSize: 12)),
-                                Text(_currencyFormat.format(thnPemasukan), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                              ]),
-                              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                                const Text("Keluar", style: TextStyle(color: Colors.redAccent, fontSize: 12)),
-                                Text(_currencyFormat.format(thnPengeluaran), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                              ]),
-                            ],
-                          )
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showAddTransactionDialog(true),
+                              icon: const Icon(Icons.add_circle, size: 18),
+                              label: const Text("Pemasukan"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: () => _showAddTransactionDialog(false),
+                              icon: const Icon(Icons.remove_circle, size: 18),
+                              label: const Text("Pengeluaran"),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 15),
-
-                    Container(
-                      padding: const EdgeInsets.all(15),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), border: Border.all(color: Colors.indigo.shade50)),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Bulan ${_months[_selectedMonth - 1]}", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 12)),
-                              Text(_currencyFormat.format(blnSaldo), style: TextStyle(color: Colors.indigo.shade900, fontWeight: FontWeight.bold, fontSize: 18)),
-                            ],
-                          ),
-                          Row(
-                            children: [
-                              const Icon(Icons.arrow_downward, color: Colors.green, size: 16),
-                              Text(_currencyFormat.format(_blnPemasukan), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                              const SizedBox(width: 10),
-                              const Icon(Icons.arrow_upward, color: Colors.red, size: 16),
-                              Text(_currencyFormat.format(_blnPengeluaran), style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-                            ],
-                          )
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 25),
-
-                    if (_canEdit) Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showAddTransactionDialog(true),
-                            icon: const Icon(Icons.add_circle, size: 18),
-                            label: const Text("Pemasukan"),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => _showAddTransactionDialog(false),
-                            icon: const Icon(Icons.remove_circle, size: 18),
-                            label: const Text("Pengeluaran"),
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-                          ),
-                        ),
-                      ],
-                    ),
                     const SizedBox(height: 25),
 
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("Riwayat ${_months[_selectedMonth - 1]} $_selectedYear", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo)),
+                        Text(
+                          "Riwayat ${_months[_selectedMonth - 1]} $_selectedYear",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.indigo,
+                          ),
+                        ),
                         InkWell(
                           onTap: _showExportOptions,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.indigo.shade200)),
-                            child: const Row(children: [Icon(Icons.download, size: 16, color: Colors.indigo), SizedBox(width: 4), Text("Ekspor", style: TextStyle(color: Colors.indigo, fontSize: 12, fontWeight: FontWeight.bold))]),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.indigo.shade200),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.download,
+                                  size: 16,
+                                  color: Colors.indigo,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  "Ekspor",
+                                  style: TextStyle(
+                                    color: Colors.indigo,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -617,7 +984,12 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                     if (_filteredDocs.isEmpty)
                       Padding(
                         padding: const EdgeInsets.all(30.0),
-                        child: Center(child: Text("Belum ada transaksi di bulan ini.", style: TextStyle(color: Colors.grey.shade500))),
+                        child: Center(
+                          child: Text(
+                            "Belum ada transaksi di bulan ini.",
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
+                        ),
                       )
                     else
                       ..._filteredDocs.map((doc) {
@@ -625,20 +997,52 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                         bool isPemasukan = data['jenis'] == "Pemasukan";
                         Timestamp ts = data['tanggal'];
                         return Card(
-                          elevation: 0, color: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.grey.shade200)),
+                          elevation: 0,
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(color: Colors.grey.shade200),
+                          ),
                           child: ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: isPemasukan ? Colors.green.shade50 : Colors.red.shade50,
-                              child: Icon(isPemasukan ? Icons.south_west : Icons.north_east, color: isPemasukan ? Colors.green : Colors.red, size: 20),
+                              backgroundColor:
+                                  isPemasukan
+                                      ? Colors.green.shade50
+                                      : Colors.red.shade50,
+                              child: Icon(
+                                isPemasukan
+                                    ? Icons.south_west
+                                    : Icons.north_east,
+                                color: isPemasukan ? Colors.green : Colors.red,
+                                size: 20,
+                              ),
                             ),
-                            title: Text((data['keterangan'] ?? "Tanpa Keterangan").toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                            subtitle: Text(DateFormat('dd MMM yyyy').format(ts.toDate()), style: const TextStyle(fontSize: 11)),
+                            title: Text(
+                              (data['keterangan'] ?? "Tanpa Keterangan")
+                                  .toString(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            subtitle: Text(
+                              DateFormat('dd MMM yyyy').format(ts.toDate()),
+                              style: const TextStyle(fontSize: 11),
+                            ),
                             trailing: Text(
-                              isPemasukan ? "+ ${_currencyFormat.format(data['nominal'])}" : "- ${_currencyFormat.format(data['nominal'])}",
-                              style: TextStyle(fontWeight: FontWeight.bold, color: isPemasukan ? Colors.green : Colors.red),
+                              isPemasukan
+                                  ? "+ ${_currencyFormat.format(data['nominal'])}"
+                                  : "- ${_currencyFormat.format(data['nominal'])}",
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: isPemasukan ? Colors.green : Colors.red,
+                              ),
                             ),
-                            onLongPress: _canEdit ? () => _showOptionsBottomSheet(doc.id, data) : null,
+                            onLongPress:
+                                _canEdit
+                                    ? () =>
+                                        _showOptionsBottomSheet(doc.id, data)
+                                    : null,
                           ),
                         );
                       }),
@@ -658,7 +1062,8 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
 // ============================================================================
 class _PerpuluhanTab extends StatefulWidget {
   final String namaDaerah;
-  const _PerpuluhanTab({required this.namaDaerah});
+  final FirebaseFirestore db;
+  const _PerpuluhanTab({required this.namaDaerah, required this.db});
 
   @override
   State<_PerpuluhanTab> createState() => _PerpuluhanTabState();
@@ -666,16 +1071,181 @@ class _PerpuluhanTab extends StatefulWidget {
 
 class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   bool get _canEdit => UserManager().canEditRegion(widget.namaDaerah);
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
-  final NumberFormat _currencyFormat = NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0);
+  FirebaseFirestore get _db => widget.db;
+  late final Stream<QuerySnapshot> _stream;
+  final NumberFormat _currencyFormat = NumberFormat.currency(
+    locale: 'id_ID',
+    symbol: 'Rp ',
+    decimalDigits: 0,
+  );
+
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildDonorRecap() {
+    final groups = <String, List<QueryDocumentSnapshot>>{};
+    for (final doc in _filteredDocs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final key =
+          '${regionNameKey(data['tipe'])}|${regionNameKey(data['nama'])}';
+      groups.putIfAbsent(key, () => []).add(doc);
+    }
+    final entries =
+        groups.values.toList()..sort((a, b) {
+          final x = a.first.data() as Map<String, dynamic>;
+          final y = b.first.data() as Map<String, dynamic>;
+          return regionNameKey(x['nama']).compareTo(regionNameKey(y['nama']));
+        });
+    final visible =
+        entries.where((docs) {
+          final data = docs.first.data() as Map<String, dynamic>;
+          return '${data['nama']} ${data['tipe']}'.toLowerCase().contains(
+            _searchQuery,
+          );
+        }).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Rekap Perpuluhan per Penyetor',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          '${financeMonths[_selectedMonth - 1]} $_selectedYear • ${groups.length} penyetor',
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _searchController,
+          onChanged:
+              (value) =>
+                  setState(() => _searchQuery = value.trim().toLowerCase()),
+          decoration: InputDecoration(
+            hintText: 'Cari gereja atau nama penyetor',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon:
+                _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                      tooltip: 'Hapus pencarian',
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    ),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              groups.isEmpty
+                  ? 'Belum ada perpuluhan di bulan ini.'
+                  : 'Penyetor tidak ditemukan.',
+            ),
+          ),
+        for (final docs in visible)
+          Builder(
+            builder: (context) {
+              final data = docs.first.data() as Map<String, dynamic>;
+              final total = docs.fold<int>(
+                0,
+                (sum, doc) =>
+                    sum +
+                    ((doc.data() as Map<String, dynamic>)['nominal'] as num)
+                        .toInt(),
+              );
+              return Card(
+                color: Colors.white,
+                child: ExpansionTile(
+                  key: ValueKey(
+                    'donor-$_selectedYear-$_selectedMonth-${docs.first.id}',
+                  ),
+                  leading: Icon(
+                    data['tipe'] == 'Gereja Lokal'
+                        ? Icons.church
+                        : Icons.person,
+                    color: Colors.purple,
+                  ),
+                  title: Text(
+                    (data['nama'] ?? 'Tanpa Nama').toString(),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    '${data['tipe'] ?? "Lainnya"} • ${docs.length} setoran\n${financeRupiah(total)}',
+                  ),
+                  children: [
+                    for (final doc in docs)
+                      Builder(
+                        builder: (context) {
+                          final receipt = doc.data() as Map<String, dynamic>;
+                          return ListTile(
+                            title: Text(
+                              financeRupiah(
+                                (receipt['nominal'] as num).toInt(),
+                              ),
+                            ),
+                            subtitle: Text(
+                              DateFormat('dd MMM yyyy').format(
+                                (receipt['tanggal'] as Timestamp).toDate(),
+                              ),
+                            ),
+                            trailing:
+                                _canEdit
+                                    ? IconButton(
+                                      tooltip: 'Tindakan setoran',
+                                      icon: const Icon(Icons.more_vert),
+                                      onPressed:
+                                          () => _showOptionsBottomSheet(
+                                            doc.id,
+                                            receipt,
+                                          ),
+                                    )
+                                    : null,
+                          );
+                        },
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
 
   int _selectedYear = DateTime.now().year;
   int _selectedMonth = DateTime.now().month;
   List<QueryDocumentSnapshot> _filteredDocs = [];
   int _blnTotal = 0;
 
-  final List<int> _years = List.generate(DateTime.now().year - 2020 + 1, (index) => DateTime.now().year - index);
-  final List<String> _months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  final List<int> _years = List.generate(
+    DateTime.now().year - 2020 + 1,
+    (index) => DateTime.now().year - index,
+  );
+  final List<String> _months = [
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+  ];
 
   List<String> _listGereja = [];
   List<String> _listPengerja = [];
@@ -683,7 +1253,12 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   @override
   void initState() {
     super.initState();
-    _fetchSuggestions(); 
+    _stream =
+        _db
+            .collection('perpuluhan_daerah')
+            .where('daerah', isEqualTo: widget.namaDaerah)
+            .snapshots();
+    _fetchSuggestions();
   }
 
   Future<void> _fetchSuggestions() async {
@@ -694,16 +1269,24 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
       for (var doc in snap.docs) {
         var data = doc.data();
-        if (data['isArchived'] == true || regionNameKey(data['daerah']) != regionNameKey(widget.namaDaerah)) continue;
-        String nmGereja = data['namaGereja'] ?? data['churchName'] ?? data['nama'] ?? "";
+        if (data['isArchived'] == true ||
+            regionNameKey(data['daerah']) != regionNameKey(widget.namaDaerah))
+          continue;
+        String nmGereja =
+            data['namaGereja'] ?? data['churchName'] ?? data['nama'] ?? "";
         String nmGembala = data['namaGembala'] ?? "";
 
         if (nmGereja.trim().isNotEmpty) setGereja.add(nmGereja.trim());
-        if (nmGembala.trim().isNotEmpty && nmGembala != "Belum ada data Gembala") setPengerja.add(nmGembala.trim());
+        if (nmGembala.trim().isNotEmpty &&
+            nmGembala != "Belum ada data Gembala")
+          setPengerja.add(nmGembala.trim());
       }
 
       if (mounted) {
-        setState(() { _listGereja = setGereja.toList()..sort(); _listPengerja = setPengerja.toList()..sort(); });
+        setState(() {
+          _listGereja = setGereja.toList()..sort();
+          _listPengerja = setPengerja.toList()..sort();
+        });
       }
     } catch (e) {
       debugPrint("Gagal load suggestions: $e");
@@ -713,14 +1296,19 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
   String _safeCsvValuePerpuluhan(String value) {
     final clean = value.replaceAll('"', '""');
     final trimmed = clean.trimLeft();
-    return (trimmed.startsWith("=") || trimmed.startsWith("+") || trimmed.startsWith("-") || trimmed.startsWith("@"))
+    return (trimmed.startsWith("=") ||
+            trimmed.startsWith("+") ||
+            trimmed.startsWith("-") ||
+            trimmed.startsWith("@"))
         ? "'$clean"
         : clean;
   }
 
   Future<void> _exportToPDF() async {
     if (_filteredDocs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Tidak ada data untuk diekspor!")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Tidak ada data untuk diekspor!")),
+      );
       return;
     }
 
@@ -730,38 +1318,67 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
-        build: (pw.Context context) => [
-          pw.Text("Laporan Perpuluhan Daerah ${widget.namaDaerah}", style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          pw.Text("Periode: $blnStr $_selectedYear", style: const pw.TextStyle(fontSize: 14)),
-          pw.SizedBox(height: 20),
-          pw.TableHelper.fromTextArray(
-            headers: ['Tanggal', 'Tipe', 'Nama Penyetor', 'Nominal (Rp)'],
-            data: _filteredDocs.map((doc) {
-              var d = doc.data() as Map<String, dynamic>;
-              final rawTanggal = d['tanggal'];
-              if (rawTanggal is! Timestamp) return ["-", "-", "Data tanggal tidak valid", "-"];
-              DateTime dt = rawTanggal.toDate();
-              return [
-                DateFormat('dd MMM yyyy').format(dt),
-                d['tipe']?.toString() ?? "-",
-                d['nama']?.toString() ?? "-",
-                _currencyFormat.format(d['nominal'] is num ? d['nominal'] : 0).replaceAll("Rp ", "")
-              ];
-            }).toList(),
-            headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
-            headerDecoration: const pw.BoxDecoration(color: PdfColors.deepOrange900),
-            cellAlignment: pw.Alignment.centerLeft,
-          ),
-          pw.SizedBox(height: 20),
-          pw.Text("Total Setoran Bulan Ini: ${_currencyFormat.format(_blnTotal)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.deepOrange)),
-        ],
+        build:
+            (pw.Context context) => [
+              pw.Text(
+                "Laporan Perpuluhan Daerah ${widget.namaDaerah}",
+                style: pw.TextStyle(
+                  fontSize: 18,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Text(
+                "Periode: $blnStr $_selectedYear",
+                style: const pw.TextStyle(fontSize: 14),
+              ),
+              pw.SizedBox(height: 20),
+              pw.TableHelper.fromTextArray(
+                headers: ['Tanggal', 'Tipe', 'Nama Penyetor', 'Nominal (Rp)'],
+                data:
+                    _filteredDocs.map((doc) {
+                      var d = doc.data() as Map<String, dynamic>;
+                      final rawTanggal = d['tanggal'];
+                      if (rawTanggal is! Timestamp)
+                        return ["-", "-", "Data tanggal tidak valid", "-"];
+                      DateTime dt = rawTanggal.toDate();
+                      return [
+                        DateFormat('dd MMM yyyy').format(dt),
+                        d['tipe']?.toString() ?? "-",
+                        d['nama']?.toString() ?? "-",
+                        _currencyFormat
+                            .format(d['nominal'] is num ? d['nominal'] : 0)
+                            .replaceAll("Rp ", ""),
+                      ];
+                    }).toList(),
+                headerStyle: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.white,
+                ),
+                headerDecoration: const pw.BoxDecoration(
+                  color: PdfColors.deepOrange900,
+                ),
+                cellAlignment: pw.Alignment.centerLeft,
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(
+                "Total Setoran Bulan Ini: ${_currencyFormat.format(_blnTotal)}",
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.deepOrange,
+                ),
+              ),
+            ],
       ),
     );
 
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Perpuluhan_${widget.namaDaerah}_${blnStr}_$_selectedYear.pdf');
+    final file = File(
+      '${dir.path}/Perpuluhan_${widget.namaDaerah}_${blnStr}_$_selectedYear.pdf',
+    );
     await file.writeAsBytes(await pdf.save());
-    await Share.shareXFiles([XFile(file.path)], text: 'Laporan Perpuluhan Daerah ${widget.namaDaerah}');
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Laporan Perpuluhan Daerah ${widget.namaDaerah}');
   }
 
   Future<void> _exportToCSV() async {
@@ -779,36 +1396,72 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
     final String blnStr = _months[_selectedMonth - 1];
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/Perpuluhan_${widget.namaDaerah}_${blnStr}_$_selectedYear.csv');
+    final file = File(
+      '${dir.path}/Perpuluhan_${widget.namaDaerah}_${blnStr}_$_selectedYear.csv',
+    );
     await file.writeAsString(csvData);
-    await Share.shareXFiles([XFile(file.path)], text: 'Data CSV Perpuluhan ${widget.namaDaerah}');
+    await Share.shareXFiles([
+      XFile(file.path),
+    ], text: 'Data CSV Perpuluhan ${widget.namaDaerah}');
   }
 
   void _showExportOptions() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            const Padding(padding: EdgeInsets.all(16), child: Text("Cetak / Ekspor Laporan", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.orange))),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              title: const Text("Ekspor sebagai PDF", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _exportToPDF(); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.table_view, color: Colors.green),
-              title: const Text("Ekspor sebagai CSV (Excel)", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _exportToCSV(); },
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    "Cetak / Ekspor Laporan",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
+                  title: const Text(
+                    "Ekspor sebagai PDF",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportToPDF();
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.table_view, color: Colors.green),
+                  title: const Text(
+                    "Ekspor sebagai CSV (Excel)",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _exportToCSV();
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
     );
   }
 
@@ -824,16 +1477,26 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     );
   }
 
-  void _showPerpuluhanForm({String? docId, String? initialTipe, String? initialNama, String? initialNominal, DateTime? initialDate}) {
+  void _showPerpuluhanForm({
+    String? docId,
+    String? initialTipe,
+    String? initialNama,
+    String? initialNominal,
+    DateTime? initialDate,
+  }) {
     if (!_canEdit) return;
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
-      formattedNominal = NumberFormat.currency(locale: 'id_ID', symbol: '', decimalDigits: 0).format(int.parse(initialNominal));
+      formattedNominal = NumberFormat.currency(
+        locale: 'id_ID',
+        symbol: '',
+        decimalDigits: 0,
+      ).format(int.parse(initialNominal));
     }
 
     final etNominal = TextEditingController(text: formattedNominal);
     String tipeSumber = initialTipe ?? "Gereja Lokal";
-    DateTime selectedDate = initialDate ?? DateTime.now(); 
+    DateTime selectedDate = initialDate ?? DateTime.now();
     TextEditingController? autoNameController;
     bool isEdit = docId != null;
 
@@ -842,174 +1505,357 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setStateDialog) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(isEdit ? Icons.edit : Icons.volunteer_activism, color: isEdit ? Colors.blue : Colors.orange),
-              const SizedBox(width: 8),
-              Text(isEdit ? "Edit Perpuluhan" : "Input Perpuluhan", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InkWell(
-                  onTap: () async {
-                    final today = DateTime.now();
-                    DateTime? picked = await showDatePicker(
-                      context: context,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(1900),
-                      lastDate: selectedDate.isAfter(today) ? selectedDate : today,
-                    );
-                    if (picked != null) setStateDialog(() => selectedDate = picked);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
-                    decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(5)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      builder:
+          (dialogContext) => StatefulBuilder(
+            builder:
+                (context, setStateDialog) => AlertDialog(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  title: Row(
+                    children: [
+                      Icon(
+                        isEdit ? Icons.edit : Icons.volunteer_activism,
+                        color: isEdit ? Colors.blue : Colors.orange,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        isEdit ? "Edit Perpuluhan" : "Input Perpuluhan",
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ],
+                  ),
+                  content: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(DateFormat('dd MMMM yyyy').format(selectedDate), style: const TextStyle(fontSize: 15)),
-                        const Icon(Icons.calendar_month, color: Colors.orange),
+                        InkWell(
+                          onTap: () async {
+                            final today = DateTime.now();
+                            DateTime? picked = await showDatePicker(
+                              context: context,
+                              initialDate: selectedDate,
+                              firstDate: DateTime(1900),
+                              lastDate:
+                                  selectedDate.isAfter(today)
+                                      ? selectedDate
+                                      : today,
+                            );
+                            if (picked != null)
+                              setStateDialog(() => selectedDate = picked);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 15,
+                              vertical: 15,
+                            ),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade400),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  DateFormat(
+                                    'dd MMMM yyyy',
+                                  ).format(selectedDate),
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                                const Icon(
+                                  Icons.calendar_month,
+                                  color: Colors.orange,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 15),
+
+                        DropdownButtonFormField<String>(
+                          value: tipeSumber,
+                          decoration: const InputDecoration(
+                            labelText: "Sumber",
+                            border: OutlineInputBorder(),
+                          ),
+                          items:
+                              [
+                                    "Gereja Lokal",
+                                    "Pengerja (Hamba Tuhan)",
+                                    "Donatur Lain",
+                                  ]
+                                  .map(
+                                    (e) => DropdownMenuItem(
+                                      value: e,
+                                      child: Text(e),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: (val) {
+                            setStateDialog(() {
+                              tipeSumber = val!;
+                              autoNameController?.clear();
+                            });
+                          },
+                        ),
+                        const SizedBox(height: 15),
+
+                        Autocomplete<String>(
+                          initialValue: TextEditingValue(
+                            text: initialNama ?? "",
+                          ),
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty ||
+                                tipeSumber == "Donatur Lain")
+                              return const Iterable<String>.empty();
+                            List<String> sourceList = [];
+                            if (tipeSumber == "Gereja Lokal")
+                              sourceList = _listGereja;
+                            if (tipeSumber == "Pengerja (Hamba Tuhan)")
+                              sourceList = _listPengerja;
+                            return sourceList.where(
+                              (String option) => option.toLowerCase().contains(
+                                textEditingValue.text.toLowerCase(),
+                              ),
+                            );
+                          },
+                          onSelected:
+                              (String selection) =>
+                                  autoNameController?.text = selection,
+                          fieldViewBuilder: (
+                            context,
+                            controller,
+                            focusNode,
+                            onFieldSubmitted,
+                          ) {
+                            autoNameController = controller;
+                            return TextField(
+                              controller: controller,
+                              focusNode: focusNode,
+                              textCapitalization: TextCapitalization.words,
+                              decoration: const InputDecoration(
+                                labelText: "Nama Pengerja / Gereja",
+                                hintText: "Ketik nama...",
+                                border: OutlineInputBorder(),
+                                suffixIcon: Icon(
+                                  Icons.search,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            );
+                          },
+                          optionsViewBuilder: (context, onSelected, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 8.0,
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  width: 250,
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 200,
+                                  ),
+                                  child: ListView.separated(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    itemCount: options.length,
+                                    separatorBuilder:
+                                        (context, index) =>
+                                            const Divider(height: 1),
+                                    itemBuilder: (context, index) {
+                                      final String option = options.elementAt(
+                                        index,
+                                      );
+                                      return ListTile(
+                                        dense: true,
+                                        title: Text(
+                                          option,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                            color: Colors.indigo,
+                                          ),
+                                        ),
+                                        onTap: () => onSelected(option),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 15),
+
+                        TextField(
+                          controller: etNominal,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CurrencyInputFormatter(),
+                          ],
+                          decoration: const InputDecoration(
+                            labelText: "Nominal",
+                            border: OutlineInputBorder(),
+                            prefixText: "Rp ",
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(height: 15),
-
-                DropdownButtonFormField<String>(
-                  value: tipeSumber,
-                  decoration: const InputDecoration(labelText: "Sumber", border: OutlineInputBorder()),
-                  items: ["Gereja Lokal", "Pengerja (Hamba Tuhan)", "Donatur Lain"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                  onChanged: (val) {
-                    setStateDialog(() {
-                      tipeSumber = val!;
-                      autoNameController?.clear();
-                    });
-                  },
-                ),
-                const SizedBox(height: 15),
-                
-                Autocomplete<String>(
-                  initialValue: TextEditingValue(text: initialNama ?? ""),
-                  optionsBuilder: (TextEditingValue textEditingValue) {
-                    if (textEditingValue.text.isEmpty || tipeSumber == "Donatur Lain") return const Iterable<String>.empty();
-                    List<String> sourceList = [];
-                    if (tipeSumber == "Gereja Lokal") sourceList = _listGereja;
-                    if (tipeSumber == "Pengerja (Hamba Tuhan)") sourceList = _listPengerja;
-                    return sourceList.where((String option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
-                  },
-                  onSelected: (String selection) => autoNameController?.text = selection,
-                  fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
-                    autoNameController = controller; 
-                    return TextField(
-                      controller: controller, focusNode: focusNode, textCapitalization: TextCapitalization.words,
-                      decoration: const InputDecoration(labelText: "Nama Pengerja / Gereja", hintText: "Ketik nama...", border: OutlineInputBorder(), suffixIcon: Icon(Icons.search, color: Colors.grey)),
-                    );
-                  },
-                  optionsViewBuilder: (context, onSelected, options) {
-                    return Align(
-                      alignment: Alignment.topLeft,
-                      child: Material(
-                        elevation: 8.0, borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          width: 250, constraints: const BoxConstraints(maxHeight: 200),
-                          child: ListView.separated(
-                            padding: EdgeInsets.zero, shrinkWrap: true, itemCount: options.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final String option = options.elementAt(index);
-                              return ListTile(dense: true, title: Text(option, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.indigo)), onTap: () => onSelected(option));
-                            },
-                          ),
-                        ),
+                  actions: [
+                    TextButton(
+                      onPressed:
+                          saving ? null : () => Navigator.pop(dialogContext),
+                      child: const Text("Batal"),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isEdit ? Colors.blue : Colors.indigo,
+                        foregroundColor: Colors.white,
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 15),
-                
-                TextField(
-                  controller: etNominal, 
-                  keyboardType: TextInputType.number, 
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    CurrencyInputFormatter() 
+                      onPressed: () async {
+                        String inputNama =
+                            autoNameController?.text.trim() ?? "";
+                        if (inputNama.isEmpty ||
+                            etNominal.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("⚠ Mohon lengkapi semua data!"),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        int nom =
+                            int.tryParse(
+                              etNominal.text.replaceAll(RegExp(r'[^0-9]'), ''),
+                            ) ??
+                            0;
+                        if (nom <= 0) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("⚠ Nominal tidak valid!"),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                          return;
+                        }
+
+                        if (saving) return;
+                        setStateDialog(() => saving = true);
+                        try {
+                          await checkRegionWrite(
+                            widget.namaDaerah,
+                            allowPastors: false,
+                          );
+                          if (!mounted || !dialogContext.mounted) return;
+                          final changes =
+                              <DocumentReference, Map<String, dynamic>?>{};
+
+                          if (isEdit) {
+                            DocumentReference refPerpuluhan = _db
+                                .collection("perpuluhan_daerah")
+                                .doc(docId);
+                            DocumentReference refKas = _db
+                                .collection("keuangan_daerah")
+                                .doc(docId);
+
+                            changes[refPerpuluhan] = {
+                              "tipe": tipeSumber,
+                              "nama": inputNama,
+                              "nominal": nom,
+                              "tanggal": Timestamp.fromDate(selectedDate),
+                            };
+
+                            changes[refKas] = {
+                              "daerah": widget.namaDaerah,
+                              "jenis": "Pemasukan",
+                              "nominal": nom,
+                              "keterangan": "Perpuluhan: $inputNama",
+                              "tanggal": Timestamp.fromDate(selectedDate),
+                            };
+
+                            await saveRegionChanges(
+                              widget.namaDaerah,
+                              changes,
+                              requireExisting: true,
+                            );
+                            if (mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "✅ Perpuluhan direvisi & Kas disesuaikan!",
+                                  ),
+                                  backgroundColor: Colors.blue,
+                                ),
+                              );
+                          } else {
+                            DocumentReference docRef = _db
+                                .collection("perpuluhan_daerah")
+                                .doc(newId);
+                            changes[docRef] = {
+                              "daerah": widget.namaDaerah,
+                              "tipe": tipeSumber,
+                              "nama": inputNama,
+                              "nominal": nom,
+                              "tanggal": Timestamp.fromDate(selectedDate),
+                            };
+                            changes[_db
+                                .collection("keuangan_daerah")
+                                .doc(docRef.id)] = {
+                              "daerah": widget.namaDaerah,
+                              "jenis": "Pemasukan",
+                              "nominal": nom,
+                              "keterangan": "Perpuluhan: $inputNama",
+                              "tanggal": Timestamp.fromDate(selectedDate),
+                            };
+
+                            await saveRegionChanges(
+                              widget.namaDaerah,
+                              changes,
+                              createOnly: !isEdit,
+                            );
+                            if (mounted)
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    "✅ Perpuluhan dicatat & masuk ke Kas!",
+                                  ),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                          }
+                          if (dialogContext.mounted)
+                            Navigator.pop(dialogContext);
+                        } catch (e) {
+                          if (mounted)
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text("❌ Gagal menyimpan: $e"),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                        } finally {
+                          if (dialogContext.mounted)
+                            setStateDialog(() => saving = false);
+                        }
+                      },
+                      child: Text(
+                        saving
+                            ? "Menyimpan..."
+                            : isEdit
+                            ? "Simpan Perubahan"
+                            : "Simpan",
+                      ),
+                    ),
                   ],
-                  decoration: const InputDecoration(labelText: "Nominal", border: OutlineInputBorder(), prefixText: "Rp ")
                 ),
-              ],
-            ),
           ),
-          actions: [
-            TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext), child: const Text("Batal")),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: isEdit ? Colors.blue : Colors.indigo, foregroundColor: Colors.white),
-              onPressed: () async {
-                String inputNama = autoNameController?.text.trim() ?? "";
-                if (inputNama.isEmpty || etNominal.text.trim().isEmpty) {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Mohon lengkapi semua data!"), backgroundColor: Colors.orange));
-                   return;
-                }
-                
-                int nom = int.tryParse(etNominal.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-                if (nom <= 0) {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("⚠ Nominal tidak valid!"), backgroundColor: Colors.orange));
-                   return;
-                }
-
-                if (saving) return;
-                setStateDialog(() => saving = true);
-                try {
-                  await checkRegionWrite(widget.namaDaerah, allowPastors: false);
-                  if (!mounted || !dialogContext.mounted) return;
-                  final changes = <DocumentReference, Map<String, dynamic>?>{};
-
-                  if (isEdit) {
-                    DocumentReference refPerpuluhan = _db.collection("perpuluhan_daerah").doc(docId);
-                    DocumentReference refKas = _db.collection("keuangan_daerah").doc(docId);
-
-                    changes[refPerpuluhan] = {
-                      "tipe": tipeSumber, "nama": inputNama, "nominal": nom, "tanggal": Timestamp.fromDate(selectedDate),
-                    };
-                    
-                    changes[refKas] = {
-                      "daerah": widget.namaDaerah, "jenis": "Pemasukan", "nominal": nom,
-                      "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
-                    };
-
-                    await saveRegionChanges(widget.namaDaerah, changes, requireExisting: true);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan direvisi & Kas disesuaikan!"), backgroundColor: Colors.blue));
-                  } else {
-                    DocumentReference docRef = _db.collection("perpuluhan_daerah").doc(newId);
-                    changes[docRef] = {
-                      "daerah": widget.namaDaerah, "tipe": tipeSumber, "nama": inputNama,
-                      "nominal": nom, "tanggal": Timestamp.fromDate(selectedDate),
-                    };
-                    changes[_db.collection("keuangan_daerah").doc(docRef.id)] = {
-                      "daerah": widget.namaDaerah, "jenis": "Pemasukan", "nominal": nom,
-                      "keterangan": "Perpuluhan: $inputNama", "tanggal": Timestamp.fromDate(selectedDate),
-                    };
-
-                    await saveRegionChanges(widget.namaDaerah, changes, createOnly: !isEdit);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Perpuluhan dicatat & masuk ke Kas!"), backgroundColor: Colors.green));
-                  }
-                  if (dialogContext.mounted) Navigator.pop(dialogContext);
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("❌ Gagal menyimpan: $e"), backgroundColor: Colors.red));
-                } finally {
-                  if (dialogContext.mounted) setStateDialog(() => saving = false);
-                }
-              },
-              child: Text(saving ? "Menyimpan..." : isEdit ? "Simpan Perubahan" : "Simpan"),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1017,28 +1863,50 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     if (!_canEdit) return;
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 10),
-            ListTile(
-              leading: const Icon(Icons.edit, color: Colors.blue),
-              title: const Text("Edit Perpuluhan", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _showEditPerpuluhanDialog(docId, data); },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text("Hapus Perpuluhan", style: TextStyle(fontWeight: FontWeight.bold)),
-              onTap: () { Navigator.pop(ctx); _showDeleteDialog(docId, data['nama']); },
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder:
+          (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 10),
+                Container(
+                  width: 40,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  leading: const Icon(Icons.edit, color: Colors.blue),
+                  title: const Text(
+                    "Edit Perpuluhan",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showEditPerpuluhanDialog(docId, data);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text(
+                    "Hapus Perpuluhan",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showDeleteDialog(docId, data['nama']);
+                  },
+                ),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
     );
   }
 
@@ -1046,30 +1914,51 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     if (!_canEdit) return;
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Hapus Data?"),
-        content: Text("Yakin menghapus setoran dari $nama? (Data di Kas Operasional juga akan terhapus)"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Batal")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-              await checkRegionWrite(widget.namaDaerah, allowPastors: false);
-              final changes = <DocumentReference, Map<String, dynamic>?>{};
-              changes[_db.collection("perpuluhan_daerah").doc(docId)] = null;
-              changes[_db.collection("keuangan_daerah").doc(docId)] = null;
-              await saveRegionChanges(widget.namaDaerah, changes);
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Data dihapus")));
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Hapus belum berhasil: $e")));
-              }
-            },
-            child: const Text("Hapus", style: TextStyle(color: Colors.white)),
-          )
-        ],
-      )
+      builder:
+          (ctx) => AlertDialog(
+            title: const Text("Hapus Data?"),
+            content: Text(
+              "Yakin menghapus setoran dari $nama? (Data di Kas Operasional juga akan terhapus)",
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text("Batal"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  try {
+                    await checkRegionWrite(
+                      widget.namaDaerah,
+                      allowPastors: false,
+                    );
+                    final changes =
+                        <DocumentReference, Map<String, dynamic>?>{};
+                    changes[_db.collection("perpuluhan_daerah").doc(docId)] =
+                        null;
+                    changes[_db.collection("keuangan_daerah").doc(docId)] =
+                        null;
+                    await saveRegionChanges(widget.namaDaerah, changes);
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text("Data dihapus")),
+                      );
+                  } catch (e) {
+                    if (mounted)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text("Hapus belum berhasil: $e")),
+                      );
+                  }
+                },
+                child: const Text(
+                  "Hapus",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
     );
   }
 
@@ -1087,18 +1976,60 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
+                    key: ValueKey('month-$_selectedMonth'),
                     value: _months[_selectedMonth - 1],
-                    decoration: InputDecoration(labelText: "Bulan", contentPadding: const EdgeInsets.symmetric(horizontal: 15), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                    items: _months.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 14)))).toList(),
-                    onChanged: (val) => setState(() => _selectedMonth = _months.indexOf(val!) + 1),
+                    decoration: InputDecoration(
+                      labelText: "Bulan",
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items:
+                        _months
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e,
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                    onChanged:
+                        (val) => setState(
+                          () => _selectedMonth = _months.indexOf(val!) + 1,
+                        ),
                   ),
                 ),
                 const SizedBox(width: 15),
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _selectedYear,
-                    decoration: InputDecoration(labelText: "Tahun", contentPadding: const EdgeInsets.symmetric(horizontal: 15), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                    items: _years.map((e) => DropdownMenuItem(value: e, child: Text(e.toString(), style: const TextStyle(fontSize: 14)))).toList(),
+                    decoration: InputDecoration(
+                      labelText: "Tahun",
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 15,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items:
+                        _years
+                            .map(
+                              (e) => DropdownMenuItem(
+                                value: e,
+                                child: Text(
+                                  e.toString(),
+                                  style: const TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            )
+                            .toList(),
                     onChanged: (val) => setState(() => _selectedYear = val!),
                   ),
                 ),
@@ -1108,19 +2039,41 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
 
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: _db.collection("perpuluhan_daerah").where("daerah", isEqualTo: widget.namaDaerah).snapshots(),
+              stream: _stream,
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                if (snapshot.hasError) return const Center(child: Text("Gagal memuat perpuluhan daerah."));
-                var docs = snapshot.data?.docs.toList() ?? [];
-                
+                if (snapshot.connectionState == ConnectionState.waiting)
+                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.hasError)
+                  return const Center(
+                    child: Text("Gagal memuat perpuluhan daerah."),
+                  );
+                final report = RegionFinanceYear(
+                  (snapshot.data?.docs ?? []).map(
+                    (doc) => doc.data() as Map<String, dynamic>,
+                  ),
+                  _selectedYear,
+                  tithe: true,
+                );
+                var docs =
+                    (snapshot.data?.docs ?? []).where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final amount = data['nominal'];
+                      return data['tanggal'] is Timestamp &&
+                          amount is num &&
+                          amount.isFinite &&
+                          amount >= 0;
+                    }).toList();
+
                 docs.sort((a, b) {
-                  Timestamp tA = (a.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
-                  Timestamp tB = (b.data() as Map<String, dynamic>)['tanggal'] ?? Timestamp.now();
+                  Timestamp tA =
+                      (a.data() as Map<String, dynamic>)['tanggal'] ??
+                      Timestamp.now();
+                  Timestamp tB =
+                      (b.data() as Map<String, dynamic>)['tanggal'] ??
+                      Timestamp.now();
                   return tB.compareTo(tA);
                 });
-                
-                int thnTotal = 0;
+
                 _blnTotal = 0;
                 _filteredDocs = [];
 
@@ -1135,7 +2088,6 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                   final nom = rawNom.toInt();
 
                   if (dt.year == _selectedYear) {
-                    thnTotal += nom;
                     if (dt.month == _selectedMonth) {
                       _blnTotal += nom;
                       _filteredDocs.add(doc);
@@ -1144,48 +2096,60 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                 }
 
                 return ListView(
-                  padding: const EdgeInsets.all(20),
+                  key: const ValueKey('regional-tithe-report'),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 100),
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(colors: [Colors.orange.shade900, Colors.deepOrange.shade600], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 5))],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text("TOTAL PERPULUHAN TAHUN $_selectedYear", style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 5),
-                          Text(_currencyFormat.format(thnTotal), style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 15),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text("Bulan ${_months[_selectedMonth - 1]}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                Text(_currencyFormat.format(_blnTotal), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                              ]),
-                            ],
-                          )
-                        ],
-                      ),
+                    RegionFinanceReport(
+                      report: report,
+                      month: _selectedMonth,
+                      onMonthChanged:
+                          (month) => setState(() => _selectedMonth = month),
                     ),
-                    const SizedBox(height: 25),
-
+                    _buildDonorRecap(),
+                    const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("Setoran ${_months[_selectedMonth - 1]} $_selectedYear", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.indigo)),
+                        Text(
+                          "Setoran ${_months[_selectedMonth - 1]} $_selectedYear",
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.indigo,
+                          ),
+                        ),
                         InkWell(
                           onTap: _showExportOptions,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange.shade200)),
-                            child: const Row(children: [Icon(Icons.download, size: 16, color: Colors.orange), SizedBox(width: 4), Text("Ekspor", style: TextStyle(color: Colors.orange, fontSize: 12, fontWeight: FontWeight.bold))]),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.download,
+                                  size: 16,
+                                  color: Colors.orange,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  "Ekspor",
+                                  style: TextStyle(
+                                    color: Colors.orange,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        )
+                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -1193,25 +2157,58 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                     if (_filteredDocs.isEmpty)
                       Padding(
                         padding: const EdgeInsets.all(30.0),
-                        child: Center(child: Text("Belum ada perpuluhan di bulan ini.", style: TextStyle(color: Colors.grey.shade500))),
+                        child: Center(
+                          child: Text(
+                            "Belum ada perpuluhan di bulan ini.",
+                            style: TextStyle(color: Colors.grey.shade500),
+                          ),
+                        ),
                       )
                     else
                       ..._filteredDocs.map((doc) {
                         var data = doc.data() as Map<String, dynamic>;
                         Timestamp ts = data['tanggal'];
-                        
+
                         return Card(
-                          elevation: 0, margin: const EdgeInsets.only(bottom: 10),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.grey.shade200)),
+                          elevation: 0,
+                          margin: const EdgeInsets.only(bottom: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(color: Colors.grey.shade200),
+                          ),
                           child: ListTile(
                             leading: CircleAvatar(
                               backgroundColor: Colors.orange.shade50,
-                              child: Icon(data['tipe'] == "Gereja Lokal" ? Icons.church : Icons.person, color: Colors.orange),
+                              child: Icon(
+                                data['tipe'] == "Gereja Lokal"
+                                    ? Icons.church
+                                    : Icons.person,
+                                color: Colors.orange,
+                              ),
                             ),
-                            title: Text((data['nama'] ?? "Tanpa Nama").toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Text("${data['tipe']} • ${DateFormat('dd MMM yyyy').format(ts.toDate())}", style: const TextStyle(fontSize: 11)),
-                            trailing: Text(_currencyFormat.format(data['nominal']), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo, fontSize: 14)),
-                            onLongPress: _canEdit ? () => _showOptionsBottomSheet(doc.id, data) : null,
+                            title: Text(
+                              (data['nama'] ?? "Tanpa Nama").toString(),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            subtitle: Text(
+                              "${data['tipe']} • ${DateFormat('dd MMM yyyy').format(ts.toDate())}",
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            trailing: Text(
+                              _currencyFormat.format(data['nominal']),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.indigo,
+                                fontSize: 14,
+                              ),
+                            ),
+                            onLongPress:
+                                _canEdit
+                                    ? () =>
+                                        _showOptionsBottomSheet(doc.id, data)
+                                    : null,
                           ),
                         );
                       }),
@@ -1223,13 +2220,16 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
         ],
       ),
       // 👇 DAN INILAH TEMPAT TOMBOL MELAYANG ITU SEHARUSNYA BERADA 👇
-      floatingActionButton: _canEdit ? FloatingActionButton.extended(
-        onPressed: _showAddPerpuluhanDialog,
-        backgroundColor: Colors.orange,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text("Input Perpuluhan"),
-      ) : null,
+      floatingActionButton:
+          _canEdit
+              ? FloatingActionButton.extended(
+                onPressed: _showAddPerpuluhanDialog,
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                icon: const Icon(Icons.add),
+                label: const Text("Input Perpuluhan"),
+              )
+              : null,
     );
   }
 }

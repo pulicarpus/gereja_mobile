@@ -5,16 +5,21 @@ import 'region_names.dart';
 class RegionLabel extends StatelessWidget {
   final String area, prefix;
   final TextStyle? style;
+  final FirebaseFirestore? firestore;
   const RegionLabel({
     super.key,
     required this.area,
     this.prefix = '',
     this.style,
+    this.firestore,
   });
   @override
   Widget build(BuildContext context) =>
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: FirebaseFirestore.instance.collection('churches').snapshots(),
+        stream:
+            (firestore ?? FirebaseFirestore.instance)
+                .collection('churches')
+                .snapshots(),
         builder: (context, snapshot) {
           var label = cleanRegionName(area);
           for (final group in groupChurchRegions(

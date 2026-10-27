@@ -1,3 +1,4 @@
+import 'tithe_source_picker.dart';
 import 'church_pastors.dart';
 import 'region_finance_report.dart';
 import 'region_label.dart';
@@ -1638,19 +1639,18 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                             ),
                           )
                         else
-                          DropdownButtonFormField<String>(
+                          TextField(
                             key: ValueKey('source-$tipeSumber'),
-                            isExpanded: true,
-                            value:
-                                nameController.text.isEmpty
-                                    ? null
-                                    : nameController.text,
+                            controller: nameController,
+                            readOnly: true,
+                            enabled: !saving,
                             decoration: InputDecoration(
                               labelText:
                                   tipeSumber == 'Gereja Lokal'
                                       ? 'Pilih gereja lokal'
                                       : 'Pilih pengerja',
                               border: const OutlineInputBorder(),
+                              suffixIcon: const Icon(Icons.search),
                               helperMaxLines: 3,
                               helperText:
                                   _sourcesError ??
@@ -1661,33 +1661,38 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                                       ? 'Belum ada data terdaftar di daerah ini.'
                                       : 'Daftar terdaftar di daerah ${widget.namaDaerah}'),
                             ),
-                            items:
-                                {
-                                      ...(tipeSumber == 'Gereja Lokal'
-                                          ? _listGereja
-                                          : _listPengerja),
-                                      // Keep old receipts editable after a church/pastor is renamed or moved.
-                                      if (isEdit &&
-                                          tipeSumber == initialTipe &&
-                                          (initialNama ?? '').isNotEmpty)
-                                        initialNama!,
-                                    }
-                                    .map(
-                                      (name) => DropdownMenuItem(
-                                        value: name,
-                                        child: Text(
-                                          name,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged:
-                                saving
-                                    ? null
-                                    : (name) =>
-                                        nameController.text = name ?? '',
+                            onTap: () async {
+                              final sourceType = tipeSumber;
+                              final options =
+                                  <String>{
+                                    ...(sourceType == 'Gereja Lokal'
+                                        ? _listGereja
+                                        : _listPengerja),
+                                    if (isEdit &&
+                                        sourceType ==
+                                            (initialTipe ?? 'Gereja Lokal') &&
+                                        (initialNama ?? '').isNotEmpty)
+                                      initialNama!,
+                                  }.toList();
+                              final name = await showDialog<String>(
+                                context: dialogContext,
+                                builder:
+                                    (_) => TitheSourcePicker(
+                                      title:
+                                          sourceType == 'Gereja Lokal'
+                                              ? 'Pilih gereja lokal'
+                                              : 'Pilih pengerja',
+                                      options: options,
+                                      selected: nameController.text,
+                                    ),
+                              );
+                              if (!mounted ||
+                                  !dialogContext.mounted ||
+                                  name == null ||
+                                  tipeSumber != sourceType)
+                                return;
+                              setStateDialog(() => nameController.text = name);
+                            },
                           ),
                         const SizedBox(height: 15),
 

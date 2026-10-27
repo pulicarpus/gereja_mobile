@@ -184,6 +184,12 @@ void main() {
       expect(find.text('GKII Lama'), findsWidgets);
       expect(find.text('GKII Luar'), findsNothing);
       expect(find.text('GKII Arsip'), findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey('tithe-source-search')),
+        'aktif',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('GKII Lama'), findsNothing);
       await tester.tap(find.text('GKII Aktif').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Gereja Lokal').last);
@@ -204,6 +210,22 @@ void main() {
       ]) {
         expect(find.text(name), findsNothing);
       }
+      await tester.enterText(
+        find.byKey(const ValueKey('tithe-source-search')),
+        'tidak-ada',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Nama tidak ditemukan.'), findsOneWidget);
+      await tester.tap(find.byTooltip('Hapus pencarian'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pdt Pertama'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey('tithe-source-search')),
+        '  kEdUa  ',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Pdt Pertama'), findsNothing);
+      expect(find.text('Pdt Kedua'), findsOneWidget);
       await tester.tap(find.text('Pdt Kedua').last);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Pengerja (Hamba Tuhan)').last);

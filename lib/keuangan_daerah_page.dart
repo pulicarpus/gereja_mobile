@@ -937,12 +937,14 @@ class _KasDaerahTabState extends State<_KasDaerahTab> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          "Riwayat ${_months[_selectedMonth - 1]} $_selectedYear",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.indigo,
+                        Expanded(
+                          child: Text(
+                            "Riwayat ${_months[_selectedMonth - 1]} $_selectedYear",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.indigo,
+                            ),
                           ),
                         ),
                         InkWell(
@@ -2105,17 +2107,17 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                       onMonthChanged:
                           (month) => setState(() => _selectedMonth = month),
                     ),
-                    _buildDonorRecap(),
-                    const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          "Setoran ${_months[_selectedMonth - 1]} $_selectedYear",
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.indigo,
+                        Expanded(
+                          child: Text(
+                            "Setoran ${_months[_selectedMonth - 1]} $_selectedYear",
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Colors.indigo,
+                            ),
                           ),
                         ),
                         InkWell(
@@ -2154,64 +2156,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                     ),
                     const SizedBox(height: 10),
 
-                    if (_filteredDocs.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(30.0),
-                        child: Center(
-                          child: Text(
-                            "Belum ada perpuluhan di bulan ini.",
-                            style: TextStyle(color: Colors.grey.shade500),
-                          ),
-                        ),
-                      )
-                    else
-                      ..._filteredDocs.map((doc) {
-                        var data = doc.data() as Map<String, dynamic>;
-                        Timestamp ts = data['tanggal'];
-
-                        return Card(
-                          elevation: 0,
-                          margin: const EdgeInsets.only(bottom: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(15),
-                            side: BorderSide(color: Colors.grey.shade200),
-                          ),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.orange.shade50,
-                              child: Icon(
-                                data['tipe'] == "Gereja Lokal"
-                                    ? Icons.church
-                                    : Icons.person,
-                                color: Colors.orange,
-                              ),
-                            ),
-                            title: Text(
-                              (data['nama'] ?? "Tanpa Nama").toString(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Text(
-                              "${data['tipe']} • ${DateFormat('dd MMM yyyy').format(ts.toDate())}",
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            trailing: Text(
-                              _currencyFormat.format(data['nominal']),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.indigo,
-                                fontSize: 14,
-                              ),
-                            ),
-                            onLongPress:
-                                _canEdit
-                                    ? () =>
-                                        _showOptionsBottomSheet(doc.id, data)
-                                    : null,
-                          ),
-                        );
-                      }),
+                    _buildDonorRecap(),
                   ],
                 );
               },

@@ -130,4 +130,100 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'Tithe input offers all registered local churches and multiple pastors without typing',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final user = UserManager();
+      await user.setUser(
+        role: 'superadmin',
+        churchId: 'a',
+        churchName: 'A',
+        uId: 'admin',
+        uNama: 'Admin',
+      );
+      final db = FakeFirebaseFirestore();
+      await db.doc('churches/a').set({
+        'daerah': ' BELITANG ',
+        'namaGereja': 'GKII Aktif',
+        'namaGembala': 'Nama Lama Jangan Dipakai',
+        'gembalaProfiles': [
+          {'id': 'p1', 'name': 'Pdt Pertama'},
+          {'id': 'p2', 'name': 'Pdt Kedua'},
+        ],
+      });
+      await db.doc('churches/b').set({
+        'daerah': 'Belitang',
+        'namaGereja': 'GKII Lama',
+        'namaGembala': 'Pdt Legacy',
+      });
+      await db.doc('churches/archived').set({
+        'daerah': 'Belitang',
+        'namaGereja': 'GKII Arsip',
+        'namaGembala': 'Pdt Arsip',
+        'isArchived': true,
+      });
+      await db.doc('churches/other').set({
+        'daerah': 'Ketungau',
+        'namaGereja': 'GKII Luar',
+        'namaGembala': 'Pdt Luar',
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: KeuanganDaerahPage(namaDaerah: 'Belitang', firestore: db),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('PERPULUHAN'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Input Perpuluhan'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('source-Gereja Lokal')));
+      await tester.pumpAndSettle();
+      expect(find.text('GKII Aktif'), findsWidgets);
+      expect(find.text('GKII Lama'), findsWidgets);
+      expect(find.text('GKII Luar'), findsNothing);
+      expect(find.text('GKII Arsip'), findsNothing);
+      await tester.tap(find.text('GKII Aktif').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Gereja Lokal').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pengerja (Hamba Tuhan)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('source-Pengerja (Hamba Tuhan)')),
+      );
+      await tester.pumpAndSettle();
+      for (final name in ['Pdt Pertama', 'Pdt Kedua', 'Pdt Legacy']) {
+        expect(find.text(name), findsWidgets);
+      }
+      for (final name in [
+        'Pdt Luar',
+        'Pdt Arsip',
+        'Nama Lama Jangan Dipakai',
+      ]) {
+        expect(find.text(name), findsNothing);
+      }
+      await tester.tap(find.text('Pdt Kedua').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pengerja (Hamba Tuhan)').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Donatur Lain').last);
+      await tester.pumpAndSettle();
+      final donor = find.byWidgetPredicate(
+        (widget) =>
+            widget is TextField &&
+            widget.decoration?.labelText == 'Nama donatur',
+      );
+      expect(tester.widget<TextField>(donor).controller!.text, isEmpty);
+      await tester.tap(find.text('Batal'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect((await db.collection('perpuluhan_daerah').get()).docs, isEmpty);
+      expect((await db.collection('keuangan_daerah').get()).docs, isEmpty);
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await user.reset();
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

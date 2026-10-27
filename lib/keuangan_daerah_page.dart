@@ -1,3 +1,4 @@
+import 'church_pastors.dart';
 import 'region_finance_report.dart';
 import 'region_label.dart';
 import 'region_names.dart';
@@ -1249,6 +1250,8 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     "Desember",
   ];
 
+  bool _loadingSources = false;
+  String? _sourcesError;
   List<String> _listGereja = [];
   List<String> _listPengerja = [];
 
@@ -1260,12 +1263,14 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
             .collection('perpuluhan_daerah')
             .where('daerah', isEqualTo: widget.namaDaerah)
             .snapshots();
-    _fetchSuggestions();
   }
 
   Future<void> _fetchSuggestions() async {
     try {
-      var snap = await _db.collection("churches").get();
+      var snap = await _db
+          .collection("churches")
+          .get(const GetOptions(source: Source.server))
+          .timeout(const Duration(seconds: 20));
       Set<String> setGereja = {};
       Set<String> setPengerja = {};
 
@@ -1276,22 +1281,30 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
           continue;
         String nmGereja =
             data['namaGereja'] ?? data['churchName'] ?? data['nama'] ?? "";
-        String nmGembala = data['namaGembala'] ?? "";
 
         if (nmGereja.trim().isNotEmpty) setGereja.add(nmGereja.trim());
-        if (nmGembala.trim().isNotEmpty &&
-            nmGembala != "Belum ada data Gembala")
-          setPengerja.add(nmGembala.trim());
+        for (final pastor in churchPastors(data)) {
+          if (pastor.name.toLowerCase() != 'belum ada data gembala') {
+            setPengerja.add(pastor.name);
+          }
+        }
       }
 
       if (mounted) {
         setState(() {
+          _sourcesError = null;
           _listGereja = setGereja.toList()..sort();
           _listPengerja = setPengerja.toList()..sort();
         });
       }
     } catch (e) {
-      debugPrint("Gagal load suggestions: $e");
+      if (mounted)
+        setState(() {
+          _sourcesError =
+              'Daftar gereja/pengerja belum dapat dimuat. Tutup formulir lalu coba lagi.';
+          _listGereja = [];
+          _listPengerja = [];
+        });
     }
   }
 
@@ -1479,13 +1492,18 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     );
   }
 
-  void _showPerpuluhanForm({
+  Future<void> _showPerpuluhanForm({
     String? docId,
     String? initialTipe,
     String? initialNama,
     String? initialNominal,
     DateTime? initialDate,
-  }) {
+  }) async {
+    if (!_canEdit || _loadingSources) return;
+    setState(() => _loadingSources = true);
+    await _fetchSuggestions();
+    if (!mounted) return;
+    setState(() => _loadingSources = false);
     if (!_canEdit) return;
     String formattedNominal = "";
     if (initialNominal != null && initialNominal.isNotEmpty) {
@@ -1499,12 +1517,12 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
     final etNominal = TextEditingController(text: formattedNominal);
     String tipeSumber = initialTipe ?? "Gereja Lokal";
     DateTime selectedDate = initialDate ?? DateTime.now();
-    TextEditingController? autoNameController;
+    final nameController = TextEditingController(text: initialNama ?? '');
     bool isEdit = docId != null;
 
     bool saving = false;
     final newId = _db.collection("keuangan_daerah").doc().id;
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder:
@@ -1578,6 +1596,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                         const SizedBox(height: 15),
 
                         DropdownButtonFormField<String>(
+                          isExpanded: true,
                           value: tipeSumber,
                           decoration: const InputDecoration(
                             labelText: "Sumber",
@@ -1596,100 +1615,80 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                                     ),
                                   )
                                   .toList(),
-                          onChanged: (val) {
-                            setStateDialog(() {
-                              tipeSumber = val!;
-                              autoNameController?.clear();
-                            });
-                          },
+                          onChanged:
+                              saving
+                                  ? null
+                                  : (val) {
+                                    setStateDialog(() {
+                                      tipeSumber = val!;
+                                      nameController.clear();
+                                    });
+                                  },
                         ),
                         const SizedBox(height: 15),
 
-                        Autocomplete<String>(
-                          initialValue: TextEditingValue(
-                            text: initialNama ?? "",
-                          ),
-                          optionsBuilder: (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty ||
-                                tipeSumber == "Donatur Lain")
-                              return const Iterable<String>.empty();
-                            List<String> sourceList = [];
-                            if (tipeSumber == "Gereja Lokal")
-                              sourceList = _listGereja;
-                            if (tipeSumber == "Pengerja (Hamba Tuhan)")
-                              sourceList = _listPengerja;
-                            return sourceList.where(
-                              (String option) => option.toLowerCase().contains(
-                                textEditingValue.text.toLowerCase(),
-                              ),
-                            );
-                          },
-                          onSelected:
-                              (String selection) =>
-                                  autoNameController?.text = selection,
-                          fieldViewBuilder: (
-                            context,
-                            controller,
-                            focusNode,
-                            onFieldSubmitted,
-                          ) {
-                            autoNameController = controller;
-                            return TextField(
-                              controller: controller,
-                              focusNode: focusNode,
-                              textCapitalization: TextCapitalization.words,
-                              decoration: const InputDecoration(
-                                labelText: "Nama Pengerja / Gereja",
-                                hintText: "Ketik nama...",
-                                border: OutlineInputBorder(),
-                                suffixIcon: Icon(
-                                  Icons.search,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                          },
-                          optionsViewBuilder: (context, onSelected, options) {
-                            return Align(
-                              alignment: Alignment.topLeft,
-                              child: Material(
-                                elevation: 8.0,
-                                borderRadius: BorderRadius.circular(10),
-                                child: Container(
-                                  width: 250,
-                                  constraints: const BoxConstraints(
-                                    maxHeight: 200,
-                                  ),
-                                  child: ListView.separated(
-                                    padding: EdgeInsets.zero,
-                                    shrinkWrap: true,
-                                    itemCount: options.length,
-                                    separatorBuilder:
-                                        (context, index) =>
-                                            const Divider(height: 1),
-                                    itemBuilder: (context, index) {
-                                      final String option = options.elementAt(
-                                        index,
-                                      );
-                                      return ListTile(
-                                        dense: true,
-                                        title: Text(
-                                          option,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 13,
-                                            color: Colors.indigo,
-                                          ),
+                        if (tipeSumber == 'Donatur Lain')
+                          TextField(
+                            controller: nameController,
+                            enabled: !saving,
+                            textCapitalization: TextCapitalization.words,
+                            decoration: const InputDecoration(
+                              labelText: 'Nama donatur',
+                              border: OutlineInputBorder(),
+                            ),
+                          )
+                        else
+                          DropdownButtonFormField<String>(
+                            key: ValueKey('source-$tipeSumber'),
+                            isExpanded: true,
+                            value:
+                                nameController.text.isEmpty
+                                    ? null
+                                    : nameController.text,
+                            decoration: InputDecoration(
+                              labelText:
+                                  tipeSumber == 'Gereja Lokal'
+                                      ? 'Pilih gereja lokal'
+                                      : 'Pilih pengerja',
+                              border: const OutlineInputBorder(),
+                              helperMaxLines: 3,
+                              helperText:
+                                  _sourcesError ??
+                                  ((tipeSumber == 'Gereja Lokal'
+                                              ? _listGereja
+                                              : _listPengerja)
+                                          .isEmpty
+                                      ? 'Belum ada data terdaftar di daerah ini.'
+                                      : 'Daftar terdaftar di daerah ${widget.namaDaerah}'),
+                            ),
+                            items:
+                                {
+                                      ...(tipeSumber == 'Gereja Lokal'
+                                          ? _listGereja
+                                          : _listPengerja),
+                                      // Keep old receipts editable after a church/pastor is renamed or moved.
+                                      if (isEdit &&
+                                          tipeSumber == initialTipe &&
+                                          (initialNama ?? '').isNotEmpty)
+                                        initialNama!,
+                                    }
+                                    .map(
+                                      (name) => DropdownMenuItem(
+                                        value: name,
+                                        child: Text(
+                                          name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        onTap: () => onSelected(option),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                            onChanged:
+                                saving
+                                    ? null
+                                    : (name) =>
+                                        nameController.text = name ?? '',
+                          ),
                         const SizedBox(height: 15),
 
                         TextField(
@@ -1720,8 +1719,7 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                         foregroundColor: Colors.white,
                       ),
                       onPressed: () async {
-                        String inputNama =
-                            autoNameController?.text.trim() ?? "";
+                        String inputNama = nameController.text.trim();
                         if (inputNama.isEmpty ||
                             etNominal.text.trim().isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -1859,6 +1857,9 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
                 ),
           ),
     );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    etNominal.dispose();
+    nameController.dispose();
   }
 
   void _showOptionsBottomSheet(String docId, Map<String, dynamic> data) {
@@ -2168,11 +2169,13 @@ class _PerpuluhanTabState extends State<_PerpuluhanTab> {
       floatingActionButton:
           _canEdit
               ? FloatingActionButton.extended(
-                onPressed: _showAddPerpuluhanDialog,
+                onPressed: _loadingSources ? null : _showAddPerpuluhanDialog,
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.white,
                 icon: const Icon(Icons.add),
-                label: const Text("Input Perpuluhan"),
+                label: Text(
+                  _loadingSources ? 'Memuat daftar...' : 'Input Perpuluhan',
+                ),
               )
               : null,
     );

@@ -1,3 +1,4 @@
+import 'kategorial_identity.dart';
 import 'mobile_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -29,49 +30,17 @@ class _KategorialPageState extends State<KategorialPage> {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
-    _refreshingIdentity = true;
+    setState(() => _refreshingIdentity = true);
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection("users")
-          .doc(currentUser.uid)
-          .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 20));
-      if (!doc.exists) return;
-
-      final data = doc.data() ?? <String, dynamic>{};
-      final rawKelompok = data['kelompok']?.toString().trim() ?? "";
-      var kelompok = rawKelompok.isEmpty ? "Umum" : rawKelompok;
-      var isPengurus = data['isPengurus'] == true && data['isBlocked'] != true;
-
-      final jemaatId = data['jemaatId']?.toString().trim() ?? "";
-      final registeredChurchId = data['churchId']?.toString().trim() ?? "";
-
-      if (jemaatId.isNotEmpty && registeredChurchId.isNotEmpty) {
-        try {
-          final jemaatDoc = await FirebaseFirestore.instance
-              .collection("churches")
-              .doc(registeredChurchId)
-              .collection("jemaat")
-              .doc(jemaatId)
-              .get(const GetOptions(source: Source.server))
-              .timeout(const Duration(seconds: 20));
-          if (jemaatDoc.exists &&
-              jemaatDoc.data()?['uid']?.toString() == currentUser.uid) {
-            final jemaatKelompok = KategorialConfig.canonicalJemaat(
-              jemaatDoc.data()?['kelompok'],
-            );
-            if (!KategorialConfig.same(kelompok, jemaatKelompok)) {
-              kelompok = jemaatKelompok;
-              isPengurus = false;
-            }
-          } else {
-            isPengurus = false;
-          }
-        } catch (e) {
-          isPengurus = false;
-          debugPrint("Gagal sinkron kelompok buku induk: $e");
-        }
-      }
+      final data = await readKategorialIdentity(
+        FirebaseFirestore.instance,
+        currentUser.uid,
+      );
+      if (data == null) return;
+      final rawKelompok = data['kelompok']?.toString().trim() ?? '';
+      final kelompok = rawKelompok.isEmpty ? 'Umum' : rawKelompok;
+      final isPengurus =
+          data['isPengurus'] == true && data['isBlocked'] != true;
 
       if (!mounted ||
           FirebaseAuth.instance.currentUser?.uid != currentUser.uid ||
@@ -85,7 +54,7 @@ class _KategorialPageState extends State<KategorialPage> {
     } catch (e) {
       debugPrint("Gagal refresh identitas kategorial: $e");
     } finally {
-      _refreshingIdentity = false;
+      if (mounted) setState(() => _refreshingIdentity = false);
     }
   }
 
@@ -134,51 +103,62 @@ class _KategorialPageState extends State<KategorialPage> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshKategorialIdentity,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
-          children: [
-            Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body:
+          _refreshingIdentity
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                onRefresh: _refreshKategorialIdentity,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 28,
+                  ),
                   children: [
-                    Text(
-                      "Bersama dalam pelayanan",
-                      style: Theme.of(context).textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Pilih kategorial untuk melihat anggota dan kegiatan pelayanan.",
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        height: 1.5,
+                    Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 720),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Bersama dalam pelayanan",
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              "Pilih kategorial untuk melihat anggota dan kegiatan pelayanan.",
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodyMedium?.copyWith(
+                                color:
+                                    Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                height: 1.5,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            KategorialMenuSection(
+                              children: [
+                                for (final name in categories)
+                                  _buildMenuRow(
+                                    context,
+                                    name,
+                                    _visual(name).icon,
+                                    _visual(name).color,
+                                    isMine: own == name,
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
-                    KategorialMenuSection(
-                      children: [
-                        for (final name in categories)
-                          _buildMenuRow(
-                            context,
-                            name,
-                            _visual(name).icon,
-                            _visual(name).color,
-                            isMine: own == name,
-                          ),
-                      ],
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 

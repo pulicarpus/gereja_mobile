@@ -1,3 +1,4 @@
+import 'kategorial_identity.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -687,9 +688,8 @@ class _ChatroomPageState extends State<ChatroomPage> {
     }
     setState(() => _loadingLegacy = true);
     try {
-      final actor = await _db.collection('users').doc(uid)
-          .get(const GetOptions(source: Source.server)).timeout(const Duration(seconds: 20));
-      if (!actor.exists || !permitsRoomAccess(actor.data()!, church, widget.filterKategorial)) {
+      final actor = await readKategorialIdentity(_db, uid);
+      if (actor == null || !permitsRoomAccess(actor, church, widget.filterKategorial)) {
         throw StateError('Izin chat berubah.');
       }
       Query query = _db.collection('churches').doc(church).collection(_collectionPath).limit(200);
@@ -784,10 +784,10 @@ class _ChatroomPageState extends State<ChatroomPage> {
         }
 
         await _db.runTransaction((tx) async {
-          final actor = await tx.get(_db.collection('users').doc(currentUser.uid));
+          final actor = await readKategorialIdentity(_db, currentUser.uid, transaction: tx);
           final fresh = await tx.get(ref);
           if (!mounted || _auth.currentUser?.uid != currentUser.uid || _churchId != churchId ||
-              !actor.exists || !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+              actor == null || !permitsRoomAccess(actor, churchId, widget.filterKategorial)) {
             throw StateError('Sesi atau izin chat berubah.');
           }
           final owner = (fresh.data()?['pengirimId'] ?? fresh.data()?['senderId'])?.toString();
@@ -812,12 +812,12 @@ class _ChatroomPageState extends State<ChatroomPage> {
       final messages = _db.collection('churches').doc(churchId).collection(_collectionPath);
       final ref = messages.doc(_pendingSendId ??= messages.doc().id);
       await _db.runTransaction((tx) async {
-        final actor = await tx.get(_db.collection('users').doc(currentUser.uid));
+        final actor = await readKategorialIdentity(_db, currentUser.uid, transaction: tx);
         final muted = await tx.get(_db.collection('churches').doc(churchId)
             .collection('muted_$_collectionPath').doc(currentUser.uid));
         final existing = await tx.get(ref);
         if (!mounted || _auth.currentUser?.uid != currentUser.uid || _churchId != churchId ||
-            !actor.exists || !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+            actor == null || !permitsRoomAccess(actor, churchId, widget.filterKategorial)) {
           throw StateError('Sesi atau izin chat berubah.');
         }
         if (muted.exists) throw StateError('Anda sedang dibungkam di ruang ini.');
@@ -1003,16 +1003,16 @@ class _ChatroomPageState extends State<ChatroomPage> {
           .collection(_collectionPath)
           .doc(docId);
       await _db.runTransaction((tx) async {
-        final actor = await tx.get(_db.collection('users').doc(currentUid));
+        final actor = await readKategorialIdentity(_db, currentUid, transaction: tx);
         final latest = await tx.get(ref);
-        if (_auth.currentUser?.uid != currentUid || _churchId != churchId || !actor.exists ||
-            !permitsRoomAccess(actor.data()!, churchId, widget.filterKategorial)) {
+        if (_auth.currentUser?.uid != currentUid || _churchId != churchId || actor == null ||
+            !permitsRoomAccess(actor, churchId, widget.filterKategorial)) {
           throw StateError('Sesi atau izin chat berubah.');
         }
         if (!latest.exists) return;
         final data = latest.data()!;
         final owner = (data['pengirimId'] ?? data['senderId'])?.toString();
-        if (owner != currentUid && !permitsChurchWrite(actor.data()!, churchId, category: widget.filterKategorial)) {
+        if (owner != currentUid && !permitsChurchWrite(actor, churchId, category: widget.filterKategorial)) {
           throw StateError('Izin menghapus pesan sudah berubah.');
         }
         tx.delete(ref);

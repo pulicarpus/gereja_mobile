@@ -33,6 +33,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pin Flutter to a release compatible with Gradle 8.14 / AGP 8.9.1.
+          # Do not float to the newest stable (3.50+ requires Gradle 9.x).
+          flutter-version: '3.35.7'
           channel: 'stable'
           cache: true 
 

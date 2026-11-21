@@ -3,7 +3,7 @@ name: Flutter Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [perbaikan-fitur-daerah, fix/profil-sederhana, fix/windows-n4500, feat/notes-richtext-foundation]
+    branches: [perbaikan-fitur-daerah, fix/profil-sederhana, fix/windows-n4500, feat/notes-richtext-foundation, feat/mualang-pb-from-notes-richtext]
     paths:
       - 'lib/**'
       - 'test/**'
@@ -39,6 +39,9 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Flutter 3.47.8 is the version used by the last successful APK build
+          # from feat/notes-richtext-foundation (run 40917671806).
+          flutter-version: '3.47.8'
           channel: 'stable'
           cache: true 
 

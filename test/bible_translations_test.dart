@@ -11,9 +11,10 @@ void main() {
     expect(BibleReference.parse('Yoel 2:1-3', tb)!.bookId, 360);
     expect(BibleReference.parse('Yoël 2:1-3', tl)!.verses, [1, 2, 3]);
   });
-  test('Only packaged translations can be restored from preferences', () {
+  test('Only recognized translations can be restored from preferences', () {
     expect(BibleTranslation.fromFile('TJL.SQLite3'), BibleTranslation.tl);
     expect(BibleTranslation.fromFile('TB.SQLite3'), BibleTranslation.tb);
+    expect(BibleTranslation.fromFile('MUALANG.SQLite3'), BibleTranslation.mualang);
     expect(BibleTranslation.fromFile('../other.sqlite'), BibleTranslation.tb);
     expect(BibleTranslation.fromFile(null), BibleTranslation.tb);
   });

@@ -1,4 +1,5 @@
 import 'bible_translation.dart';
+import 'mualang_db_importer.dart';
 import 'bible_number_grid.dart';
 import 'dart:io';
 import 'dart:async';
@@ -76,6 +77,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
   String _positionKey(String name) =>
       'BIBLE_POSITION_${_store.uid ?? "guest"}_$name';
 
+  // Preserve existing TB/TL highlights; isolate Mualang from those translations.
+  String _highlightKey(int verse) => _translation == BibleTranslation.mualang
+      ? 'MUL_${_currentBookNum}_${_currentChapter}_$verse'
+      : '${_currentBookNum}_${_currentChapter}_$verse';
+
   @override
   void initState() {
     super.initState();
@@ -137,9 +143,13 @@ class _AlkitabPageState extends State<AlkitabPage> {
       _prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       _store = BibleLocalStore(_prefs, FirebaseAuth.instance.currentUser?.uid);
-      _currentVersion = BibleTranslation.fromFile(
+      final restored = BibleTranslation.fromFile(
         _prefs.getString(_positionKey('translation')),
-      ).databaseFile;
+      );
+      _currentVersion = restored == BibleTranslation.mualang &&
+              !await MualangDbImporter.isInstalled()
+          ? BibleTranslation.tb.databaseFile
+          : restored.databaseFile;
       _currentBookNum =
           _prefs.getInt(_positionKey('book')) ??
           _prefs.getInt('LAST_BOOK_NUM') ??
@@ -154,7 +164,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
           1;
       try {
         final saved = jsonDecode(
-          _prefs.getString(_positionKey('position')) ?? 'null',
+          _prefs.getString(_positionKey('position:$_currentVersion')) ??
+              _prefs.getString(_positionKey('position')) ??
+              'null',
         );
         if (saved is Map &&
             saved['book'] is int &&
@@ -182,14 +194,14 @@ class _AlkitabPageState extends State<AlkitabPage> {
 
   Future<void> _saveLastPosition(int verse) async {
     _currentVerse = verse;
+    final position = jsonEncode({
+      'book': _currentBookNum,
+      'chapter': _currentChapter,
+      'verse': verse,
+    });
+    await _prefs.setString(_positionKey('position'), position);
     await _prefs.setString(
-      _positionKey('position'),
-      jsonEncode({
-        'book': _currentBookNum,
-        'chapter': _currentChapter,
-        'verse': verse,
-      }),
-    );
+      _positionKey('position:$_currentVersion'), position);
   }
 
   Future<void> _saveHighlightsToPrefs() async {
@@ -210,7 +222,21 @@ class _AlkitabPageState extends State<AlkitabPage> {
         _isAudioLoading)
       return;
     final version = BibleTranslation.fromFile(file);
+    if (version == BibleTranslation.mualang &&
+        !await MualangDbImporter.isInstalled()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Impor file MUALANG.SQLite3 melalui menu Alkitab dahulu.'),
+        ));
+      }
+      return;
+    }
     final previous = _currentVersion;
+    final previousBook = _currentBookNum;
+    final previousChapter = _currentChapter;
+    final previousVerse = _currentVerse;
+    final savedTarget = _prefs.getString(
+      _positionKey('position:${version.databaseFile}'));
     _contentRequest++;
     _highlightTimer?.cancel();
     setState(() => _isLoading = true);
@@ -224,10 +250,32 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
       if (!mounted) return;
       _currentVersion = version.databaseFile;
+      if (savedTarget != null) {
+        try {
+          final decoded = jsonDecode(savedTarget);
+          if (decoded is Map &&
+              decoded['book'] is int &&
+              decoded['chapter'] is int &&
+              decoded['verse'] is int) {
+            _currentBookNum = decoded['book'];
+            _currentChapter = decoded['chapter'];
+            _currentVerse = decoded['verse'];
+          }
+        } catch (_) {
+          // Invalid saved position falls back to the current book.
+        }
+      } else if (version == BibleTranslation.mualang) {
+        _currentBookNum = 470; // Matios
+        _currentChapter = 1;
+        _currentVerse = 1;
+      }
       await _loadDatabase();
       if (!mounted) return;
       if (_loadError != null) {
         _currentVersion = previous;
+        _currentBookNum = previousBook;
+        _currentChapter = previousChapter;
+        _currentVerse = previousVerse;
         await _loadDatabase();
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
@@ -247,6 +295,30 @@ class _AlkitabPageState extends State<AlkitabPage> {
             content: Text('Pilihan terjemahan belum tersimpan. Coba lagi.'),
           ),
         );
+    }
+  }
+
+  Future<void> _importMualang() async {
+    if (_isLoading || _isAudioLoading) return;
+    try {
+      if (!await MualangDbImporter.isInstalled()) {
+        final imported = await MualangDbImporter.importFromPicker();
+        if (!imported || !mounted) return; // User cancelled the picker.
+      }
+      if (!mounted) return;
+      await _changeTranslation(BibleTranslation.mualang.databaseFile);
+      if (mounted && _translation == BibleTranslation.mualang &&
+          _loadError == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Perjanjian Baru Mualang tersedia offline.'),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Impor Mualang gagal: $e'),
+        ));
+      }
     }
   }
 
@@ -301,10 +373,15 @@ class _AlkitabPageState extends State<AlkitabPage> {
       final dbPath = await getDatabasesPath();
       await Directory(dbPath).create(recursive: true);
       final path = p.join(dbPath, _currentVersion);
-      for (var attempt = 0; attempt < 2; attempt++) {
+      for (var attempt = 0;
+          attempt < (_translation == BibleTranslation.mualang ? 1 : 2);
+          attempt++) {
         Database? opened;
         try {
           if (!await databaseExists(path)) {
+            if (_translation == BibleTranslation.mualang) {
+              throw StateError('File MUALANG.SQLite3 belum diimpor.');
+            }
             final data = await rootBundle.load('assets/$_currentVersion');
             final temp = File('$path.part');
             await temp.writeAsBytes(
@@ -346,7 +423,8 @@ class _AlkitabPageState extends State<AlkitabPage> {
           break;
         } catch (_) {
           await opened?.close();
-          if (attempt == 1) rethrow;
+          if (attempt == 1 || _translation == BibleTranslation.mualang)
+            rethrow;
           if (await File(path).exists()) await File(path).delete();
         }
       }
@@ -623,9 +701,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             onPressed: () {
               setState(() {
                 for (var v in verses) {
-                  _highlights.remove(
-                    "${_currentBookNum}_${_currentChapter}_$v",
-                  );
+                  _highlights.remove(_highlightKey(v));
                 }
               });
               _saveHighlightsToPrefs();
@@ -638,7 +714,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
             onPressed: () {
               setState(() {
                 for (var v in verses) {
-                  _highlights["${_currentBookNum}_${_currentChapter}_$v"] = {
+                  _highlights[_highlightKey(v)] = {
                     "color": colorValue,
                     "label": label.trim(),
                   };
@@ -679,7 +755,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
   }
 
   Future<void> _onMenuSelected(String v) async {
-    if (v == 'search') {
+    if (v == 'import_mualang') {
+      await _importMualang();
+    } else if (v == 'search') {
       Navigator.push(
         context,
         MaterialPageRoute(
@@ -1162,6 +1240,17 @@ class _AlkitabPageState extends State<AlkitabPage> {
             onSelected: _onMenuSelected,
             itemBuilder: (c) => [
               const PopupMenuItem(
+                value: 'import_mualang',
+                child: Row(
+                  children: [
+                    Icon(Icons.file_open, color: Colors.teal),
+                    SizedBox(width: 10),
+                    Text('Impor Alkitab Mualang'),
+                  ],
+                ),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
                 value: 'search',
                 child: Row(
                   children: [
@@ -1303,7 +1392,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
       bool isSel = _selectedVerses.contains(vNum);
       bool isHighlighted = (_highlightedVerse == vNum);
 
-      String key = "${_currentBookNum}_${_currentChapter}_$vNum";
+      String key = _highlightKey(vNum);
       Map<String, dynamic>? highlightData = _highlights[key];
       Color? stabiloColor = highlightData != null
           ? Color(highlightData['color'])
@@ -1574,11 +1663,13 @@ class _NavSheetState extends State<_NavSheet> {
         .toList();
     return ListView(
       children: [
-        const Padding(
-          padding: EdgeInsets.all(15),
-          child: Text('PERJANJIAN LAMA'),
-        ),
-        _books(pl),
+        if (pl.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.all(15),
+            child: Text('PERJANJIAN LAMA'),
+          ),
+          _books(pl),
+        ],
         const Padding(
           padding: EdgeInsets.all(15),
           child: Text('PERJANJIAN BARU'),

@@ -77,7 +77,8 @@ void main() {
     expect(r.annual!.net, -200);
     expect(r.annual!.closing, 800);
     final csv = financeCompleteCsv(r);
-    expect(csv, contains('REKAP GABUNGAN SETAHUN'));
+    expect(csv, contains('REKAP TOTAL TAHUN,2026'));
+    expect('TABEL PERPULUHAN PER PENYETOR'.allMatches(csv).length, 1);
     expect(csv, contains('Jemaat B,1,50'));
   });
 

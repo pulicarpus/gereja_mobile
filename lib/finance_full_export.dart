@@ -184,7 +184,11 @@ String financeCompleteCsv(FinanceCompleteReport r) {
     }
     rows.add(['TOTAL PENGELUARAN', '', s.expense]);
     rows.add([]);
-    _addTitheCsv(rows, s);
+    if (r.period == FinanceExportPeriod.allMonths) {
+      rows.add(['TOTAL PERPULUHAN BULAN', '', s.titheTotal]);
+    } else {
+      _addTitheCsv(rows, s);
+    }
   }
   if (r.period == FinanceExportPeriod.allMonths && r.annual != null) {
     rows.add([]);
@@ -264,11 +268,13 @@ Future<List<int>> financeCompletePdf(FinanceCompleteReport report) async {
         s.expenses.map((e) => [
           _date(e.date), e.description, _money(e.amount)]).toList()),
       pw.SizedBox(height: 9),
-      pw.Text('Tabel Perpuluhan per Penyetor',
-          style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-      _table(['Nama Jemaat', 'Jumlah Setoran', 'Total'],
-        s.titheByPerson.map((p) => [
-          p.name, p.count.toString(), _money(p.total)]).toList()),
+      if (report.period != FinanceExportPeriod.allMonths) ...[
+        pw.Text('Tabel Perpuluhan per Penyetor',
+            style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        _table(['Nama Jemaat', 'Jumlah Setoran', 'Total'],
+          s.titheByPerson.map((p) => [
+            p.name, p.count.toString(), _money(p.total)]).toList()),
+      ],
       _moneyRow('TOTAL PERPULUHAN', s.titheTotal),
     ]);
   }

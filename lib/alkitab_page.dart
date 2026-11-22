@@ -163,9 +163,11 @@ class _AlkitabPageState extends State<AlkitabPage> {
           _prefs.getInt('LAST_VERSE') ??
           1;
       try {
+        // Prefer the shared reading position when reopening the Alkitab.
+        // Per-translation positions are read only for backward compatibility.
         final saved = jsonDecode(
-          _prefs.getString(_positionKey('position:$_currentVersion')) ??
-              _prefs.getString(_positionKey('position')) ??
+          _prefs.getString(_positionKey('position')) ??
+              _prefs.getString(_positionKey('position:$_currentVersion')) ??
               'null',
         );
         if (saved is Map &&
@@ -219,24 +221,64 @@ class _AlkitabPageState extends State<AlkitabPage> {
     if (file == null ||
         file == _currentVersion ||
         _isLoading ||
-        _isAudioLoading)
-      return;
-    final version = BibleTranslation.fromFile(file);
-    if (version == BibleTranslation.mualang &&
-        !await MualangDbImporter.isInstalled()) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Impor file MUALANG.SQLite3 melalui menu Alkitab dahulu.'),
-        ));
-      }
+        _isAudioLoading) {
       return;
     }
+    final version = BibleTranslation.fromFile(file);
     final previous = _currentVersion;
     final previousBook = _currentBookNum;
     final previousChapter = _currentChapter;
     final previousVerse = _currentVerse;
-    final savedTarget = _prefs.getString(
-      _positionKey('position:${version.databaseFile}'));
+    final target = sameChapterTranslationTarget(
+        previousBook, previousChapter);
+
+    if (version == BibleTranslation.mualang) {
+      if (!await MualangDbImporter.isInstalled()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+              'Impor file MUALANG.SQLite3 melalui menu Alkitab dahulu.'),
+          ));
+        }
+        return;
+      }
+      BibleChapterAvailability availability;
+      try {
+        availability = await MualangDbImporter.chapterAvailability(
+            target.bookNumber, target.chapter);
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+              'Database Mualang tidak dapat diperiksa. Terjemahan tidak berubah.'),
+          ));
+        }
+        return;
+      }
+      if (!mounted ||
+          _isLoading ||
+          _isAudioLoading ||
+          _currentVersion != previous ||
+          _currentBookNum != previousBook ||
+          _currentChapter != previousChapter) {
+        return; // Reading position changed while checking availability.
+      }
+      if (availability != BibleChapterAvailability.available) {
+        final bookIndex = _allBooks.indexWhere(
+            (b) => b.bookNumber == previousBook);
+        final bookName = bookIndex >= 0
+            ? _allBooks[bookIndex].name
+            : 'Kitab ini';
+        final warning = availability == BibleChapterAvailability.missingBook
+            ? '$bookName belum tersedia dalam terjemahan Mualang.'
+            : '$bookName pasal $previousChapter belum tersedia dalam terjemahan Mualang.';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(warning), duration: const Duration(seconds: 4)),
+        );
+        return;
+      }
+    }
+
     _contentRequest++;
     _highlightTimer?.cancel();
     setState(() => _isLoading = true);
@@ -250,25 +292,9 @@ class _AlkitabPageState extends State<AlkitabPage> {
       }
       if (!mounted) return;
       _currentVersion = version.databaseFile;
-      if (savedTarget != null) {
-        try {
-          final decoded = jsonDecode(savedTarget);
-          if (decoded is Map &&
-              decoded['book'] is int &&
-              decoded['chapter'] is int &&
-              decoded['verse'] is int) {
-            _currentBookNum = decoded['book'];
-            _currentChapter = decoded['chapter'];
-            _currentVerse = decoded['verse'];
-          }
-        } catch (_) {
-          // Invalid saved position falls back to the current book.
-        }
-      } else if (version == BibleTranslation.mualang) {
-        _currentBookNum = 470; // Matios
-        _currentChapter = 1;
-        _currentVerse = 1;
-      }
+      _currentBookNum = target.bookNumber;
+      _currentChapter = target.chapter;
+      _currentVerse = target.verse;
       await _loadDatabase();
       if (!mounted) return;
       if (_loadError != null) {
@@ -277,7 +303,7 @@ class _AlkitabPageState extends State<AlkitabPage> {
         _currentChapter = previousChapter;
         _currentVerse = previousVerse;
         await _loadDatabase();
-        if (mounted)
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -285,16 +311,16 @@ class _AlkitabPageState extends State<AlkitabPage> {
               ),
             ),
           );
+        }
         return;
       }
       await _prefs.setString(_positionKey('translation'), _currentVersion);
     } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Pilihan terjemahan belum tersimpan. Coba lagi.'),
-          ),
-        );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Gagal mengganti terjemahan. Coba lagi.'),
+        ));
+      }
     }
   }
 

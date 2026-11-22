@@ -4,6 +4,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import 'bible_translation.dart';
+
 /// Private, device-side import of the user's Mualang New Testament SQLite.
 /// Scripture text is not stored in the public GitHub repository or APK.
 class MualangDbImporter {
@@ -14,6 +16,40 @@ class MualangDbImporter {
 
   static Future<bool> isInstalled() async =>
       databaseExists(await _destination());
+
+  /// Check the exact book/chapter in the imported private SQLite database.
+  /// This never modifies the installed file and never triggers a new import.
+  static Future<BibleChapterAvailability> chapterAvailability(
+      int bookNumber, int chapter) async {
+    final destination = await _destination();
+    if (!await databaseExists(destination)) {
+      return BibleChapterAvailability.missingBook;
+    }
+    final db = await openDatabase(
+        destination, readOnly: true, singleInstance: false);
+    try {
+      final books = await db.query('books',
+        columns: ['book_number'],
+        where: 'book_number = ?',
+        whereArgs: [bookNumber],
+        limit: 1,
+      );
+      if (books.isEmpty) return BibleChapterAvailability.missingBook;
+      final chapters = await db.query('verses',
+        columns: ['chapter'],
+        where: 'book_number = ? AND chapter = ?',
+        whereArgs: [bookNumber, chapter],
+        limit: 1,
+      );
+      return bibleChapterAvailability(
+        bookNumber, chapter,
+        books.map((b) => b['book_number'] as int),
+        chapters.map((row) => row['chapter'] as int),
+      );
+    } finally {
+      await db.close();
+    }
+  }
 
   /// Returns false if the user cancels. Validates before installing the file.
   static Future<bool> importFromPicker() async {

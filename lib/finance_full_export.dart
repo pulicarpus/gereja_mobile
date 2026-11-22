@@ -109,13 +109,16 @@ FinanceCompleteReport createFinanceCompleteReport({
         sections.add(makeSection(
             financeMonthNames[month - 1] + ' ' + year.toString(), selected));
       }
+      break;
     case FinanceExportPeriod.allMonths:
       for (final m in months) {
         sections.add(makeSection(financeMonthNames[m.month - 1] +
             ' ' + year.toString(), [m]));
       }
+      break;
     case FinanceExportPeriod.oneYear:
       if (annual != null) sections.add(annual);
+      break;
   }
   return FinanceCompleteReport(
     churchName: churchName, year: year, period: period,
@@ -158,7 +161,7 @@ String financeCompleteCsv(FinanceCompleteReport r) {
     ['LAPORAN KEUANGAN LENGKAP', _safe(r.churchName)],
     ['Tahun', r.year],
     ['Periode', r.period.name],
-    ['Saldo Awal Terverifikasi di Data', r.hasOpening ? 'Ada' : 'Belum'],
+    ['Saldo Pembuka Ditemukan dalam Data', r.hasOpening ? 'Ada' : 'Belum'],
     ['Transaksi Tidak Valid', r.invalidRows],
   ];
   for (final w in r.warnings) rows.add(['PERINGATAN', _safe(w)]);
@@ -229,7 +232,7 @@ Future<List<int>> financeCompletePdf(FinanceCompleteReport report) async {
         ' | ' + report.period.name),
     pw.SizedBox(height: 10),
     if (!report.hasOpening)
-      pw.Text('PERINGATAN: saldo pembuka belum diverifikasi.'),
+      pw.Text('PERINGATAN: saldo pembuka belum ditemukan di data.'),
     if (report.invalidRows > 0)
       pw.Text('PERINGATAN: ada ' + report.invalidRows.toString() +
           ' transaksi tidak valid.'),

@@ -223,8 +223,16 @@ class _KeuanganPageState extends State<KeuanganPage> {
   }
 
 
+  bool _canExportCompleteReport() {
+    final user = UserManager();
+    final filter = widget.filterKategorial?.trim();
+    return user.isAdmin() ||
+        (filter != null && filter.isNotEmpty && user.isPengurus &&
+            KategorialConfig.same(user.userKomisi, filter));
+  }
+
   Future<void> _showCompleteExportDialog() async {
-    if (_exportBusy || _isLoading) return;
+    if (_exportBusy || _isLoading || !_canExportCompleteReport()) return;
     var period = FinanceExportPeriod.oneMonth;
     var format = 'pdf';
     final choice = await showDialog<({FinanceExportPeriod period, String format})>(
@@ -276,6 +284,11 @@ class _KeuanganPageState extends State<KeuanganPage> {
                   'perpuluhan per penyetor, saldo bawaan dan saldo akhir. '
                   'Perpuluhan dihitung satu kali dalam total pemasukan.',
                   style: TextStyle(fontSize: 12)),
+              const SizedBox(height: 8),
+              const Text('Dokumen ini berisi data keuangan dan mungkin '
+                  'nama penyetor perpuluhan. Bagikan hanya kepada '
+                  'pihak berwenang.',
+                  style: TextStyle(fontSize: 12, color: Colors.deepOrange)),
             ],
           ),
           actions: [
@@ -297,7 +310,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   Future<void> _exportCompleteReport(
       FinanceExportPeriod period, String format) async {
-    if (_exportBusy || _isLoading) return;
+    if (_exportBusy || _isLoading || !_canExportCompleteReport()) return;
     final year = _selectedYear;
     final month = _selectedDetailMonth + 1;
     setState(() => _exportBusy = true);
@@ -650,15 +663,17 @@ class _KeuanganPageState extends State<KeuanganPage> {
                 const SizedBox(height: 35),
 
                 // 5. EKSPOR GABUNGAN / SALDO PEMBUKA
-                _buildActionButton(
-                  Icons.file_download_outlined,
-                  _exportBusy
-                      ? 'Membuat laporan lengkap...'
-                      : 'Ekspor Laporan Lengkap (PDF / CSV)',
-                  Colors.indigo,
-                  () { _showCompleteExportDialog(); },
-                ),
-                const SizedBox(height: 12),
+                if (_canExportCompleteReport()) ...[
+                  _buildActionButton(
+                    Icons.file_download_outlined,
+                    _exportBusy
+                        ? 'Membuat laporan lengkap...'
+                        : 'Ekspor Laporan Lengkap (PDF / CSV)',
+                    Colors.indigo,
+                    () { _showCompleteExportDialog(); },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (UserManager().isAdmin() &&
                     _automaticBalance?.hasDocumentedOpening == false) ...[
                   _buildActionButton(

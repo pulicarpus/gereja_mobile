@@ -10,9 +10,13 @@ class CashLedgerEntry {
   final bool income;
   final int amount;
   final bool isTithe;
+  final bool isOpeningBalance;
+  final String? giverName;
+  final String? giverId;
   const CashLedgerEntry({
     required this.date, required this.description,
     required this.income, required this.amount, this.isTithe = false,
+    this.isOpeningBalance = false, this.giverName, this.giverId,
   });
 }
 
@@ -49,6 +53,7 @@ final RegExp _legacyOpeningPattern = RegExp(
 /// Identifies only a monthly opening that matches its transaction month.
 /// Unrelated income with the word "saldo" is never automatically excluded.
 bool isLegacyCashOpening(CashLedgerEntry entry) {
+  if (entry.isOpeningBalance) return !entry.isTithe;
   if (!entry.income || entry.isTithe) return false;
   final match = _legacyOpeningPattern.firstMatch(entry.description);
   if (match == null) return false;
@@ -110,7 +115,7 @@ CashAuditResult calculateCashRunningBalance(
       (e) => e.income && !isLegacyCashOpening(e),
     ).fold<int>(0, (sum, item) => sum + item.amount);
     final monthExpense = group.where(
-      (e) => !e.income,
+      (e) => !e.income && !isLegacyCashOpening(e),
     ).fold<int>(0, (sum, item) => sum + item.amount);
     if (carryEntries.length > 1) {
       warnings.add('Ada lebih dari satu saldo awal manual pada '

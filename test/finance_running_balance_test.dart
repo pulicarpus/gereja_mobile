@@ -141,4 +141,40 @@ void main() {
     expect(summarizeCashYear(result, 2025), isNull);
   });
 
+  test('Saldo pembuka resmi tidak dianggap pemasukan atau pengeluaran', () {
+    final result = calculateCashRunningBalance([
+      CashLedgerEntry(
+        date: DateTime(2026, 9, 1),
+        description: 'Saldo pembuka resmi',
+        income: false,
+        amount: 3000000,
+        isOpeningBalance: true,
+      ),
+      income(2026, 9, 2, 1000000),
+      expense(2026, 9, 3, 500000),
+      income(2026, 10, 5, 200000),
+    ], selectedYear: 2026, asOf: DateTime(2026, 10, 10));
+    expect(result.hasDocumentedOpening, true);
+    expect(result.warnings, isEmpty);
+    expect(result.months.first.opening, 3000000);
+    expect(result.months.first.income, 1000000);
+    expect(result.months.first.expense, 500000);
+    expect(result.months.first.closing, 3500000);
+    expect(result.months.last.opening, 3500000);
+    expect(result.months.last.closing, 3700000);
+  });
+
+  test('Entri pembuka resmi ganda ditandai agar tidak diduplikasi', () {
+    final result = calculateCashRunningBalance([
+      CashLedgerEntry(
+        date: DateTime(2026, 1, 1), description: 'Saldo pembuka',
+        income: false, amount: 500, isOpeningBalance: true,
+      ),
+      income(2026, 1, 1, 500, 'Saldo Awal Januari 2026'),
+    ], selectedYear: 2026, asOf: DateTime(2026, 1, 31));
+    expect(result.hasDocumentedOpening, false);
+    expect(result.months.first.income, 0);
+    expect(result.warnings, isNotEmpty);
+  });
+
 }

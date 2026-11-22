@@ -1,4 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -10,6 +14,7 @@ import 'laporan_perpuluhan_page.dart';
 import 'loading_sultan.dart';
 import 'kategorial_config.dart';
 import 'finance_running_balance.dart';
+import 'finance_full_export.dart';
 
 class KeuanganPage extends StatefulWidget {
   final String? filterKategorial;
@@ -29,6 +34,8 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   bool _isLoading = false;
   bool _previewLoading = false;
+  bool _exportBusy = false;
+  bool _openingBusy = false;
   CashAuditResult? _automaticBalance;
   int _automaticInvalidRows = 0;
   String? _loadError;
@@ -129,7 +136,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   /// Membaca data untuk audit; tidak menyimpan transaksi saldo bawaan.
 
-  Future<({CashAuditResult audit, int invalidRows})>
+  Future<({CashAuditResult audit, int invalidRows, List<CashLedgerEntry> entries})>
       _fetchCashBalanceAudit(int year) async {
     final churchId = UserManager().getChurchIdForCurrentView();
     if (churchId == null || churchId.isEmpty) {
@@ -150,14 +157,16 @@ class _KeuanganPageState extends State<KeuanganPage> {
       final date = _readDate(d['tanggal']);
       final amount = legacyAmount(d['jumlah']);
       final type = d['jenis']?.toString().trim() ?? '';
+      final opening = d['saldoPembuka'] == true || type == 'Saldo Pembuka';
       if (date == null || amount == null || amount < 0 ||
-          (type != 'Pemasukan' && type != 'Pengeluaran')) {
+          (!opening && type != 'Pemasukan' && type != 'Pengeluaran')) {
         invalid++;
         continue;
       }
       entries.add(CashLedgerEntry(
         date: date, description: d['keterangan']?.toString() ?? '',
         income: type == 'Pemasukan', amount: amount,
+        isOpeningBalance: opening,
       ));
     }
     if (widget.filterKategorial == null ||
@@ -177,6 +186,8 @@ class _KeuanganPageState extends State<KeuanganPage> {
         entries.add(CashLedgerEntry(
           date: date, description: 'Perpuluhan',
           income: true, amount: amount, isTithe: true,
+          giverName: (d['namaJemaat'] ?? 'Tanpa Nama').toString(),
+          giverId: d['jemaatId']?.toString(),
         ));
       }
     }
@@ -184,6 +195,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
       audit: calculateCashRunningBalance(
         entries, selectedYear: year, asOf: DateTime.now()),
       invalidRows: invalid,
+      entries: entries,
     );
   }
 
@@ -207,6 +219,286 @@ class _KeuanganPageState extends State<KeuanganPage> {
       debugPrint('Read-only finance preview failed: $e');
     } finally {
       if (mounted) setState(() => _previewLoading = false);
+    }
+  }
+
+
+  Future<void> _showCompleteExportDialog() async {
+    if (_exportBusy || _isLoading) return;
+    var period = FinanceExportPeriod.oneMonth;
+    var format = 'pdf';
+    final choice = await showDialog<({FinanceExportPeriod period, String format})>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Ekspor Laporan Keuangan Lengkap'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Tahun: ' + _selectedYear.toString()),
+              const SizedBox(height: 12),
+              const Text('Periode laporan:'),
+              DropdownButton<FinanceExportPeriod>(
+                value: period,
+                isExpanded: true,
+                items: [
+                  DropdownMenuItem(
+                    value: FinanceExportPeriod.oneMonth,
+                    child: Text('Satu bulan: ' +
+                        _months[_selectedDetailMonth])),
+                  const DropdownMenuItem(
+                    value: FinanceExportPeriod.allMonths,
+                    child: Text('Semua bulan (rinci per bulan)')),
+                  const DropdownMenuItem(
+                    value: FinanceExportPeriod.oneYear,
+                    child: Text('Gabungan satu tahun')),
+                ],
+                onChanged: (value) {
+                  if (value != null) update(() => period = value);
+                },
+              ),
+              const SizedBox(height: 12),
+              const Text('Format file:'),
+              DropdownButton<String>(
+                value: format,
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(value: 'pdf', child: Text('PDF - Siap cetak')),
+                  DropdownMenuItem(value: 'csv', child: Text('CSV - Data tabel')),
+                ],
+                onChanged: (value) {
+                  if (value != null) update(() => format = value);
+                },
+              ),
+              const SizedBox(height: 8),
+              const Text('Isi: pemasukan asli, pengeluaran, tabel '
+                  'perpuluhan per penyetor, saldo bawaan dan saldo akhir. '
+                  'Perpuluhan dihitung satu kali dalam total pemasukan.',
+                  style: TextStyle(fontSize: 12)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Batal')),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext,
+                  (period: period, format: format)),
+              child: const Text('Ekspor')),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) {
+      await _exportCompleteReport(choice.period, choice.format);
+    }
+  }
+
+  Future<void> _exportCompleteReport(
+      FinanceExportPeriod period, String format) async {
+    if (_exportBusy || _isLoading) return;
+    final year = _selectedYear;
+    final month = _selectedDetailMonth + 1;
+    setState(() => _exportBusy = true);
+    try {
+      final data = await _fetchCashBalanceAudit(year);
+      if (!mounted) return;
+      final user = UserManager();
+      final church = user.activeChurchName ?? user.originalChurchName ??
+          'Gereja';
+      final name = widget.filterKategorial == null ||
+              widget.filterKategorial!.trim().isEmpty
+          ? church
+          : church + ' - ' + widget.filterKategorial!;
+      final report = createFinanceCompleteReport(
+        churchName: name,
+        year: year,
+        month: month,
+        period: period,
+        audit: data.audit,
+        entries: data.entries,
+        invalidRows: data.invalidRows,
+      );
+      if (report.sections.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Belum ada data pada periode yang dipilih.'),
+        ));
+        return;
+      }
+      final dir = await getExternalStorageDirectory();
+      if (dir == null) {
+        throw StateError('Penyimpanan tidak tersedia.');
+      }
+      final suffix = DateTime.now().millisecondsSinceEpoch;
+      final filename = 'GKII_Keuangan_' + year.toString() + '_' +
+          period.name + '_' + suffix.toString() + '.' + format;
+      final output = File(dir.path + '/' + filename);
+      if (format == 'pdf') {
+        await output.writeAsBytes(await financeCompletePdf(report),
+            flush: true);
+      } else {
+        await output.writeAsString(financeCompleteCsv(report), flush: true);
+      }
+      final opened = await OpenFilex.open(output.path);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(opened.type == ResultType.error
+            ? 'Laporan dibuat di penyimpanan aplikasi, '
+                'tetapi belum dapat dibuka otomatis.'
+            : 'Laporan lengkap berhasil dibuat.'),
+      ));
+    } catch (e) {
+      debugPrint('Finance complete export failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ekspor gagal. Tidak ada transaksi yang diubah.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _exportBusy = false);
+    }
+  }
+
+  Future<void> _showOpeningBalanceDialog() async {
+    if (_openingBusy || _isLoading || !UserManager().isAdmin()) return;
+    final year = _selectedYear;
+    final month = _selectedDetailMonth + 1;
+    final amountCtrl = TextEditingController();
+    final value = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Saldo Pembuka Gereja Baru'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Periode: ' + _months[month - 1] + ' ' + year.toString()),
+            const SizedBox(height: 8),
+            const Text('Masukkan uang kas/rekening yang benar-benar ada '
+                'pada awal bulan pembukuan. Hanya sekali untuk kas ini. '
+                'Bukan transaksi pemasukan.',
+                style: TextStyle(fontSize: 13)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: amountCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Saldo pembuka (Rp)',
+                hintText: 'Contoh: 1000000',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final amount = int.tryParse(amountCtrl.text.trim());
+              if (amount == null || amount < 0) return;
+              Navigator.pop(dialogContext, amount);
+            },
+            child: const Text('Simpan Saldo Pembuka'),
+          ),
+        ],
+      ),
+    );
+    amountCtrl.dispose();
+    if (value != null && mounted) {
+      await _saveOpeningBalance(year, month, value);
+    }
+  }
+
+  Future<void> _saveOpeningBalance(int year, int month, int amount) async {
+    if (_openingBusy || amount < 0 || !UserManager().isAdmin()) return;
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) return;
+    final category = widget.filterKategorial?.trim().isNotEmpty == true
+        ? widget.filterKategorial!.trim() : 'Umum';
+    setState(() => _openingBusy = true);
+    try {
+      final access = await ChurchWriteAccess.check(churchId,
+          category: category);
+      access.assertCurrent();
+      final firstDay = DateTime(year, month, 1);
+      final nextMonth = DateTime(year, month + 1, 1);
+      final collection = _db.collection('churches').doc(churchId)
+          .collection('transaksi');
+      // Guard: do not retrofit a second opening into an active ledger.
+      final existing = await collection.where('tanggal',
+          isLessThan: nextMonth).get().timeout(const Duration(seconds: 20));
+      for (final doc in existing.docs) {
+        final record = doc.data();
+        if (!_matchesKategori(record['kategori'])) continue;
+        final rawDate = _readDate(record['tanggal']);
+        if (rawDate == null) continue;
+        final type = record['jenis']?.toString().trim() ?? '';
+        final opening = record['saldoPembuka'] == true ||
+            type == 'Saldo Pembuka' ||
+            (type == 'Pemasukan' && isLegacyCashOpening(
+                CashLedgerEntry(
+                  date: rawDate,
+                  description: record['keterangan']?.toString() ?? '',
+                  income: true,
+                  amount: legacyAmount(record['jumlah']) ?? 0,
+                )));
+        if (rawDate.isBefore(firstDay) || opening) {
+          throw StateError('Kas ini sudah memiliki riwayat '
+              'atau catatan saldo awal. Tidak boleh membuat pembuka baru.');
+        }
+      }
+      if (widget.filterKategorial == null ||
+          widget.filterKategorial!.trim().isEmpty) {
+        final olderTithes = await _db.collection('churches').doc(churchId)
+            .collection('perpuluhan')
+            .where('tanggal', isLessThan: firstDay)
+            .limit(1).get().timeout(const Duration(seconds: 20));
+        if (olderTithes.docs.isNotEmpty) {
+          throw StateError('Sudah ada perpuluhan sebelum bulan terpilih. '
+              'Saldo pembuka harus ditetapkan sebelum periode pertama.');
+        }
+      }
+      final uniqueId = 'saldo_pembuka_' +
+          Uri.encodeComponent(category.toLowerCase());
+      final target = collection.doc(uniqueId);
+      await _db.runTransaction((tx) async {
+        await access.inTransaction(tx);
+        final current = await tx.get(target);
+        if (current.exists) {
+          throw StateError('Saldo pembuka sudah pernah disimpan.');
+        }
+        access.assertCurrent();
+        tx.set(target, {
+          'jenis': 'Saldo Pembuka',
+          'saldoPembuka': true,
+          'keterangan': 'Saldo pembuka resmi ' +
+              _months[month - 1] + ' ' + year.toString(),
+          'jumlah': amount,
+          'tanggal': Timestamp.fromDate(firstDay),
+          'kategori': category,
+        });
+      }).timeout(const Duration(seconds: 20));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Saldo pembuka disimpan satu kali. '
+            'Tidak dicatat sebagai pemasukan.'),
+      ));
+      await _loadDataForYear(_selectedYear);
+    } catch (e) {
+      debugPrint('Opening balance setup failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Tidak dapat menyimpan saldo pembuka: ' +
+              e.toString()),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _openingBusy = false);
     }
   }
 
@@ -357,7 +649,29 @@ class _KeuanganPageState extends State<KeuanganPage> {
                 _buildMonthlyDetailSection(), // 👈 FUNGSI BARU DIPANGGIL DI SINI
                 const SizedBox(height: 35),
 
-                // 5. TOMBOL NAVIGASI
+                // 5. EKSPOR GABUNGAN / SALDO PEMBUKA
+                _buildActionButton(
+                  Icons.file_download_outlined,
+                  _exportBusy
+                      ? 'Membuat laporan lengkap...'
+                      : 'Ekspor Laporan Lengkap (PDF / CSV)',
+                  Colors.indigo,
+                  () { _showCompleteExportDialog(); },
+                ),
+                const SizedBox(height: 12),
+                if (UserManager().isAdmin() &&
+                    _automaticBalance?.hasDocumentedOpening == false) ...[
+                  _buildActionButton(
+                    Icons.account_balance_wallet_outlined,
+                    _openingBusy
+                        ? 'Menyimpan saldo pembuka...'
+                        : 'Atur Saldo Pembuka (Gereja Baru)',
+                    Colors.blueGrey,
+                    () { _showOpeningBalanceDialog(); },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // 6. TOMBOL NAVIGASI
                 _buildActionButton(
                   Icons.account_balance_wallet_outlined,
                   _previewLoading

@@ -3,7 +3,7 @@ name: Flutter Build APK
 on:
   workflow_dispatch:
   push:
-    branches: [perbaikan-fitur-daerah, fix/profil-sederhana, fix/windows-n4500, feat/notes-richtext-foundation, feat/mualang-pb-from-notes-richtext, fix/finance-carryforward-preview, feat/finance-auto-carry-display]
+    branches: [perbaikan-fitur-daerah, fix/profil-sederhana, fix/windows-n4500, feat/notes-richtext-foundation, feat/mualang-pb-from-notes-richtext, fix/finance-carryforward-preview, feat/finance-auto-carry-display, feat/finance-annual-closing-monthly-original]
     paths:
       - 'lib/**'
       - 'test/**'

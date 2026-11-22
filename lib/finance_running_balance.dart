@@ -135,3 +135,37 @@ CashAuditResult calculateCashRunningBalance(
   }
   return CashAuditResult(months, documented, warnings);
 }
+
+/// Rekap tahunan dari bulan yang sudah dihitung dengan saldo berjalan.
+/// Opening mencakup saldo pembuka periode (awal tahun atau bulan pertama
+/// pembukuan yang tersedia), closing adalah saldo akhir bulan terakhir.
+class CashYearSummary {
+  final int year;
+  final int firstMonth;
+  final int lastMonth;
+  final int opening;
+  final int income;
+  final int expense;
+  final int closing;
+  const CashYearSummary({
+    required this.year, required this.firstMonth, required this.lastMonth,
+    required this.opening, required this.income, required this.expense,
+    required this.closing,
+  });
+  int get net => income - expense;
+}
+
+CashYearSummary? summarizeCashYear(CashAuditResult audit, int year) {
+  final months = audit.months.where((m) => m.year == year).toList();
+  if (months.isEmpty) return null;
+  return CashYearSummary(
+    year: year,
+    firstMonth: months.first.month,
+    lastMonth: months.last.month,
+    opening: months.first.opening,
+    income: months.fold<int>(0, (value, m) => value + m.income),
+    expense: months.fold<int>(0, (value, m) => value + m.expense),
+    closing: months.last.closing,
+  );
+}
+

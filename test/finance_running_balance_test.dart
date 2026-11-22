@@ -75,4 +75,70 @@ void main() {
     expect(isLegacyCashOpening(income(2026, 8, 1, 30,
       'Saldo Awal Agustus 2026')), true);
   });
+
+  test('Laporan bulanan asli, tahunan mengambil saldo bulan terakhir', () {
+    final result = calculateCashRunningBalance([
+      income(2026, 8, 1, 14853000, 'Saldo Awal Agustus 2026'),
+      income(2026, 8, 5, 6744000),
+      expense(2026, 8, 15, 10758000),
+      income(2026, 9, 1, 10839000, 'Saldo Awal September 2026'),
+      income(2026, 9, 5, 5537000),
+      expense(2026, 9, 6, 5744000),
+      income(2026, 10, 1, 10632000, 'Saldo Awal Oktober 2026'),
+      income(2026, 10, 6, 7153000),
+      expense(2026, 10, 7, 5611000),
+      income(2026, 11, 1, 12174000, 'Saldo Awal November 2026'),
+      income(2026, 11, 7, 3467000),
+    ], selectedYear: 2026, asOf: DateTime(2026, 11, 22));
+    final months = result.months;
+    expect(months.map((m) => m.net).toList(), [
+      -4014000, -207000, 1542000, 3467000,
+    ]);
+    expect(months.map((m) => m.closing).toList(), [
+      10839000, 10632000, 12174000, 15641000,
+    ]);
+    expect(months[1].opening, months[0].closing);
+    expect(months[2].opening, months[1].closing);
+    expect(months[3].opening, months[2].closing);
+    expect(result.warnings, isEmpty);
+    final annual = summarizeCashYear(result, 2026)!;
+    expect(annual.firstMonth, 8);
+    expect(annual.lastMonth, 11);
+    expect(annual.opening, 14853000);
+    expect(annual.income, 22901000);
+    expect(annual.expense, 22113000);
+    expect(annual.net, 788000);
+    expect(annual.closing, 15641000);
+    expect(annual.closing, annual.opening + annual.net);
+  });
+
+  test('Defisit bulanan mengurangi saldo tahun; tidak diduplikasi', () {
+    final result = calculateCashRunningBalance([
+      income(2026, 12, 1, 0, 'Saldo Awal Desember 2026'),
+      income(2026, 12, 10, 100),
+      expense(2026, 12, 11, 300),
+      income(2027, 1, 1, 0, 'Saldo Awal Januari 2027'),
+      income(2027, 1, 12, 400),
+      expense(2027, 1, 17, 100),
+    ], selectedYear: 2027, asOf: DateTime(2027, 1, 31));
+    final december = result.months.first;
+    final january = result.months.last;
+    expect(december.net, -200);
+    expect(december.closing, -200);
+    expect(january.opening, -200);
+    expect(january.net, 300);
+    expect(january.closing, 100);
+    final annual = summarizeCashYear(result, 2027)!;
+    expect(annual.opening, -200);
+    expect(annual.net, 300);
+    expect(annual.closing, 100);
+  });
+
+  test('Belum ada laporan tahunan sebelum transaksi pertama', () {
+    final result = calculateCashRunningBalance([
+      income(2026, 8, 1, 150, 'Saldo Awal Agustus 2026'),
+    ], selectedYear: 2026, asOf: DateTime(2026, 8, 31));
+    expect(summarizeCashYear(result, 2025), isNull);
+  });
+
 }

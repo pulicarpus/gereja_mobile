@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -29,6 +30,10 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   bool _isLoading = false;
   bool _previewLoading = false;
+  bool _automaticBalanceLoading = false;
+  String? _automaticBalanceError;
+  CashAuditResult? _automaticBalance;
+  int _automaticInvalidRows = 0;
   String? _loadError;
   int _loadGeneration = 0;
   int _totalPemasukan = 0;
@@ -82,6 +87,9 @@ class _KeuanganPageState extends State<KeuanganPage> {
         _pemasukanBulanan = List.filled(12, 0);
         _pengeluaranBulanan = List.filled(12, 0);
         _saldoBulanan = List.filled(12, 0);
+        _automaticBalance = null;
+        _automaticBalanceError = null;
+        _automaticBalanceLoading = true;
       });
     }
     
@@ -168,11 +176,15 @@ class _KeuanganPageState extends State<KeuanganPage> {
           _pengeluaranBulanan = tempPengBulanan;
           _saldoBulanan = tempSaldoBulanan;
         });
+        unawaited(_refreshAutomaticBalance(year, generation));
       }
     } catch (e) {
       debugPrint("Error mengambil data keuangan: $e");
       if (mounted && generation == _loadGeneration) {
-        setState(() => _loadError = "Gagal memuat data keuangan. Jangan gunakan angka ini untuk laporan.");
+        setState(() {
+          _loadError = "Gagal memuat data keuangan. Jangan gunakan angka ini untuk laporan.";
+          _automaticBalanceLoading = false;
+        });
       }
     } finally {
       if (mounted && generation == _loadGeneration) setState(() => _isLoading = false);
@@ -180,61 +192,99 @@ class _KeuanganPageState extends State<KeuanganPage> {
   }
 
   /// Read-only preview. This does not post transfers or alter Firestore data.
-  Future<void> _showCashBalancePreview() async {
-    if (_previewLoading || _isLoading) return;
-    final churchId = UserManager().getChurchIdForCurrentView();
-    if (churchId == null || churchId.isEmpty) return;
-    setState(() => _previewLoading = true);
+  // Runs on each report refresh, independently from the legacy summary.
+  // Only reads Firestore. No new transactions are written.
+  Future<void> _refreshAutomaticBalance(int year, int generation) async {
     try {
-      final start = DateTime(2020, 1, 1);
-      final end = DateTime(_selectedYear + 1, 1, 1);
-      final church = _db.collection('churches').doc(churchId);
-      final trxSnapshot = await church.collection('transaksi')
+      final data = await _fetchCashBalanceAudit(year);
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _automaticBalance = data.audit;
+        _automaticInvalidRows = data.invalidRows;
+        _automaticBalanceError = null;
+        _automaticBalanceLoading = false;
+      });
+    } catch (e) {
+      debugPrint('Automatic balance read failed: $e');
+      if (!mounted || generation != _loadGeneration) return;
+      setState(() {
+        _automaticBalance = null;
+        _automaticBalanceError = 'Saldo berjalan gagal dihitung. '
+            'Angka saldo otomatis jangan digunakan sebelum diperiksa.';
+        _automaticBalanceLoading = false;
+      });
+    }
+  }
+
+  Future<({CashAuditResult audit, int invalidRows})>
+      _fetchCashBalanceAudit(int year) async {
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) {
+      throw StateError('Gereja tidak tersedia');
+    }
+    final start = DateTime(2020, 1, 1);
+    final end = DateTime(year + 1, 1, 1);
+    final church = _db.collection('churches').doc(churchId);
+    final trxSnapshot = await church.collection('transaksi')
+        .where('tanggal', isGreaterThanOrEqualTo: start)
+        .where('tanggal', isLessThan: end)
+        .get().timeout(const Duration(seconds: 20));
+    final entries = <CashLedgerEntry>[];
+    var invalid = 0;
+    for (final doc in trxSnapshot.docs) {
+      final d = doc.data();
+      if (!_matchesKategori(d['kategori'])) continue;
+      final date = _readDate(d['tanggal']);
+      final amount = legacyAmount(d['jumlah']);
+      final type = d['jenis']?.toString().trim() ?? '';
+      if (date == null || amount == null || amount < 0 ||
+          (type != 'Pemasukan' && type != 'Pengeluaran')) {
+        invalid++;
+        continue;
+      }
+      entries.add(CashLedgerEntry(
+        date: date, description: d['keterangan']?.toString() ?? '',
+        income: type == 'Pemasukan', amount: amount,
+      ));
+    }
+    if (widget.filterKategorial == null ||
+        widget.filterKategorial!.trim().isEmpty) {
+      final titheSnapshot = await church.collection('perpuluhan')
           .where('tanggal', isGreaterThanOrEqualTo: start)
           .where('tanggal', isLessThan: end)
           .get().timeout(const Duration(seconds: 20));
-      final entries = <CashLedgerEntry>[];
-      var invalid = 0;
-      for (final doc in trxSnapshot.docs) {
+      for (final doc in titheSnapshot.docs) {
         final d = doc.data();
-        if (!_matchesKategori(d['kategori'])) continue;
         final date = _readDate(d['tanggal']);
         final amount = legacyAmount(d['jumlah']);
-        final type = d['jenis']?.toString().trim() ?? '';
-        if (date == null || amount == null || amount < 0 ||
-            (type != 'Pemasukan' && type != 'Pengeluaran')) {
+        if (date == null || amount == null || amount < 0) {
           invalid++;
           continue;
         }
         entries.add(CashLedgerEntry(
-          date: date, description: d['keterangan']?.toString() ?? '',
-          income: type == 'Pemasukan', amount: amount,
+          date: date, description: 'Perpuluhan',
+          income: true, amount: amount, isTithe: true,
         ));
       }
-      if (widget.filterKategorial == null ||
-          widget.filterKategorial!.trim().isEmpty) {
-        final titheSnapshot = await church.collection('perpuluhan')
-            .where('tanggal', isGreaterThanOrEqualTo: start)
-            .where('tanggal', isLessThan: end)
-            .get().timeout(const Duration(seconds: 20));
-        for (final doc in titheSnapshot.docs) {
-          final d = doc.data();
-          final date = _readDate(d['tanggal']);
-          final amount = legacyAmount(d['jumlah']);
-          if (date == null || amount == null || amount < 0) {
-            invalid++;
-            continue;
-          }
-          entries.add(CashLedgerEntry(
-            date: date, description: 'Perpuluhan',
-            income: true, amount: amount, isTithe: true,
-          ));
-        }
+    }
+    return (
+      audit: calculateCashRunningBalance(
+        entries, selectedYear: year, asOf: DateTime.now()),
+      invalidRows: invalid,
+    );
+  }
+
+  Future<void> _showCashBalancePreview() async {
+    if (_previewLoading || _isLoading) return;
+    setState(() => _previewLoading = true);
+    try {
+      if (_automaticBalance != null) {
+        _renderCashBalancePreview(_automaticBalance!, _automaticInvalidRows);
+      } else {
+        final data = await _fetchCashBalanceAudit(_selectedYear);
+        if (!mounted) return;
+        _renderCashBalancePreview(data.audit, data.invalidRows);
       }
-      final result = calculateCashRunningBalance(
-        entries, selectedYear: _selectedYear, asOf: DateTime.now());
-      if (!mounted) return;
-      _renderCashBalancePreview(result, invalid);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -441,7 +491,12 @@ class _KeuanganPageState extends State<KeuanganPage> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Text("Surplus / Defisit Tahun $_selectedYear", style: const TextStyle(color: Colors.grey, fontSize: 14)),
+            Text("Hasil Bersih Transaksi Lama Tahun $_selectedYear",
+              style: const TextStyle(color: Colors.grey, fontSize: 14)),
+            const Text("Masih mencakup saldo awal yang dicatat manual. "
+              "Untuk saldo sebenarnya lihat Rincian Saldo Bulanan (Otomatis).",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.deepOrange, fontSize: 11)),
             const SizedBox(height: 5),
             Text(formatRupiah(saldoTotal), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue)),
             const Padding(padding: EdgeInsets.symmetric(vertical: 15), child: Divider(height: 1, thickness: 1)),
@@ -471,9 +526,19 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   // 👇 FUNGSI BARU: KARTU RINCIAN DENGAN DROPDOWN BULAN 👇
   Widget _buildMonthlyDetailSection() {
-    int saldo = _saldoBulanan[_selectedDetailMonth];
-    int masuk = _pemasukanBulanan[_selectedDetailMonth];
-    int keluar = _pengeluaranBulanan[_selectedDetailMonth];
+    CashMonthBalance? automaticMonth;
+    for (final item in _automaticBalance?.months ?? const <CashMonthBalance>[]) {
+      if (item.year == _selectedYear &&
+          item.month == _selectedDetailMonth + 1) {
+        automaticMonth = item;
+        break;
+      }
+    }
+    // Keep the old figures only while the new read-only audit is unavailable.
+    // Never silently claim that manual carry is new church income.
+    int saldo = automaticMonth?.net ?? _saldoBulanan[_selectedDetailMonth];
+    int masuk = automaticMonth?.income ?? _pemasukanBulanan[_selectedDetailMonth];
+    int keluar = automaticMonth?.expense ?? _pengeluaranBulanan[_selectedDetailMonth];
     bool isPositive = saldo >= 0;
 
     return Container(
@@ -526,6 +591,38 @@ class _KeuanganPageState extends State<KeuanganPage> {
             child: Divider(height: 1, thickness: 1),
           ),
           
+          if (_automaticBalanceLoading)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: LinearProgressIndicator(),
+            ),
+          if (_automaticBalanceError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_automaticBalanceError!,
+                style: const TextStyle(color: Colors.red)),
+            ),
+          if (automaticMonth != null &&
+              _automaticBalance?.hasDocumentedOpening == false)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text('PERINGATAN: saldo awal bulan pertama belum '
+                  'terverifikasi. Hasil saldo berjalan hanya perkiraan.',
+                  style: TextStyle(color: Colors.deepOrange)),
+            ),
+          if (automaticMonth != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(child: Text('Saldo Awal (Otomatis)',
+                    style: TextStyle(fontWeight: FontWeight.bold))),
+                  Text(formatRupiah(automaticMonth.opening),
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
           // Rincian Angka
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -560,6 +657,59 @@ class _KeuanganPageState extends State<KeuanganPage> {
               ],
             ),
           ),
+          if (automaticMonth != null) ...[
+            const Divider(height: 28),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(child: Text('Saldo Akhir (Otomatis)',
+                  style: TextStyle(fontWeight: FontWeight.bold))),
+                Text(formatRupiah(automaticMonth.closing),
+                  style: TextStyle(
+                    color: automaticMonth.closing < 0
+                        ? Colors.red.shade800 : Colors.green.shade800,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 17,
+                  )),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Saldo akhir otomatis menjadi saldo awal bulan berikutnya. '
+                'Bukan transaksi pemasukan/pengeluaran.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+            ),
+            if (automaticMonth.closing < 0)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text(
+                  'Saldo negatif: periksa sumber pembiayaan atau transaksi '
+                  'yang belum dicatat.',
+                  style: TextStyle(color: Colors.red),
+                ),
+              ),
+            if (automaticMonth.manualCarryCount > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Saldo awal manual lama: '
+                  + formatRupiah(automaticMonth.manualCarry)
+                  + ' (tidak dihitung sebagai pemasukan baru). '
+                  + (automaticMonth.manualDifference == 0
+                      ? 'Sesuai dengan saldo otomatis.'
+                      : 'SELISIH: '
+                          + formatRupiah(automaticMonth.manualDifference)
+                          + '. Perlu diperiksa sebelum dipakai resmi.'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: automaticMonth.manualDifference == 0
+                        ? Colors.green.shade800 : Colors.red.shade800,
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );

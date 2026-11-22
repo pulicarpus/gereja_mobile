@@ -517,6 +517,9 @@ class _KeuanganPageState extends State<KeuanganPage> {
 
   void _renderCashBalancePreview(CashAuditResult audit, int invalidRows) {
     final months = audit.months.where((m) => m.year == _selectedYear).toList();
+    final income = months.fold<int>(0, (sum, m) => sum + m.income);
+    final expense = months.fold<int>(0, (sum, m) => sum + m.expense);
+    final net = income - expense;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -526,28 +529,25 @@ class _KeuanganPageState extends State<KeuanganPage> {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              const Text('PRATINJAU SALDO BERJALAN (READ-ONLY)',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
-              const SizedBox(height: 6),
-              const Text('Data transaksi Firebase tidak diubah. '
-                  'Entri saldo awal manual dipisahkan dari penerimaan baru.'),
+              Text('Saldo Berjalan $_selectedYear',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 12),
               if (!audit.hasDocumentedOpening)
-                const Text('PERINGATAN: saldo pembuka belum ditemukan; '
-                    'hasil kas berjalan belum dapat dipastikan.',
-                    style: TextStyle(color: Colors.red)),
-              Text('Pemasukan baru: ' + formatRupiah(
-                  months.fold<int>(0, (sum, m) => sum + m.income))),
-              Text('Pengeluaran: ' + formatRupiah(
-                  months.fold<int>(0, (sum, m) => sum + m.expense))),
-              Text('Surplus/defisit operasional: ' + formatRupiah(
-                  months.fold<int>(0, (sum, m) => sum + m.net))),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: Text('Saldo pembuka belum ditemukan.',
+                      style: TextStyle(color: Colors.red)),
+                ),
+              Text('Total pemasukan: ' + formatRupiah(income)),
+              Text('Total pengeluaran: ' + formatRupiah(expense)),
+              Text('Surplus/defisit: ' + formatRupiah(net)),
               if (months.isNotEmpty)
                 Text('Saldo akhir: ' + formatRupiah(months.last.closing),
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 20)),
               if (invalidRows > 0)
-                Text('Ada ' + invalidRows.toString() +
-                    ' transaksi tidak valid yang tidak dihitung.',
+                Text('$invalidRows transaksi tidak valid tidak dihitung.',
                     style: const TextStyle(color: Colors.red)),
               for (final warning in audit.warnings)
                 Padding(
@@ -555,7 +555,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
                   child: Text('⚠ ' + warning,
                       style: const TextStyle(color: Colors.deepOrange)),
                 ),
-              const Divider(height: 30),
+              const Divider(height: 24),
               for (final month in months)
                 Card(
                   child: Padding(
@@ -564,27 +564,25 @@ class _KeuanganPageState extends State<KeuanganPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(_months[month.month - 1] + ' ' +
-                          month.year.toString(),
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                            month.year.toString(),
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 6),
                         Text('Saldo awal: ' + formatRupiah(month.opening)),
-                        Text('Pemasukan baru: ' + formatRupiah(month.income)),
+                        Text('Pemasukan: ' + formatRupiah(month.income)),
                         Text('Pengeluaran: ' + formatRupiah(month.expense)),
                         Text('Surplus/defisit: ' + formatRupiah(month.net)),
                         Text('Saldo akhir: ' + formatRupiah(month.closing),
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                        if (month.manualCarryCount > 0)
-                          Text('Saldo manual: ' + formatRupiah(month.manualCarry) +
-                              ' | Selisih: ' + formatRupiah(month.manualDifference),
-                              style: TextStyle(
-                                color: month.manualDifference == 0
-                                    ? Colors.green : Colors.red)),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold)),
+                        if (month.manualCarryCount > 0 &&
+                            month.manualDifference != 0)
+                          Text('Selisih saldo manual: ' +
+                              formatRupiah(month.manualDifference),
+                              style: const TextStyle(color: Colors.red)),
                       ],
                     ),
                   ),
                 ),
-              const SizedBox(height: 12),
-              const Text('Pratinjau perlu dicocokkan dengan saldo kas/rekening '
-                  'bendahara sebelum dijadikan laporan resmi.'),
             ],
           ),
         ),

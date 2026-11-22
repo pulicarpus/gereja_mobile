@@ -261,12 +261,16 @@ Future<List<int>> financeCompletePdf(FinanceCompleteReport report) async {
       _table(['Tanggal', 'Keterangan', 'Jumlah'],
         s.otherIncome.map((e) => [
           _date(e.date), e.description, _money(e.amount)]).toList()),
+      pw.SizedBox(height: 4),
+      _moneyRow('TOTAL PEMASUKAN UMUM', s.otherIncomeTotal),
       pw.SizedBox(height: 9),
       pw.Text('Rincian Pengeluaran',
           style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
       _table(['Tanggal', 'Keterangan', 'Jumlah'],
         s.expenses.map((e) => [
           _date(e.date), e.description, _money(e.amount)]).toList()),
+      pw.SizedBox(height: 4),
+      _moneyRow('TOTAL PENGELUARAN', s.expense),
       pw.SizedBox(height: 9),
       if (report.period != FinanceExportPeriod.allMonths) ...[
         pw.Text('Tabel Perpuluhan per Penyetor',

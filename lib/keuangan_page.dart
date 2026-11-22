@@ -9,6 +9,7 @@ import 'laporan_transaksi_page.dart';
 import 'laporan_perpuluhan_page.dart';
 import 'loading_sultan.dart';
 import 'kategorial_config.dart';
+import 'finance_running_balance.dart';
 
 class KeuanganPage extends StatefulWidget {
   final String? filterKategorial;
@@ -27,6 +28,7 @@ class _KeuanganPageState extends State<KeuanganPage> {
   List<int> _availableYears = [];
 
   bool _isLoading = false;
+  bool _previewLoading = false;
   String? _loadError;
   int _loadGeneration = 0;
   int _totalPemasukan = 0;
@@ -177,6 +179,151 @@ class _KeuanganPageState extends State<KeuanganPage> {
     }
   }
 
+  /// Read-only preview. This does not post transfers or alter Firestore data.
+  Future<void> _showCashBalancePreview() async {
+    if (_previewLoading || _isLoading) return;
+    final churchId = UserManager().getChurchIdForCurrentView();
+    if (churchId == null || churchId.isEmpty) return;
+    setState(() => _previewLoading = true);
+    try {
+      final start = DateTime(2020, 1, 1);
+      final end = DateTime(_selectedYear + 1, 1, 1);
+      final church = _db.collection('churches').doc(churchId);
+      final trxSnapshot = await church.collection('transaksi')
+          .where('tanggal', isGreaterThanOrEqualTo: start)
+          .where('tanggal', isLessThan: end)
+          .get().timeout(const Duration(seconds: 20));
+      final entries = <CashLedgerEntry>[];
+      var invalid = 0;
+      for (final doc in trxSnapshot.docs) {
+        final d = doc.data();
+        if (!_matchesKategori(d['kategori'])) continue;
+        final date = _readDate(d['tanggal']);
+        final amount = legacyAmount(d['jumlah']);
+        final type = d['jenis']?.toString().trim() ?? '';
+        if (date == null || amount == null || amount < 0 ||
+            (type != 'Pemasukan' && type != 'Pengeluaran')) {
+          invalid++;
+          continue;
+        }
+        entries.add(CashLedgerEntry(
+          date: date, description: d['keterangan']?.toString() ?? '',
+          income: type == 'Pemasukan', amount: amount,
+        ));
+      }
+      if (widget.filterKategorial == null ||
+          widget.filterKategorial!.trim().isEmpty) {
+        final titheSnapshot = await church.collection('perpuluhan')
+            .where('tanggal', isGreaterThanOrEqualTo: start)
+            .where('tanggal', isLessThan: end)
+            .get().timeout(const Duration(seconds: 20));
+        for (final doc in titheSnapshot.docs) {
+          final d = doc.data();
+          final date = _readDate(d['tanggal']);
+          final amount = legacyAmount(d['jumlah']);
+          if (date == null || amount == null || amount < 0) {
+            invalid++;
+            continue;
+          }
+          entries.add(CashLedgerEntry(
+            date: date, description: 'Perpuluhan',
+            income: true, amount: amount, isTithe: true,
+          ));
+        }
+      }
+      final result = calculateCashRunningBalance(
+        entries, selectedYear: _selectedYear, asOf: DateTime.now());
+      if (!mounted) return;
+      _renderCashBalancePreview(result, invalid);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Gagal menghitung pratinjau saldo. Data tidak diubah.'),
+        ));
+      }
+      debugPrint('Read-only finance preview failed: $e');
+    } finally {
+      if (mounted) setState(() => _previewLoading = false);
+    }
+  }
+
+  void _renderCashBalancePreview(CashAuditResult audit, int invalidRows) {
+    final months = audit.months.where((m) => m.year == _selectedYear).toList();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(sheetContext).size.height * 0.88,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text('PRATINJAU SALDO BERJALAN (READ-ONLY)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+              const SizedBox(height: 6),
+              const Text('Transaksi dan laporan utama tidak diubah. '
+                  'Entri saldo awal manual dipisahkan dari penerimaan baru.'),
+              const SizedBox(height: 12),
+              if (!audit.hasDocumentedOpening)
+                const Text('PERINGATAN: saldo pembuka belum ditemukan; '
+                    'hasil kas berjalan belum dapat dipastikan.',
+                    style: TextStyle(color: Colors.red)),
+              Text('Pemasukan baru: ' + formatRupiah(
+                  months.fold<int>(0, (sum, m) => sum + m.income))),
+              Text('Pengeluaran: ' + formatRupiah(
+                  months.fold<int>(0, (sum, m) => sum + m.expense))),
+              Text('Surplus/defisit operasional: ' + formatRupiah(
+                  months.fold<int>(0, (sum, m) => sum + m.net))),
+              if (months.isNotEmpty)
+                Text('Saldo akhir: ' + formatRupiah(months.last.closing),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+              if (invalidRows > 0)
+                Text('Ada ' + invalidRows.toString() +
+                    ' transaksi tidak valid yang tidak dihitung.',
+                    style: const TextStyle(color: Colors.red)),
+              for (final warning in audit.warnings)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('⚠ ' + warning,
+                      style: const TextStyle(color: Colors.deepOrange)),
+                ),
+              const Divider(height: 30),
+              for (final month in months)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_months[month.month - 1] + ' ' +
+                          month.year.toString(),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Saldo awal: ' + formatRupiah(month.opening)),
+                        Text('Pemasukan baru: ' + formatRupiah(month.income)),
+                        Text('Pengeluaran: ' + formatRupiah(month.expense)),
+                        Text('Surplus/defisit: ' + formatRupiah(month.net)),
+                        Text('Saldo akhir: ' + formatRupiah(month.closing),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                        if (month.manualCarryCount > 0)
+                          Text('Saldo manual: ' + formatRupiah(month.manualCarry) +
+                              ' | Selisih: ' + formatRupiah(month.manualDifference),
+                              style: TextStyle(
+                                color: month.manualDifference == 0
+                                    ? Colors.green : Colors.red)),
+                      ],
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              const Text('Pratinjau perlu dicocokkan dengan saldo kas/rekening '
+                  'bendahara sebelum dijadikan laporan resmi.'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   String formatRupiah(int amount) {
     return NumberFormat.currency(locale: 'id_ID', symbol: 'Rp ', decimalDigits: 0).format(amount);
   }
@@ -249,6 +396,15 @@ class _KeuanganPageState extends State<KeuanganPage> {
                 const SizedBox(height: 35),
 
                 // 5. TOMBOL NAVIGASI
+                _buildActionButton(
+                  Icons.account_balance_wallet_outlined,
+                  _previewLoading
+                      ? 'Menghitung saldo berjalan...'
+                      : 'Pratinjau Saldo Berjalan (Read-only)',
+                  Colors.teal,
+                  () { _showCashBalancePreview(); },
+                ),
+                const SizedBox(height: 12),
                 _buildNavButtons(isKategorial),
                 const SizedBox(height: 40),
               ],

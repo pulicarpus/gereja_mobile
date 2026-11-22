@@ -25,7 +25,7 @@ void main() {
         BibleChapterAvailability.missingBook); // Old Testament.
     expect(bibleChapterAvailability(650, 1, available, [1]),
         BibleChapterAvailability.missingBook); // Not necessarily Mualang.
-    expect(bibleChapterAvailability(710, 1, available, [1]),
+    expect(bibleChapterAvailability(720, 1, available, [1]),
         BibleChapterAvailability.missingBook); // Yudas.
     expect(bibleChapterAvailability(470, 99, available, [1, 2, 3]),
         BibleChapterAvailability.missingChapter);
